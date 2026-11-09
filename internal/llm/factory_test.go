@@ -21,6 +21,7 @@ func TestNewAllProviders(t *testing.T) {
 		{config.ProviderDeepSeek, "key"},
 		{config.ProviderMistral, "key"},
 		{config.ProviderXAI, "key"},
+		{config.ProviderOpenCodeGo, "key"},
 		{config.ProviderOllama, ""},
 		{config.ProviderLMStudio, ""},
 		{config.ProviderCustom, ""},
@@ -72,6 +73,7 @@ func TestNewRequiresKeyForHostedProviders(t *testing.T) {
 		config.ProviderDeepSeek,
 		config.ProviderMistral,
 		config.ProviderXAI,
+		config.ProviderOpenCodeGo,
 	}
 	for _, provider := range hosted {
 		t.Run(provider, func(t *testing.T) {
@@ -209,7 +211,7 @@ func clearProviderEnv(t *testing.T) {
 		"VIGIL_PROVIDER", "VIGIL_API_KEY", "VIGIL_BASE_URL",
 		"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY",
 		"OPENROUTER_API_KEY", "GROQ_API_KEY", "DEEPSEEK_API_KEY", "MISTRAL_API_KEY",
-		"XAI_API_KEY", "OLLAMA_HOST",
+		"XAI_API_KEY", "OPENCODE_API_KEY", "OPENCODE_GO_API_KEY", "OLLAMA_HOST",
 	} {
 		t.Setenv(key, "")
 	}

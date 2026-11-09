@@ -20,7 +20,7 @@ Vigil — локальный аудитор безопасности в виде
 ## Почему Vigil
 
 - **Ваша модель, ваши ключи.** OpenAI, Anthropic, Gemini, OpenRouter, Groq,
-  DeepSeek, Mistral, xAI, Ollama, LM Studio или любой OpenAI-совместимый
+  DeepSeek, Mistral, xAI, OpenCode Go, Ollama, LM Studio или любой OpenAI-совместимый
   endpoint. Без прокси, облачного аккаунта и телеметрии.
 - **Сначала детерминизм.** Правила отрабатывают до вызова модели. Сбой
   провайдера не спрячет захардкоженный секрет или shell-инъекцию.
@@ -183,6 +183,7 @@ args = ["-y", "lv24-vigil", "mcp"]
 | DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` | `deepseek-chat` |
 | Mistral | `mistral` | `MISTRAL_API_KEY` | `mistral-large-latest` |
 | xAI | `xai` | `XAI_API_KEY` | `grok-4-fast` |
+| OpenCode Go | `opencode-go` | `OPENCODE_API_KEY` | `deepseek-v4.1-flash` |
 | Ollama | `ollama` | не нужен | `qwen2.5-coder:14b` |
 | LM Studio | `lmstudio` | не нужен | `local-model` |
 | OpenAI-совместимый | `custom` | `VIGIL_API_KEY` | задайте `VIGIL_MODEL` |

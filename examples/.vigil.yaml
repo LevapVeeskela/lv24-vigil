@@ -33,3 +33,9 @@ output:
   format: md
   color: auto
   show_fix: true
+
+# OpenCode Go is a hosted, OpenAI-compatible provider. Put the key in the user
+# config or OPENCODE_API_KEY, not here:
+# provider: opencode-go
+# model: deepseek-v4.1-flash
+# base_url: https://opencode.ai/inference/go/openai/v1

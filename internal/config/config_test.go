@@ -419,3 +419,42 @@ func TestInvalidNumericEnvIsIgnored(t *testing.T) {
 		t.Errorf("Temperature = %v, want the default 0.1", cfg.Temperature)
 	}
 }
+
+func TestOpenCodeGoProvider(t *testing.T) {
+	t.Setenv("VIGIL_CONFIG", filepath.Join(t.TempDir(), "missing.yaml"))
+	t.Setenv("VIGIL_PROVIDER", "opencode")
+	t.Setenv("VIGIL_MODEL", "")
+	t.Setenv("OPENCODE_API_KEY", "test-opencode-key")
+	cfg, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Provider != ProviderOpenCodeGo {
+		t.Fatalf("provider = %q, want %q", cfg.Provider, ProviderOpenCodeGo)
+	}
+	if cfg.Model != "deepseek-v4.1-flash" {
+		t.Fatalf("model = %q, want deepseek-v4.1-flash", cfg.Model)
+	}
+	if cfg.BaseURL != "https://opencode.ai/inference/go/openai/v1" {
+		t.Fatalf("base url = %q", cfg.BaseURL)
+	}
+	if cfg.APIKey != "test-opencode-key" {
+		t.Fatalf("api key was not picked up from OPENCODE_API_KEY")
+	}
+}
+
+func TestOpenCodeGoAllowsMissingKeyUntilConfigured(t *testing.T) {
+	t.Setenv("VIGIL_CONFIG", filepath.Join(t.TempDir(), "missing.yaml"))
+	t.Setenv("VIGIL_PROVIDER", "opencode-go")
+	t.Setenv("VIGIL_MODEL", "deepseek-v4.1-flash")
+	t.Setenv("VIGIL_API_KEY", "")
+	t.Setenv("OPENCODE_API_KEY", "")
+	t.Setenv("OPENCODE_GO_API_KEY", "")
+	cfg, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load must not fail before the key is pasted: %v", err)
+	}
+	if cfg.Provider != ProviderOpenCodeGo || cfg.APIKey != "" {
+		t.Fatalf("unexpected config: provider=%q key=%q", cfg.Provider, cfg.APIKey)
+	}
+}

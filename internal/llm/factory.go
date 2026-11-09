@@ -75,6 +75,7 @@ var providerNames = []string{
 	config.ProviderOllama,
 	config.ProviderLMStudio,
 	config.ProviderCustom,
+	config.ProviderOpenCodeGo,
 }
 
 // New builds the provider client described by cfg. A missing provider, model
@@ -84,7 +85,7 @@ func New(cfg config.Config, logger *slog.Logger) (Client, error) {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
-	provider := strings.ToLower(strings.TrimSpace(cfg.Provider))
+	provider := config.CanonicalProvider(cfg.Provider)
 	if provider == "" {
 		if detected := Detect(); len(detected) > 0 {
 			return nil, fmt.Errorf(
@@ -135,7 +136,8 @@ func New(cfg config.Config, logger *slog.Logger) (Client, error) {
 		config.ProviderDeepSeek,
 		config.ProviderMistral,
 		config.ProviderXAI,
-		config.ProviderCustom:
+		config.ProviderCustom,
+		config.ProviderOpenCodeGo:
 		return newOpenAIClient(base, true), nil
 	case config.ProviderOllama, config.ProviderLMStudio:
 		// Local servers often reject response_format even though they speak the
@@ -174,6 +176,7 @@ func Detect() []string {
 		{config.ProviderGroq, []string{"GROQ_API_KEY"}},
 		{config.ProviderMistral, []string{"MISTRAL_API_KEY"}},
 		{config.ProviderXAI, []string{"XAI_API_KEY"}},
+		{config.ProviderOpenCodeGo, []string{"OPENCODE_API_KEY", "OPENCODE_GO_API_KEY"}},
 		{config.ProviderOllama, []string{"OLLAMA_HOST"}},
 	}
 
@@ -250,6 +253,8 @@ func providerKeyEnvs(provider string) []string {
 		return []string{"MISTRAL_API_KEY"}
 	case config.ProviderXAI:
 		return []string{"XAI_API_KEY"}
+	case config.ProviderOpenCodeGo:
+		return []string{"OPENCODE_API_KEY", "OPENCODE_GO_API_KEY"}
 	default:
 		return nil
 	}

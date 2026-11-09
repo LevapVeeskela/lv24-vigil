@@ -36,6 +36,7 @@ project; `scan.baseline` is always resolved inside the project root.
 | DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` | `deepseek-chat` | `https://api.deepseek.com/v1` |
 | Mistral | `mistral` | `MISTRAL_API_KEY` | `mistral-large-latest` | `https://api.mistral.ai/v1` |
 | xAI | `xai` | `XAI_API_KEY` | `grok-4-fast` | `https://api.x.ai/v1` |
+| OpenCode Go | `opencode-go` (alias `opencode`) | `OPENCODE_API_KEY` or `OPENCODE_GO_API_KEY` | `deepseek-v4.1-flash` | `https://opencode.ai/inference/go/openai/v1` |
 | Ollama | `ollama` | none | `qwen2.5-coder:14b` | `http://localhost:11434/v1` |
 | LM Studio | `lmstudio` | none | `local-model` | `http://localhost:1234/v1` |
 | OpenAI-compatible | `custom` | `VIGIL_API_KEY` | set `VIGIL_MODEL` | set `VIGIL_BASE_URL` |
@@ -56,12 +57,35 @@ order:
 6. `GROQ_API_KEY`
 7. `MISTRAL_API_KEY`
 8. `XAI_API_KEY`
-9. `OLLAMA_HOST`
+9. `OPENCODE_API_KEY` or `OPENCODE_GO_API_KEY`
+10. `OLLAMA_HOST`
 
 Anthropic is checked first. If you have several keys exported, set
 `VIGIL_PROVIDER` explicitly rather than relying on inference.
 
 ## Hosted providers
+
+OpenCode Go (OpenAI-compatible, one key for the Go catalog):
+
+```bash
+export VIGIL_PROVIDER=opencode-go
+export VIGIL_MODEL=deepseek-v4.1-flash
+export OPENCODE_API_KEY=...          # or OPENCODE_GO_API_KEY
+# default base URL: https://opencode.ai/inference/go/openai/v1
+```
+
+Or in `%AppData%\vigil\config.yaml` (Windows) / `~/.config/vigil/config.yaml`:
+
+```yaml
+provider: opencode-go
+model: deepseek-v4.1-flash
+base_url: https://opencode.ai/inference/go/openai/v1
+api_key: "..."
+```
+
+The `opencode` alias is accepted. Until the key is pasted, the MCP server and
+the CLI still start and report `LLM not configured`; deterministic scans keep
+working.
 
 OpenAI:
 

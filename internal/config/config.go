@@ -35,6 +35,12 @@ const (
 	ProviderOllama     = "ollama"
 	ProviderLMStudio   = "lmstudio"
 	ProviderCustom     = "custom"
+	// ProviderOpenCodeGo is the OpenAI-compatible OpenCode Go inference
+	// endpoint (https://opencode.ai/inference/go/openai/v1). It is a hosted
+	// subscription: the user supplies their own OpenCode Go key.
+	ProviderOpenCodeGo = "opencode-go"
+	// ProviderOpenCode is accepted as a short alias for ProviderOpenCodeGo.
+	ProviderOpenCode = "opencode"
 )
 
 // DefaultModel is used when a provider is configured without a model.
@@ -440,11 +446,18 @@ func applyEnv(cfg *Config) {
 		case os.Getenv("XAI_API_KEY") != "":
 			cfg.Provider = ProviderXAI
 			cfg.Sources["provider"] = "env:XAI_API_KEY"
+		case os.Getenv("OPENCODE_API_KEY") != "":
+			cfg.Provider = ProviderOpenCodeGo
+			cfg.Sources["provider"] = "env:OPENCODE_API_KEY"
+		case os.Getenv("OPENCODE_GO_API_KEY") != "":
+			cfg.Provider = ProviderOpenCodeGo
+			cfg.Sources["provider"] = "env:OPENCODE_GO_API_KEY"
 		case os.Getenv("OLLAMA_HOST") != "":
 			cfg.Provider = ProviderOllama
 			cfg.Sources["provider"] = "env:OLLAMA_HOST"
 		}
 	}
+	cfg.Provider = CanonicalProvider(cfg.Provider)
 	if cfg.APIKey == "" {
 		cfg.APIKey = providerKey(cfg.Provider)
 		if cfg.APIKey != "" {
@@ -480,6 +493,11 @@ func providerKey(provider string) string {
 		return os.Getenv("MISTRAL_API_KEY")
 	case ProviderXAI:
 		return os.Getenv("XAI_API_KEY")
+	case ProviderOpenCodeGo:
+		if k := os.Getenv("OPENCODE_API_KEY"); k != "" {
+			return k
+		}
+		return os.Getenv("OPENCODE_GO_API_KEY")
 	default:
 		return ""
 	}
@@ -506,6 +524,11 @@ func providerKeyName(provider string) string {
 		return "MISTRAL_API_KEY"
 	case ProviderXAI:
 		return "XAI_API_KEY"
+	case ProviderOpenCodeGo:
+		if os.Getenv("OPENCODE_API_KEY") != "" {
+			return "OPENCODE_API_KEY"
+		}
+		return "OPENCODE_GO_API_KEY"
 	default:
 		return ""
 	}
@@ -532,6 +555,8 @@ func providerBaseURL(provider string) string {
 		return "https://api.mistral.ai/v1"
 	case ProviderXAI:
 		return "https://api.x.ai/v1"
+	case ProviderOpenCodeGo:
+		return "https://opencode.ai/inference/go/openai/v1"
 	case ProviderOllama:
 		if host := strings.TrimRight(os.Getenv("OLLAMA_HOST"), "/"); host != "" {
 			if !strings.HasPrefix(host, "http") {
@@ -565,6 +590,8 @@ func providerDefaultModel(provider string) string {
 		return "mistral-large-latest"
 	case ProviderXAI:
 		return "grok-4-fast"
+	case ProviderOpenCodeGo:
+		return "deepseek-v4.1-flash"
 	case ProviderOllama:
 		return "qwen2.5-coder:14b"
 	case ProviderLMStudio:
@@ -575,20 +602,33 @@ func providerDefaultModel(provider string) string {
 }
 
 // Validate checks the resolved configuration.
+// CanonicalProvider maps accepted aliases to the canonical provider name.
+func CanonicalProvider(provider string) string {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	if p == ProviderOpenCode {
+		return ProviderOpenCodeGo
+	}
+	return p
+}
+
 func (c *Config) Validate() error {
+	c.Provider = CanonicalProvider(c.Provider)
 	if c.Provider != "" {
 		switch c.Provider {
 		case ProviderOpenAI, ProviderAnthropic, ProviderGemini, ProviderOpenRouter,
 			ProviderGroq, ProviderDeepSeek, ProviderMistral, ProviderXAI,
-			ProviderOllama, ProviderLMStudio, ProviderCustom:
+			ProviderOllama, ProviderLMStudio, ProviderCustom, ProviderOpenCodeGo:
 		default:
-			return fmt.Errorf("unknown provider %q (use one of: openai, anthropic, gemini, openrouter, groq, deepseek, mistral, xai, ollama, lmstudio, custom)", c.Provider)
+			return fmt.Errorf("unknown provider %q (use one of: openai, anthropic, gemini, openrouter, groq, deepseek, mistral, xai, opencode-go, ollama, lmstudio, custom)", c.Provider)
 		}
 	}
 	if c.Provider != "" && c.Model == "" {
 		return fmt.Errorf("provider %q requires a model", c.Provider)
 	}
-	if c.Provider != "" && c.Provider != ProviderOllama && c.Provider != ProviderLMStudio && c.APIKey == "" {
+	// opencode-go is allowed without a key so the MCP server can start and
+	// report "LLM disabled" until the user pastes the key; the LLM factory
+	// still refuses to build a client without one.
+	if c.Provider != "" && c.Provider != ProviderOllama && c.Provider != ProviderLMStudio && c.Provider != ProviderOpenCodeGo && c.APIKey == "" {
 		return fmt.Errorf("provider %q requires an API key (set VIGIL_API_KEY or the provider's key variable)", c.Provider)
 	}
 	if c.Provider == ProviderCustom && c.BaseURL == "" {

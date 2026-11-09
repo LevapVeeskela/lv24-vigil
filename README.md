@@ -20,7 +20,8 @@ for a normal scan.
 ## Why Vigil
 
 - **Your model, your keys.** OpenAI, Anthropic, Gemini, OpenRouter, Groq,
-  DeepSeek, Mistral, xAI, Ollama, LM Studio, or any OpenAI-compatible endpoint.
+  DeepSeek, Mistral, xAI, OpenCode Go, Ollama, LM Studio, or any
+  OpenAI-compatible endpoint.
   No proxy, no cloud account, no telemetry.
 - **Deterministic first.** The rules run before any model call. A provider
   outage cannot hide a hardcoded secret or a shell injection.
@@ -180,6 +181,7 @@ well-known key. Explicit `VIGIL_*` variables win over provider conventions.
 | DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` | `deepseek-chat` |
 | Mistral | `mistral` | `MISTRAL_API_KEY` | `mistral-large-latest` |
 | xAI | `xai` | `XAI_API_KEY` | `grok-4-fast` |
+| OpenCode Go | `opencode-go` | `OPENCODE_API_KEY` | `deepseek-v4.1-flash` |
 | Ollama | `ollama` | none | `qwen2.5-coder:14b` |
 | LM Studio | `lmstudio` | none | `local-model` |
 | OpenAI-compatible | `custom` | `VIGIL_API_KEY` | set `VIGIL_MODEL` |
