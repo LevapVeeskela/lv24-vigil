@@ -92,6 +92,10 @@ jobs:
   # re-publish an existing tag.
   npm:
     needs: release
+    # Publishing to npm is optional until the packages have a Trusted Publisher
+    # (or an NPM_TOKEN secret). A failed npm publish must not mark the whole
+    # release red: the GitHub release and its binaries are already published.
+    continue-on-error: true
     permissions:
       contents: read
       id-token: write
