@@ -85,6 +85,8 @@ type ScanConfig struct {
 	// OSV enables optional dependency lookups against api.osv.dev. Off by
 	// default: a security tool should not phone home unless asked.
 	OSV bool `yaml:"osv"`
+	// OSVBaseURL overrides the OSV API endpoint (self-hosted mirror or tests).
+	OSVBaseURL string `yaml:"osv_base_url"`
 }
 
 // OutputConfig holds report defaults.
@@ -124,6 +126,7 @@ type ScanFile struct {
 	FollowLinks  *bool    `yaml:"follow_symlinks"`
 	Baseline     *string  `yaml:"baseline"`
 	OSV          *bool    `yaml:"osv"`
+	OSVBaseURL   *string  `yaml:"osv_base_url"`
 }
 
 type OutputFile struct {
@@ -338,6 +341,10 @@ func mergeFile(cfg *Config, path string, allowSecret bool) error {
 			cfg.Scan.OSV = *s.OSV
 			cfg.Sources["scan.osv"] = path
 		}
+		if s.OSVBaseURL != nil {
+			cfg.Scan.OSVBaseURL = strings.TrimSpace(*s.OSVBaseURL)
+			cfg.Sources["scan.osv_base_url"] = path
+		}
 	}
 	if fc.Output != nil {
 		o := fc.Output
@@ -401,6 +408,11 @@ func applyEnv(cfg *Config) {
 	setDuration(&cfg.Timeout, "VIGIL_TIMEOUT", cfg.Sources)
 	setStr(&cfg.Scan.Mode, "VIGIL_MODE", cfg.Sources)
 	setStr(&cfg.Scan.MinSeverity, "VIGIL_MIN_SEVERITY", cfg.Sources)
+	setStr(&cfg.Scan.OSVBaseURL, "VIGIL_OSV_BASE_URL", cfg.Sources)
+	if v := os.Getenv("VIGIL_OSV"); v != "" {
+		cfg.Scan.OSV = parseBool(v)
+		cfg.Sources["scan.osv"] = "env:VIGIL_OSV"
+	}
 	setInt(&cfg.Scan.MaxFindings, "VIGIL_MAX_FINDINGS", cfg.Sources)
 	setInt(&cfg.Scan.Concurrency, "VIGIL_CONCURRENCY", cfg.Sources)
 	setStr(&cfg.Output.Format, "VIGIL_FORMAT", cfg.Sources)

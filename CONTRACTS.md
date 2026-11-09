@@ -119,9 +119,9 @@ an LLM outage).
 
 ## Non-negotiables
 
-- No network calls except the configured LLM endpoint. The `scan.osv` option is
-  reserved and has no effect in 0.1.x; dependency advisory lookups are not
-  implemented yet.
+- No network calls except the configured LLM endpoint and, when `scan.osv` is
+  enabled, the OSV API (`api.osv.dev` or `scan.osv_base_url`). OSV sends only
+  package coordinates, never source code, and is off by default.
 - No telemetry.
 - Read-only by default. Scans write only their own history. Only `vigil_fix`
   with `apply=true` writes source files, and it never commits.

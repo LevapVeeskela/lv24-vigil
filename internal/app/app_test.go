@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -186,5 +189,71 @@ func TestNewOnFilePathUsesDirectory(t *testing.T) {
 	}
 	if a.Root != abs {
 		t.Errorf("Root = %q, want %q", a.Root, abs)
+	}
+}
+
+func TestScanOSVIntegration(t *testing.T) {
+	hermeticEnv(t)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "package.json"), []byte(`{
+  "name": "fixture",
+  "version": "1.0.0",
+  "dependencies": {"left-pad": "1.0.0"}
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/querybatch" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"results": []any{
+				map[string]any{
+					"vulns": []any{
+						map[string]any{
+							"id":                "GHSA-test-1234",
+							"summary":           "Test dependency vulnerability",
+							"database_specific": map[string]any{"severity": "HIGH"},
+						},
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	cfg := "scan:\n  osv: true\n  osv_base_url: " + server.URL + "\n"
+	if err := os.WriteFile(filepath.Join(repo, ".vigil.yaml"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := New(repo, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+
+	disabled := false
+	res, err := a.Scan(context.Background(), model.ScanRequest{UseLLM: &disabled})
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	var found *model.Finding
+	for i := range res.Findings {
+		if strings.HasPrefix(res.Findings[i].RuleID, "VGL-OSV-") {
+			found = &res.Findings[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("no OSV finding in %+v (errors: %v)", res.Findings, res.Errors)
+	}
+	if found.Severity != model.SeverityHigh {
+		t.Errorf("severity = %q, want high", found.Severity)
+	}
+	if !strings.Contains(found.Title, "left-pad@1.0.0") {
+		t.Errorf("title = %q", found.Title)
 	}
 }

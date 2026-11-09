@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/LevapVeeskela/lv24-vigil/security/policy
+    about: Report it privately through GitHub advisories. Never in a public issue.
+  - name: Documentation
+    url: https://github.com/LevapVeeskela/lv24-vigil/tree/main/docs
+    about: CLI flags, rules, providers, MCP, CI wiring and the security model.
+  - name: Troubleshooting
+    url: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/troubleshooting.md
+    about: Exit codes, missing model keys and common scan problems.

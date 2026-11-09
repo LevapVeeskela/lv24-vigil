@@ -3,7 +3,7 @@
 **Security audit for your code, on your own model.**
 
 Vigil is a local-first security auditor exposed as an MCP server and a CLI. It runs
-100+ deterministic rules over a repository, then optionally uses the model you
+160+ deterministic rules over a repository, then optionally uses the model you
 already pay for to triage findings, review risky code, propose fixes and write a
 threat model. There is no Vigil account, no telemetry and no Docker requirement
 for a normal scan.
@@ -13,9 +13,10 @@ for a normal scan.
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![go](https://img.shields.io/badge/go-1.27-00ADD8)](https://go.dev/)
 
-> **Status: 0.1.4.** The deterministic engine is usable today. LLM output is
-> advisory, rule coverage is still growing, and Vigil is not a replacement for a
-> pentest. Treat every finding as a lead to verify, not a verdict.
+> **Status: 0.2.0** (the current `latest` on npm). The deterministic engine is
+> usable today. LLM output is advisory, rule coverage is still growing, and Vigil
+> is not a replacement for a pentest. Treat every finding as a lead to verify,
+> not a verdict.
 
 ## Why Vigil
 
@@ -44,7 +45,7 @@ for a normal scan.
      |
      v
  +-----------------+     +--------------------------+     +-------------------+
- | walker + ignore |---->| 100+ deterministic rules |---->| findings          |
+ | walker + ignore |---->| 160+ deterministic rules |---->| findings          |
  | size + binary   |     | secrets injection crypto |     | severity evidence |
  +-----------------+     | auth web config CI deps  |     +-------------------+
                          +--------------------------+              |
@@ -67,11 +68,13 @@ warning, not a failed scan. See [docs/architecture.md](docs/architecture.md).
 ## Install
 
 ```bash
-npm i -g lv24-vigil
+npm i -g lv24-vigil@latest     # or pin a release: lv24-vigil@0.2.0
 ```
 
 The npm package selects a platform package (`@lv24/vigil-<os>-<cpu>`) at install
-time and runs no install scripts.
+time and runs no install scripts. Releases are published with
+[npm Trusted Publishing](docs/release.md) (OIDC) from GitHub Actions and carry a
+provenance attestation; no npm token is stored in the repository.
 
 Other options:
 
@@ -320,6 +323,7 @@ Not commitments, just direction:
 | Document | Contents |
 |---|---|
 | [docs/install.md](docs/install.md) | npm, Go, installers, binaries, container |
+| [docs/release.md](docs/release.md) | release pipeline, npm Trusted Publishing, verification, re-runs |
 | [docs/providers.md](docs/providers.md) | providers, keys, local models, config precedence |
 | [docs/mcp.md](docs/mcp.md) | MCP clients, tools, resources, prompts |
 | [docs/cli.md](docs/cli.md) | commands, flags, exit codes, formats |

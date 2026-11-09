@@ -1,6 +1,6 @@
 # Detection rules
 
-Vigil ships 100+ deterministic rules. They are pure: they read a file, never
+Vigil ships 160+ deterministic rules. They are pure: they read a file, never
 write, never execute scanned code and never make a network call. The CLI is the
 authoritative catalog:
 
@@ -18,15 +18,16 @@ a complete list and will lag behind the code.
 | Secrets | `VGL-SEC` | 24 | Credentials committed to the repository |
 | Injection | `VGL-INJ` | 37 | Sinks that turn untrusted input into code, SQL, shell or markup |
 | Crypto | `VGL-CRY` | 12 | Broken algorithms, weak parameters and disabled verification |
-| Auth | `VGL-AUTH` | 9 | JWT, cookies, CORS, CSRF and default credentials |
-| Web | `VGL-WEB` | 12 | SSRF, traversal, redirects, headers, debug surfaces |
-| Config / IaC | `VGL-CFG` | 17 | Docker, Compose, Kubernetes, Terraform, nginx, env files |
-| CI | `VGL-CI` | 11 | Workflow permissions, untrusted checkouts and shell injection |
-| Dependencies | `VGL-DEP` | 7 | Lockfiles, version ranges, install sources and TLS |
+| Auth | `VGL-AUTH` | 16 | JWT, cookies, CORS, CSRF and default credentials |
+| Web | `VGL-WEB` | 17 | SSRF, traversal, redirects, headers, debug surfaces |
+| Config / IaC | `VGL-CFG` | 28 | Docker, Compose, Kubernetes, Terraform, nginx, env files |
+| CI | `VGL-CI` | 17 | Workflow permissions, untrusted checkouts and shell injection |
+| Dependencies | `VGL-DEP` | 12 | Lockfiles, version ranges, install sources and TLS |
 
-The table counts the 129 deterministic rules in 0.1.4; `vigil rules` is always
+The table counts the 163 deterministic rules in 0.2.0; `vigil rules` is always
 current. `VGL-AI-001` is synthesized by the LLM deep review and is not part of
-the deterministic catalog, so it does not appear in `vigil rules`.
+the deterministic catalog, so it does not appear in `vigil rules`. OSV findings
+use `VGL-OSV-<advisory>` and only appear when `scan.osv` is enabled.
 
 ## Representative rules
 

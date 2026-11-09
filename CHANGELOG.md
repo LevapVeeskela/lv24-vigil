@@ -4,6 +4,36 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.2.0 - 2026-11-10
+
+### Added
+
+- **34 new deterministic rules** (163 total): Kubernetes/Helm and Terraform
+  misconfigurations, nginx TLS, GitLab/Jenkins/CircleCI supply chain, OAuth/
+  OIDC/JWT hardening, GraphQL/API surfaces, and dependency manifests.
+- **OSV dependency vulnerability scanning** (opt-in): `scan.osv: true` queries
+  `api.osv.dev` for npm, PyPI, Go, RubyGems, crates.io, Packagist and Maven
+  packages and emits findings with CVSS-derived severity. `scan.osv_base_url`
+  points at a mirror. Off by default; no network unless enabled.
+- **Triage retry**: findings omitted by the model in a batch are re-requested
+  once, and `TriageStats` exposes batches/retries/judged/missing/failed.
+- End-to-end MCP tests, fuzz targets for diff parsing, glob matching, git refs
+  and every rule, and a race-clean suite (`go test -race` in a Linux container).
+- Dogfooding `vigil.yml` workflow (SARIF upload), Dependabot, issue and PR
+  templates, `.gitattributes`, and `docs/release.md` (npm Trusted Publishing).
+
+### Changed
+
+- npm packages for `0.2.0` are published through Trusted Publishing (OIDC).
+- `scan.osv` is no longer a reserved no-op.
+
+### Fixed
+
+- Diff hunk headers with a zero or overflowing start are rejected instead of
+  producing invalid 1-based locations.
+- JWT short-secret and credential-in-query rules no longer flag generic
+  `secretKey` values, documentation prose or test fixtures.
+
 ## 0.1.4 - 2026-11-10
 
 ### Changed

@@ -87,10 +87,21 @@ func parseDiff(diff string) (*diffParse, error) {
 				return parsed, fmt.Errorf("scanner: malformed hunk header on line %d: %q", i+1, line)
 			}
 			flush()
-			newStart, _ := strconv.Atoi(m[3])
-			newLine = newStart
+			newStart, err := strconv.Atoi(m[3])
+			if err != nil {
+				newStart = 0
+			}
 			oldRem = diffCount(m[2])
 			newRem = diffCount(m[4])
+			// Added lines are reported as 1-based line numbers. A hunk that
+			// adds lines must start at a positive line inside the padded-line
+			// budget: an overflowing or zero start would otherwise leak line 0
+			// (or an absurd number) into ParseDiff. Pure deletions use "+0,0",
+			// never record additions and stay valid.
+			if newRem > 0 && (newStart < 1 || newStart > maxDiffPaddedLines) {
+				return parsed, fmt.Errorf("scanner: hunk header line number out of range on line %d: %q", i+1, line)
+			}
+			newLine = newStart
 			inHunk = oldRem > 0 || newRem > 0
 			continue
 		}

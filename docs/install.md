@@ -7,13 +7,20 @@ for a normal scan.
 ## npm
 
 ```bash
-npm i -g lv24-vigil
+npm i -g lv24-vigil@latest     # or pin a release: lv24-vigil@0.2.0
 vigil version
 ```
 
 The `lv24-vigil` package selects a platform package at install time, named
 `@lv24/vigil-<os>-<cpu>` (Windows, macOS and Linux on x64 and arm64). The
-platform packages contain the binary only and run no install scripts.
+platform packages contain the binary only and run no install scripts. Keep
+optional dependencies enabled: `--no-optional` and `--omit=optional` skip the
+platform package, and `vigil` then exits with `platform package ... is not
+installed`.
+
+Releases are published from GitHub Actions with npm Trusted Publishing (OIDC).
+`0.2.0` is the current version on the `latest` tag. Pipeline, verification and
+re-run steps: [release.md](release.md).
 
 For a one-off run without a global install:
 

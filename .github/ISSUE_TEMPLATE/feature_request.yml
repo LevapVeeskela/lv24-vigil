@@ -1,0 +1,63 @@
+name: Feature request
+description: Propose a rule, provider, flag or workflow improvement.
+title: "[feat] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Vigil stays small on purpose: a narrow dependency set, deterministic
+        rules and reviewable behavior. Proposals that fit that shape land
+        faster. See [CONTRIBUTING.md](https://github.com/LevapVeeskela/lv24-vigil/blob/main/CONTRIBUTING.md)
+        for the rule and provider checklists.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: |
+        What is hard or impossible today? Describe the situation, not the
+        solution — it makes alternatives easier to judge.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: |
+        What should Vigil do instead? For a new rule, include the sink or
+        pattern it should match and the severity you expect.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: |
+        Other approaches, existing tools, or configuration that already covers
+        part of the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: |
+        Links, sample code, upstream docs, or a note on compatibility and
+        false-positive risk.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and the docs before opening this one.
+          required: true
+        - label: This request does not require uploading scanned code to a service.
+          required: false

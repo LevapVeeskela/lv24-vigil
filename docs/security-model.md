@@ -23,11 +23,18 @@ where the boundaries are.
 A deterministic scan (`--no-llm`, or no provider configured) makes no network
 calls. Git operations are local. The scan store is local.
 
+When `scan.osv: true`, the scan also queries `api.osv.dev` (or the
+`scan.osv_base_url` mirror) with dependency coordinates parsed from manifests.
+It sends package names, versions and ecosystems, never source code. OSV is off
+by default.
+
 When LLM features are enabled, the only outbound requests go to the configured
 provider endpoint:
 
 - OpenAI, Anthropic, Gemini, OpenRouter, Groq, DeepSeek, Mistral, xAI: the
   provider's API.
+- OpenCode Go: `https://opencode.ai/inference/go/openai/v1` (with the
+  `x-opencode-session` routing header).
 - Ollama or LM Studio: the local server you configure.
 - `custom`: the `VIGIL_BASE_URL` you configure.
 

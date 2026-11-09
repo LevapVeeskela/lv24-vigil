@@ -301,7 +301,8 @@ project settings:
 | `scan.max_file_bytes` | `2 MiB` | Skip larger files; the effective limit is capped at 64 MiB |
 | `scan.follow_symlinks` | `false` | Follow symlinks during the walk (user config only) |
 | `scan.baseline` | `.vigil-baseline.json` | Suppression file; must stay inside the project root |
-| `scan.osv` | `false` | Reserved; dependency advisory lookups are not implemented in 0.1.x |
+| `scan.osv` | `false` | Opt-in OSV dependency advisory lookup (network). Off by default |
+| `scan.osv_base_url` | `https://api.osv.dev` | OSV API endpoint override (self-hosted mirror or tests) |
 | `output.format` | `md` | Default report format |
 | `output.path` | empty | Default report path |
 | `output.color` | `auto` | `auto`, `always` or `never` |

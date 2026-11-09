@@ -1,0 +1,248 @@
+# Release and npm publishing
+
+Vigil ships from git tags. A tag produces the GitHub release with six static
+binaries, and a second job publishes seven npm packages. Since `0.1.4` the npm
+half runs on npm Trusted Publishing (OIDC): no npm token is stored in the
+repository or in GitHub secrets, and npm records a provenance attestation for
+each published package.
+
+## How a release works
+
+Push a tag `vX.Y.Z`:
+
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+The version comes from the tag: GoReleaser injects it with `-ldflags`, so there
+is no version constant to bump. A local build without a tag reports
+`0.1.0-dev`.
+
+```text
+ git tag vX.Y.Z
+      |
+      v
+ release.yml
+   GoReleaser (CGO off)  ->  6 binaries + checksums.txt
+   asset check           ->  fail unless exactly 6 binaries + checksums.txt
+   gh release create     ->  GitHub release (notes generated, prerelease if the tag has "-")
+      |
+      v
+ npm-publish.yml (reusable workflow, needs: release)
+   gh release download   ->  release-assets/
+   node npm/build.mjs    ->  verify every SHA-256, write 7 packages
+   bash npm/publish.sh   ->  OIDC publish: 6 platform packages, then lv24-vigil
+```
+
+| Step | Workflow | Result |
+|---|---|---|
+| Tag push | `release.yml` | Workflow starts; the tag is the version |
+| Build | `release.yml` | `vigil_<version>_<goos>_<goarch>[.exe]` for windows, linux and darwin on amd64 and arm64, plus `checksums.txt` (SHA-256) |
+| Asset check | `release.yml` | The run fails unless exactly six binaries and `checksums.txt` are present |
+| GitHub release | `release.yml` | Creates `vX.Y.Z` with generated notes; a tag containing `-` becomes a prerelease; on a re-run only missing assets are uploaded |
+| Package build | `npm-publish.yml` | `npm/build.mjs` verifies each binary against `checksums.txt` and writes nothing unless all six match |
+| npm publish | `npm-publish.yml` | Platform packages first, then the launcher; versions already on npm are skipped |
+
+npm is a separate job on purpose. It `needs` the GitHub release, so the binaries
+exist before packaging starts, and the publish step is `continue-on-error`, so a
+failed npm publish leaves the release published and green. The job ends with a
+warning that names the missing setup; re-run it after fixing the cause.
+
+`npm-publish.yml` is both a reusable workflow (called by `release.yml`) and a
+`workflow_dispatch` workflow, so it can publish an existing tag on demand.
+`release.yml` triggers on any `v*` tag; `npm-publish.yml` accepts only
+`v<major>.<minor>.<patch>` with an optional `-prerelease` suffix. `ci.yml` runs a
+GoReleaser snapshot and an npm package dry run on pull requests, so asset naming
+and package layout mistakes fail before a tag is cut.
+
+## Packages
+
+Seven packages are published for each release:
+
+| Package | Contents |
+|---|---|
+| `lv24-vigil` | Launcher (`bin/vigil.js`), README, LICENSE; `optionalDependencies` pinned to the same version; `engines.node >= 18` |
+| `@lv24/vigil-win32-x64` | `bin/vigil.exe` for Windows x64 |
+| `@lv24/vigil-win32-arm64` | `bin/vigil.exe` for Windows arm64 |
+| `@lv24/vigil-darwin-x64` | `bin/vigil` for macOS x64 |
+| `@lv24/vigil-darwin-arm64` | `bin/vigil` for macOS arm64 |
+| `@lv24/vigil-linux-x64` | `bin/vigil` for Linux x64 |
+| `@lv24/vigil-linux-arm64` | `bin/vigil` for Linux arm64 |
+
+Platform packages use npm's `os`/`cpu` names (`win32`, `darwin`, `linux`), while
+the release assets use Go's (`windows`, `darwin`, `linux`). They contain the
+binary only, declare `os`/`cpu`, and run no install scripts. Publish them first:
+the launcher resolves the matching platform package at run time, so an install
+that cannot find one still succeeds but the first `vigil` call exits `1` with
+`platform package ... is not installed`. The same message appears when the
+install skipped optional dependencies (`--no-optional` or `--omit=optional`).
+
+A prerelease version (for example `0.2.0-beta.1`) is published under the `beta`
+dist-tag; `latest` is left untouched.
+
+## One-time bootstrap: Trusted Publishing
+
+npm has to know which GitHub workflow may publish each package. Until that
+relationship exists, the OIDC token exchange fails and npm reports the package
+as not found. Configure it once per package, before the first OIDC publish.
+
+```bash
+npm login --auth-type=web
+```
+
+Then, for each of the seven packages:
+
+```bash
+npm trust github lv24-vigil --file npm-publish.yml --repo LevapVeeskela/lv24-vigil --allow-publish -y
+npm trust github @lv24/vigil-win32-x64 --file npm-publish.yml --repo LevapVeeskela/lv24-vigil --allow-publish -y
+npm trust github @lv24/vigil-win32-arm64 --file npm-publish.yml --repo LevapVeeskela/lv24-vigil --allow-publish -y
+npm trust github @lv24/vigil-darwin-x64 --file npm-publish.yml --repo LevapVeeskela/lv24-vigil --allow-publish -y
+npm trust github @lv24/vigil-darwin-arm64 --file npm-publish.yml --repo LevapVeeskela/lv24-vigil --allow-publish -y
+npm trust github @lv24/vigil-linux-x64 --file npm-publish.yml --repo LevapVeeskela/lv24-vigil --allow-publish -y
+npm trust github @lv24/vigil-linux-arm64 --file npm-publish.yml --repo LevapVeeskela/lv24-vigil --allow-publish -y
+```
+
+- `--file` is the workflow file that contains the publishing job, not the tag
+  workflow. That is `npm-publish.yml`: `release.yml` calls it as a reusable
+  workflow, and the OIDC claim is issued for the called workflow.
+- `--allow-publish` permits `npm publish` from that workflow; `-y` skips the
+  confirmation prompt.
+- A `409` response means the trusted publisher is already configured. Nothing to
+  do.
+- `npm trust list <pkg>` prints the current binding, but it always asks for a
+  2FA code.
+
+npm 11.5.1 or newer is required for the OIDC exchange in CI (`npm/publish.sh`
+refuses an older npm). Use the same or newer npm for the `npm trust` commands.
+
+## Verify a release
+
+```bash
+npm view lv24-vigil version          # 0.2.0
+npm view lv24-vigil dist-tags        # { latest: '0.2.0' }
+npm i -g lv24-vigil@0.2.0            # or @latest
+vigil version                        # vigil 0.2.0 (<commit>, <date>, go<version>)
+```
+
+Platform packages, one line each:
+
+```bash
+for p in win32-x64 win32-arm64 darwin-x64 darwin-arm64 linux-x64 linux-arm64; do
+  echo "@lv24/vigil-$p $(npm view "@lv24/vigil-$p" version)"
+done
+```
+
+Workflow runs:
+
+```bash
+gh run list --workflow release.yml --limit 3
+gh run list --workflow npm-publish.yml --limit 3
+gh run view <run-id> --log
+```
+
+The publish step prints `npm: publishing with Trusted Publishing (OIDC), npm
+<version>`, then `+ <package>@<version>` for each package. A skipped version
+prints `<package>@<version> already on npm; skipping`.
+
+Provenance:
+
+```bash
+npm view lv24-vigil dist.attestations
+```
+
+For `0.2.0` this returns a `https://slsa.dev/provenance/v1` attestation built
+from `.github/workflows/npm-publish.yml` on a GitHub-hosted runner. The npm page
+shows the matching provenance badge.
+
+## Re-run a failed npm publish
+
+The GitHub release is already published; only the npm packages are missing.
+
+```bash
+gh workflow run npm-publish.yml -f tag=vX.Y.Z
+gh run list --workflow npm-publish.yml --limit 1
+```
+
+- `workflow_dispatch` runs the workflow from the default branch and publishes
+  the tag passed in `-f tag=`.
+- The tag must match `v<major>.<minor>.<patch>` with an optional `-prerelease`
+  suffix; anything else fails the first step.
+- Versions already on npm are skipped, so re-running after a partial publish
+  completes only the missing packages.
+- Fix the cause first (missing trusted publisher, missing `id-token: write`, an
+  npm older than 11.5.1), then re-run. See the troubleshooting table below.
+
+## Local fallback
+
+The workflows are the release path. The scripts in `scripts/` exist for a GitHub
+outage, for cutting the GitHub release from a workstation, and for the one-time
+trust bootstrap.
+
+| Script | What it does | Notes |
+|---|---|---|
+| `scripts/release.ps1 -Version X.Y.Z` | Cross-compiles the six targets, writes `checksums.txt`, creates or reuses the GitHub release, uploads missing assets, builds npm packages, runs `npm/publish.sh` | Windows PowerShell 5.1+; needs `go`, `git`, `node`, authenticated `gh`, and `bash` for the npm step; `-SkipNpm` stops after the GitHub release |
+| `scripts/release.sh --version X.Y.Z` | The same flow on macOS and Linux | `--skip-npm`, `--notes`, `--repo` |
+| `scripts/npm-publish-and-trust.ps1 [-Version X.Y.Z] [-Otp 123456] [-SkipPublish]` | Downloads release assets if `dist/checksums.txt` is missing, builds the packages, publishes the six platform packages and then the launcher, then configures Trusted Publishing for all seven | Defaults to the latest release tag; needs `npm`, `node` and `gh`; skips versions already on npm; `-SkipPublish` only configures trust |
+| `scripts/npm-trust-interactive.ps1` | Configures Trusted Publishing for the remaining packages with one browser approval each | Run it in a real PowerShell window; writes a transcript to `%TEMP%\vigil-npm-trust.log` |
+
+`npm/publish.sh` always passes `--provenance`. npm generates provenance only on
+GitHub Actions and GitLab CI, so a publish started from a workstation fails with
+`EUSAGE Automatic provenance generation not supported for provider: ...`. Use
+`-SkipNpm` / `--skip-npm` locally and let `npm-publish.yml` publish, or use
+`scripts/npm-publish-and-trust.ps1`, which publishes with your own npm session
+and no provenance.
+
+The scripts are idempotent: an existing release is reused, present assets are
+skipped, and versions already on npm are skipped.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `EOTP` / "This operation requires a one-time password" | The npm account has 2FA enabled | Pass `-Otp 123456` to the PowerShell script (or `--otp=123456` to npm), or run `scripts/npm-trust-interactive.ps1` and approve each browser prompt. `npm trust list` always needs 2FA |
+| `E409` from `npm trust github` | The trusted publisher already exists | Nothing to do; confirm with `npm trust list <pkg>` |
+| `E404` / "package not found" during the OIDC exchange | The package has no trusted publisher for this repository and workflow, or the new binding has not propagated yet | Run the bootstrap for that package, then re-run `npm-publish.yml`. `npm trust` also needs the package to exist, so a new package name has to be published once first |
+| `403` "You cannot publish over the previously published versions" | That version is already on npm | `npm/publish.sh` skips it; bump the version and release again |
+| Publish step skipped: "no OIDC token (id-token: write) and no NODE_AUTH_TOKEN" | The publishing job has no `id-token: write`, or it ran outside GitHub Actions | Keep `permissions: id-token: write` on the publish job; do not set `registry-url` in `actions/setup-node`, it writes a placeholder token that replaces OIDC |
+| "npm <version> is too old for Trusted Publishing (needs >= 11.5.1)" | Old npm in the job | The workflow pins Node 24; keep it, or upgrade npm in the job |
+| `EUSAGE Automatic provenance generation not supported for provider: ...` | `npm publish --provenance` outside GitHub Actions or GitLab CI | Publish from `npm-publish.yml`, not from a workstation |
+| GitHub release is green, npm packages are missing | The npm job is `continue-on-error` by design | Read the warning on the run, fix the cause, re-run `npm-publish.yml` |
+| `npm i -g lv24-vigil@X` installs the launcher but `vigil` fails to start | The matching platform package is missing or was published later | Check `npm view @lv24/vigil-<os>-<cpu> version`; re-run the publish for that tag |
+
+## Security
+
+- **No long-lived npm token in CI.** No `NPM_TOKEN` secret is configured in the
+  repository (`gh secret list` returns nothing); the publish job exchanges its
+  OIDC token for a short-lived credential. `release.yml` still accepts an
+  `NPM_TOKEN` secret as a manual fallback, and `npm/publish.sh` prefers it when
+  set — leave it unset.
+- **Trust is bound to the repository and the workflow file.** A trusted
+  publisher names `LevapVeeskela/lv24-vigil` and
+  `.github/workflows/npm-publish.yml`; a fork, another repository or another
+  workflow cannot publish these packages.
+- **Minimal token scope.** Only the publish job requests `id-token: write`
+  (`release.yml` grants it to the reusable workflow); `npm-publish.yml` runs with
+  `contents: read` and `id-token: write` and nothing else.
+- **GitHub-hosted runners only.** The publish job runs on `ubuntu-latest`; the
+  provenance attestation records a `github-hosted` builder. Do not move
+  publishing to a self-hosted runner.
+- **Artifacts are verified before packaging.** `npm/build.mjs` checks every
+  binary against `checksums.txt` from the GitHub release and writes nothing if
+  one hash differs.
+- **Provenance is public.** Each published package carries a SLSA provenance
+  attestation, so a user can check which workflow and commit produced it.
+
+## Current state
+
+`0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
+path. All seven packages are live at `0.2.0`, and `latest` points at it:
+
+```bash
+npm view lv24-vigil version
+npm view @lv24/vigil-linux-x64 version
+```
+
+Related: [install.md](install.md) for the user-facing install paths,
+[ci.md](ci.md) for consuming the release in a workflow,
+[troubleshooting.md](troubleshooting.md) for scan and provider problems.

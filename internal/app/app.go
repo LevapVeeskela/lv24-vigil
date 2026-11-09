@@ -19,6 +19,7 @@ import (
 	"github.com/levapveeskela/lv24-vigil/internal/gitutil"
 	"github.com/levapveeskela/lv24-vigil/internal/llm"
 	"github.com/levapveeskela/lv24-vigil/internal/model"
+	"github.com/levapveeskela/lv24-vigil/internal/osv"
 	"github.com/levapveeskela/lv24-vigil/internal/rules"
 	"github.com/levapveeskela/lv24-vigil/internal/scanner"
 	"github.com/levapveeskela/lv24-vigil/internal/store"
@@ -74,10 +75,6 @@ func New(root string, logger *slog.Logger) (*App, error) {
 		Logger:   logger,
 	}
 	a.Analyzer = analysis.New(cfg, nil, logger)
-
-	if cfg.Scan.OSV {
-		a.Warnings = append(a.Warnings, "scan.osv is reserved and has no effect in this build: dependency advisory lookups are not implemented")
-	}
 
 	if cfg.LLMEnabled() {
 		client, err := llm.New(cfg, logger)
@@ -180,11 +177,28 @@ func (a *App) Scan(ctx context.Context, req model.ScanRequest) (*model.ScanResul
 	res.Version = version.Version
 	res.Model = a.Model
 
+	if opts.OSV {
+		osvOpts := osv.DefaultOptions()
+		if a.Config.Scan.OSVBaseURL != "" {
+			osvOpts.BaseURL = a.Config.Scan.OSVBaseURL
+		}
+		osvFindings, oerr := osv.Scan(ctx, opts.Root, osvOpts)
+		if oerr != nil {
+			res.Errors = append(res.Errors, "osv: "+oerr.Error())
+		}
+		res.Findings = append(res.Findings, osvFindings...)
+	}
+
 	if useLLM {
 		if len(res.Findings) > 0 {
-			triaged, terr := a.Analyzer.Triage(ctx, res.Findings, opts.Root)
+			triaged, tstats, terr := a.Analyzer.TriageWithStats(ctx, res.Findings, opts.Root)
 			if terr != nil {
 				res.Errors = append(res.Errors, "llm triage: "+terr.Error())
+			}
+			res.Stats.LLMCalls += tstats.Batches + tstats.Retries
+			if tstats.Missing > 0 {
+				a.Logger.Warn("triage left findings without a judgement",
+					"missing", tstats.Missing, "judged", tstats.Judged, "batches", tstats.Batches)
 			}
 			res.Findings = triaged
 		}

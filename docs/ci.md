@@ -61,7 +61,7 @@ runner, verifies it against `checksums.txt`, and runs a full `vigil scan`:
     fetch-depth: 0
 
 - id: vigil
-  uses: LevapVeeskela/lv24-vigil@v0.1.4
+  uses: LevapVeeskela/lv24-vigil@v0.2.0
   with:
     path: .
     mode: standard
@@ -78,7 +78,7 @@ runner, verifies it against `checksums.txt`, and runs a full `vigil scan`:
 
 Inputs: `path`, `mode`, `fail-on`, `format`, `version`. Outputs: `sarif`
 (the report path), `exit-code` and `version`. The action defaults to the latest
-release; set `version` and pin the `uses:` tag for reproducible runs. `v0.1.4` is
+release; set `version` and pin the `uses:` tag for reproducible runs. `v0.2.0` is
 the initial release.
 
 The action runs a full scan, not a diff review. Use the CLI `review --base` form
