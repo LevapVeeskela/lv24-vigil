@@ -61,6 +61,8 @@ func runWithIO(args []string, stdout, stderr io.Writer) error {
 		return runBaseline(rest, stdout, stderr)
 	case "report":
 		return runReport(rest, stdout, stderr)
+	case "precheck":
+		return runPrecheck(rest, stdout, stderr)
 	case "threat-model", "threatmodel":
 		return runThreatModel(rest, stdout, stderr)
 	case "version", "--version", "-v":
@@ -88,6 +90,7 @@ Usage:
   vigil rules [flags]              list detection rules
   vigil baseline [list|add|remove|clear]
   vigil report [--scan ID]         render the last scan
+  vigil precheck [flags]           upload a SARIF pre-check to LV24 security scans
   vigil version                    print the version
   vigil help                       show this help
 
@@ -116,6 +119,7 @@ Scan flags:
 Other flags:
   vigil fix ID --scan ID --apply --root DIR
   vigil report --format FMT --output FILE --scan ID
+  vigil precheck --sarif FILE --target TARGET --api URL --token JWT
   vigil threat-model --output FILE
   vigil rules --category C --language L --severity S --query Q --json
   vigil baseline add ID --reason TEXT
@@ -127,6 +131,7 @@ Environment:
   OLLAMA_HOST (local models)
   VIGIL_NO_LLM=1 (force deterministic-only scans)
   VIGIL_CONFIG (override the user config path)
+  VIGIL_SECURITY_API_TOKEN (staff JWT fallback for vigil precheck --token)
   VIGIL_BASE_URL and VIGIL_API_KEY belong in the user config or env, not in a project file.
 
 Exit codes:

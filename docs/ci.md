@@ -95,6 +95,28 @@ vigil scan --format sarif --fail-on high > vigil.sarif
 Use this on a schedule, not on every pull request: a full scan is slower and will
 report pre-existing findings that the pull request did not introduce.
 
+## LV24 security pre-check
+
+If you have access to the LV24 security control plane, record the same SARIF
+report as a pre-check before a full Strix assessment:
+
+```bash
+vigil scan . --format sarif --output vigil.sarif --fail-on high
+vigil precheck --sarif vigil.sarif --api "$SECURITY_API" --token "$STAFF_JWT" --target "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA"
+```
+
+`STAFF_JWT` is a **staff JWT with `ops:security-scans`**, not an API key.
+`SECURITY_API` is the control-plane base URL: `http://localhost:3791` locally,
+`https://lv24.by/api` through the LV24 edge (the same origin the staff SPA uses).
+Keep the JWT in a repository secret; the CLI never prints it and also accepts it
+from `VIGIL_SECURITY_API_TOKEN`.
+
+A pre-check **does not start a scan**. It stores the SARIF as evidence, returns
+the pre-check id plus error/warning/note counts, and never touches the Strix
+execution plane or its kill-switch. The control plane is stricter than GitHub
+code scanning: a result without a file URI is rejected, so keep the SARIF upload
+step above for code scanning and use the pre-check as an extra record.
+
 ## Fork pull requests
 
 GitHub does not expose repository secrets to a `pull_request` workflow from a

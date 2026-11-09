@@ -281,7 +281,10 @@ example below uses the CLI directly so it also works on any runner.
 ```
 
 Fork pull requests do not receive repository secrets; without a key Vigil still
-runs the deterministic rules. Full guide: [docs/ci.md](docs/ci.md).
+runs the deterministic rules. With the LV24 security control plane, the same
+SARIF can be recorded through `vigil precheck` (staff JWT with
+`ops:security-scans`; evidence only, it does not start a scan). Full guide:
+[docs/ci.md](docs/ci.md).
 
 ## Security model
 

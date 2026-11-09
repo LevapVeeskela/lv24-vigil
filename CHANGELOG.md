@@ -4,6 +4,16 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.4.0 - 2026-11-10
+
+### Added
+
+- `vigil precheck` uploads a SARIF 2.1.0 report to the LV24 security control
+  plane (`POST /security-scans/prechecks`) with a staff JWT (`ops:security-scans`).
+  Local SARIF validation, `--json`, `VIGIL_SECURITY_API_TOKEN` fallback, and no
+  scan is started.
+- `examples/config.command.yaml`: a keyless `provider: command` example that
+  uses the locally authenticated `opencode run --format json --agent plan`.
 ## 0.3.0 - 2026-11-10
 
 ### Added

@@ -1,0 +1,45 @@
+# User configuration for the `command` provider.
+#
+# Copy this file to the *user* config path, not into a repository:
+#   Windows:  %AppData%\vigil\config.command.yaml
+#   Linux:    ~/.config/vigil/config.command.yaml
+#   macOS:    ~/Library/Application Support/vigil/config.command.yaml
+# Then select it for one session:
+#   Windows:  $env:VIGIL_CONFIG = "$env:AppData\vigil\config.command.yaml"
+#   POSIX:    export VIGIL_CONFIG="$HOME/.config/vigil/config.command.yaml"
+# Or replace the default user config (`config.yaml`) with these contents.
+#
+# Vigil stores no API key here: `opencode` authenticates with its own
+# `opencode auth login` session. A project file (`.vigil.yaml`) may not contain
+# `command`, `command_env`, `command_prompt_mode` or `command_output`.
+
+provider: command
+model: opencode-go/deepseek-v4.1-flash
+
+# `model` above is only a report label; the `--model` flag below picks the model.
+command:
+  - opencode
+  - run
+  - --format
+  - json
+  - --model
+  - opencode-go/deepseek-v4.1-flash
+  # `plan` is a read-only agent: triage cannot edit files, run tools or fetch URLs.
+  - --agent
+  - plan
+  # `{prompt}` is replaced by the whole prompt as one argv element.
+  - "{prompt}"
+
+# Parse `opencode run --format json` JSONL into text plus token counts.
+command_output: opencode-json
+
+# `arg` passes the prompt in argv. Windows caveat: a bare `opencode` usually
+# resolves to `opencode.cmd`, a batch shim that re-parses `%*` and can mangle a
+# multi-line prompt or make the CLI wait. Prefer the real executable, e.g.
+#   command: [C:\nvm4w\nodejs\node_modules\@opencode\cli\bin\opencode.exe, run, ...]
+# or use stdin mode (drop the `{prompt}` element and keep `--format json`):
+#   command_prompt_mode: stdin
+command_prompt_mode: arg
+
+# Per-invocation timeout for the CLI; `timeout` also covers the HTTP providers.
+timeout: 180s

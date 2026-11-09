@@ -20,6 +20,7 @@ vigil
 | `vigil rules` | List and filter the detection rules. |
 | `vigil baseline` | List, add, remove or clear the suppression baseline. |
 | `vigil report` | Render a stored scan. |
+| `vigil precheck` | Upload a SARIF report to the LV24 security control plane as a pre-check. |
 | `vigil threat-model [path]` | Generate a STRIDE-style threat model. Alias: `vigil threatmodel`. |
 | `vigil version` | Print the version. Also `--version` and `-v`. |
 | `vigil help` | Print the command summary. Also `--help` and `-h`. |
@@ -163,6 +164,48 @@ vigil report --scan scan_20260101T120000_ab12cd
 | `--scan ID` | Scan to render. Default: the most recent scan. |
 
 `vigil report` reads the local store. It does not run a new scan.
+
+## Pre-check
+
+Upload a SARIF report to the LV24 security control plane:
+
+```bash
+vigil scan . --format sarif --output vigil.sarif --fail-on high
+vigil precheck --sarif vigil.sarif \
+  --api https://lv24.by/api \
+  --token "$STAFF_JWT" \
+  --target "$GITHUB_REPOSITORY" \
+  --commit "$GITHUB_SHA"
+```
+
+| Flag | Meaning |
+|---|---|
+| `--sarif FILE` | SARIF 2.1.0 report to upload. Required; max 10 MiB. |
+| `--target TARGET` | Target identifier, for example the repository slug. Required. |
+| `--api URL` | Control-plane base URL. Default `http://localhost:3791`; through the LV24 edge use `https://lv24.by/api`. A trailing slash is ignored. |
+| `--token JWT` | Staff JWT with `ops:security-scans`. Falls back to `VIGIL_SECURITY_API_TOKEN`. |
+| `--commit SHA` | Commit the report describes. Optional. |
+| `--tool-version V` | Tool version recorded with the pre-check. Default: the Vigil version. |
+| `--json` | Print the API response as JSON. |
+
+The token is a **staff JWT**, not an API key: `vigil precheck` calls the staff
+endpoint `POST {api}/security-scans/prechecks`. The token is never printed, and
+passing it through `VIGIL_SECURITY_API_TOKEN` keeps it out of the command line.
+
+A success prints one line:
+
+```
+precheck 0f1d2c3b-4a59-4e6f-8a7b-9c0d1e2f3a4b created: 1 error / 2 warning / 3 note
+```
+
+A pre-check is **evidence only**. It does not start a scan, does not start the
+Strix sandbox and writes nothing to the run/finding tables, so it keeps working
+while the execution kill-switch is off.
+
+The report is checked locally before the upload (`version` starts with `2.1.` and
+`runs` is a non-empty array) and validated again by the control plane, which also
+rejects results without `ruleId`, `message.text` or a file URI. A 4xx/5xx prints
+the API error body (capped at 2 KiB) and exits `1`.
 
 ## Rules
 
