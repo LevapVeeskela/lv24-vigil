@@ -4,6 +4,14 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.2.1 - 2026-11-10
+
+### Fixed
+
+- npm publishing now runs as the `npm-publish` workflow itself, triggered by
+  `workflow_run` after a successful `release`. A reusable-workflow call from
+  `release.yml` does not match the npm Trusted Publisher, which is bound to the
+  workflow file that owns the publish job.
 ## 0.2.0 - 2026-11-10
 
 ### Added

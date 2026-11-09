@@ -1,22 +1,22 @@
 name: npm-publish
 
-# Publishes the npm packages for an existing GitHub release. Called by
-# release.yml after each tag release, and runnable by hand to re-publish a tag
-# (for example after a failed publish). Every binary checksum is verified by
-# npm/build.mjs before anything is published. Versions already on npm are
-# skipped, so re-running is safe.
+# Publishes the npm packages for an existing GitHub release.
+#
+# Two triggers:
+#   - workflow_run: runs after the `release` workflow completes for a tag. The
+#     job must be this workflow (not a reusable workflow called from
+#     release.yml) because npm Trusted Publishing is bound to the workflow file
+#     that owns the job: `npm-publish.yml`.
+#   - workflow_dispatch: manual re-publish of a tag (for example after a failed
+#     publish).
+#
+# Every binary checksum is verified by npm/build.mjs before anything is
+# published. Versions already on npm are skipped, so re-running is safe.
 
 on:
-  workflow_call:
-    inputs:
-      tag:
-        description: "Release tag, e.g. v1.2.3"
-        required: true
-        type: string
-    secrets:
-      NPM_TOKEN:
-        description: "Optional npm token fallback when Trusted Publishing (OIDC) is unavailable"
-        required: false
+  workflow_run:
+    workflows: ["release"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -28,22 +28,22 @@ permissions:
   contents: read
 
 concurrency:
-  group: npm-publish-${{ inputs.tag }}
+  group: npm-publish-${{ inputs.tag || github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
-      # npm Trusted Publishing (OIDC) and provenance. npm validates the
-      # calling workflow against each package's trusted publishers.
+      # npm Trusted Publishing (OIDC) and provenance.
       id-token: write
+    env:
+      TAG: ${{ inputs.tag || github.event.workflow_run.head_branch }}
     steps:
       - name: Validate tag
-        env:
-          TAG: ${{ inputs.tag }}
         run: |
           if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
             echo "tag must look like v1.2.3 (got '$TAG')" >&2
@@ -52,13 +52,12 @@ jobs:
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ inputs.tag || github.event.workflow_run.head_branch }}
           fetch-depth: 1
 
       - name: Download release assets
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir release-assets
@@ -70,25 +69,20 @@ jobs:
           node-version: "24"
 
       - name: Build npm packages
-        env:
-          TAG: ${{ inputs.tag }}
         run: node npm/build.mjs --version "${TAG#v}" --dist release-assets --out npm-out
 
       # Trusted Publishing uses the job's OIDC token (id-token: write). The
       # NODE_AUTH_TOKEN fallback is used only when NPM_TOKEN is configured.
-      # Until a Trusted Publisher (or NPM_TOKEN) is configured, npm's token
-      # exchange fails with "package not found"; the step is allowed to fail so
-      # the already-published GitHub release stays green, and a warning names
-      # the missing setup.
+      # A trust regression is reported as a warning instead of turning the
+      # already-published GitHub release red.
       - name: Publish npm packages
         id: publish
         continue-on-error: true
         env:
-          TAG: ${{ inputs.tag }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bash npm/publish.sh "${TAG#v}" npm-out
 
       - name: Report npm publish status
         if: steps.publish.outcome == 'failure'
         run: |
-          echo "::warning title=npm::npm publish failed. The GitHub release is published. Configure Trusted Publishing for lv24-vigil and the six @lv24/vigil-* packages (or set the NPM_TOKEN secret), then run the npm-publish workflow manually."
+          echo "::warning title=npm::npm publish failed. The GitHub release is published. Check the trusted publisher for lv24-vigil and the six @lv24/vigil-* packages (workflow npm-publish.yml), then run this workflow manually with the tag."
