@@ -75,11 +75,20 @@ jobs:
         run: node npm/build.mjs --version "${TAG#v}" --dist release-assets --out npm-out
 
       # Trusted Publishing uses the job's OIDC token (id-token: write). The
-      # NODE_AUTH_TOKEN fallback is used only when NPM_TOKEN is configured;
-      # without either credential npm/publish.sh exits 0 with a notice, so a
-      # skipped publish never fails the release.
+      # NODE_AUTH_TOKEN fallback is used only when NPM_TOKEN is configured.
+      # Until a Trusted Publisher (or NPM_TOKEN) is configured, npm's token
+      # exchange fails with "package not found"; the step is allowed to fail so
+      # the already-published GitHub release stays green, and a warning names
+      # the missing setup.
       - name: Publish npm packages
+        id: publish
+        continue-on-error: true
         env:
           TAG: ${{ inputs.tag }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bash npm/publish.sh "${TAG#v}" npm-out
+
+      - name: Report npm publish status
+        if: steps.publish.outcome == 'failure'
+        run: |
+          echo "::warning title=npm::npm publish failed. The GitHub release is published. Configure Trusted Publishing for lv24-vigil and the six @lv24/vigil-* packages (or set the NPM_TOKEN secret), then run the npm-publish workflow manually."
