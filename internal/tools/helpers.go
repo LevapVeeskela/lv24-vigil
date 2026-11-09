@@ -4,16 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
+	"github.com/levapveeskela/lv24-vigil/internal/config"
 	"github.com/levapveeskela/lv24-vigil/internal/mcp"
 	"github.com/levapveeskela/lv24-vigil/internal/model"
+	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 )
 
 // maxTextBytes bounds a tool's text response. Structured content is not
@@ -143,92 +142,15 @@ func resolvePath(d Deps, p string) (string, error) {
 
 // cleanRelPath validates a repository-relative, slash-separated path used for
 // report output. Absolute paths, traversal, control characters and .git are
-// rejected.
+// rejected; .git is matched case-insensitively because Windows ignores case.
 func cleanRelPath(rel string) (string, error) {
-	p := strings.TrimSpace(strings.ReplaceAll(rel, "\\", "/"))
-	if p == "" {
-		return "", errors.New("path is empty")
-	}
-	if strings.ContainsRune(p, 0) {
-		return "", errors.New("path contains a NUL byte")
-	}
-	for _, r := range p {
-		if unicode.IsControl(r) {
-			return "", errors.New("path contains control characters")
-		}
-	}
-	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") {
-		return "", errors.New("absolute paths are not allowed")
-	}
-	if len(p) >= 2 && p[1] == ':' {
-		return "", errors.New("absolute paths are not allowed")
-	}
-	for _, seg := range strings.Split(p, "/") {
-		switch seg {
-		case "..":
-			return "", errors.New("path must not contain '..'")
-		case ".git":
-			return "", errors.New("refusing to write inside .git")
-		}
-	}
-	c := path.Clean(p)
-	if c == "." || c == ".." || strings.HasPrefix(c, "../") {
-		return "", errors.New("path is not a file inside the app root")
-	}
-	return c, nil
+	return safepath.CleanRel(rel)
 }
 
 // resolveInsideRoot joins rel onto root and verifies the result cannot escape
 // root, including through symlinked directories.
 func resolveInsideRoot(root, rel string) (string, error) {
-	clean, err := cleanRelPath(rel)
-	if err != nil {
-		return "", err
-	}
-	rootAbs, err := filepath.Abs(root)
-	if err != nil {
-		return "", fmt.Errorf("resolve app root: %w", err)
-	}
-	target := filepath.Join(rootAbs, filepath.FromSlash(clean))
-	if !within(rootAbs, target) {
-		return "", errors.New("path escapes the app root")
-	}
-
-	realRoot := rootAbs
-	if resolved, err := filepath.EvalSymlinks(rootAbs); err == nil {
-		realRoot = resolved
-	}
-	if realTarget, err := filepath.EvalSymlinks(target); err == nil {
-		if !within(realRoot, realTarget) {
-			return "", errors.New("path escapes the app root through a symlink")
-		}
-		return target, nil
-	}
-	// The file does not exist yet: check the deepest existing ancestor.
-	dir := filepath.Dir(target)
-	for {
-		if realDir, err := filepath.EvalSymlinks(dir); err == nil {
-			if !within(realRoot, realDir) {
-				return "", errors.New("path escapes the app root through a symlink")
-			}
-			break
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	return target, nil
-}
-
-// within reports whether target is inside root.
-func within(root, target string) bool {
-	rel, err := filepath.Rel(root, target)
-	if err != nil || filepath.IsAbs(rel) {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return safepath.Resolve(root, rel)
 }
 
 // samePath compares two directories, tolerating case differences on Windows.
@@ -440,33 +362,7 @@ func modelLine(d Deps, m *model.ModelInfo) string {
 }
 
 // redactURL removes userinfo and key-like query parameters from a base URL.
-func redactURL(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return raw
-	}
-	if u.User != nil {
-		u.User = url.User("***")
-	}
-	q := u.Query()
-	changed := false
-	for k := range q {
-		lk := strings.ToLower(k)
-		if strings.Contains(lk, "key") || strings.Contains(lk, "token") ||
-			strings.Contains(lk, "secret") || strings.Contains(lk, "auth") {
-			q.Set(k, "***")
-			changed = true
-		}
-	}
-	if changed {
-		u.RawQuery = q.Encode()
-	}
-	return u.String()
-}
+func redactURL(raw string) string { return config.RedactURL(raw) }
 
 // redactKey removes the configured API key from any text that may echo code or
 // configuration. The key is never printed by any tool.

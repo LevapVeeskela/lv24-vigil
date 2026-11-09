@@ -76,7 +76,7 @@ func handleReport(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.CallTo
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return errorResult(d, "report: create directory for %s: %v", target, err), nil
 	}
-	if err := os.WriteFile(target, data, 0o644); err != nil {
+	if err := writeFileAtomic(target, data, 0o644); err != nil {
 		return errorResult(d, "report: write %s: %v", target, err), nil
 	}
 
@@ -92,6 +92,40 @@ func handleReport(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.CallTo
 		"high":     countSeverity(scan.Findings, model.SeverityHigh),
 	}
 	return result(d, text, payload), nil
+}
+
+// writeFileAtomic replaces path with data without following a final symlink or
+// hardlink. The temporary file lives in the same directory so the rename is
+// atomic on the same filesystem.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".vigil-report-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	remove := true
+	defer func() {
+		if remove {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	remove = false
+	return nil
 }
 
 func reportFormat(v string) (string, error) {

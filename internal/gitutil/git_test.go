@@ -175,6 +175,26 @@ func TestDiffAndApplyCheck(t *testing.T) {
 	}
 }
 
+func TestApplyZeroContextDiff(t *testing.T) {
+	requireGit(t)
+	dir := initRepo(t)
+	writeFile(t, dir, "a.go", "package a\n")
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-q", "-m", "initial")
+
+	diff := "--- a/a.go\n+++ b/a.go\n@@ -1 +1 @@\n-package a\n+package b\n"
+	if err := Apply(context.Background(), dir, diff); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "a.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(data)) != "package b" {
+		t.Fatalf("a.go = %q, want package b", data)
+	}
+}
+
 func TestChangedFilesWithoutCommits(t *testing.T) {
 	requireGit(t)
 	dir := initRepo(t)
@@ -208,6 +228,53 @@ func TestChangedFilesIncludesDeletion(t *testing.T) {
 	}
 	if len(changed) != 1 || changed[0] != "gone.go" {
 		t.Fatalf("ChangedFiles = %v, want [gone.go]", changed)
+	}
+}
+
+func TestRejectsOptionLikeBaseRefs(t *testing.T) {
+	requireGit(t)
+	dir := initRepo(t)
+	writeFile(t, dir, "a.go", "package a\n")
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-q", "-m", "initial")
+	writeFile(t, dir, "a.go", "package a\n// changed\n")
+
+	output := filepath.Join(dir, "should-not-exist.txt")
+	refs := []string{
+		"--output=" + output,
+		"--ext-diff",
+		"--upload-pack=evil",
+		"-c",
+		"HEAD extra",
+		"HEAD\n--output=" + output,
+		"HEAD\x00",
+	}
+	for _, ref := range refs {
+		if _, err := ChangedFiles(context.Background(), dir, ref); err == nil {
+			t.Errorf("ChangedFiles accepted ref %q", ref)
+		}
+		if _, err := Diff(context.Background(), dir, ref); err == nil {
+			t.Errorf("Diff accepted ref %q", ref)
+		}
+	}
+	if _, err := os.Stat(output); err == nil {
+		t.Fatalf("git wrote %s through an option-like ref", output)
+	}
+
+	// A normal ref still works.
+	if _, err := ChangedFiles(context.Background(), dir, "HEAD"); err != nil {
+		t.Fatalf("ChangedFiles(HEAD): %v", err)
+	}
+}
+
+func TestGitArgsDisableRepoControlledFsmonitor(t *testing.T) {
+	args := gitArgs("/tmp/repo", "diff", "--name-only", "HEAD", "--")
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-c core.fsmonitor=false") {
+		t.Fatalf("git args do not disable core.fsmonitor: %v", args)
+	}
+	if !strings.Contains(joined, "-C /tmp/repo") {
+		t.Fatalf("git args do not set the working directory: %v", args)
 	}
 }
 

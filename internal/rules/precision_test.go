@@ -121,6 +121,27 @@ func TestPrecisionAuth006SkipsEnumsAndTypes(t *testing.T) {
 			content: `currentPassword: 'admin',`,
 			want:    1,
 		},
+		{
+			name:    "translation catalog label",
+			path:    "i18n/locales/en.json",
+			lang:    "json",
+			content: `"auth.login.password": "Password",`,
+			want:    0,
+		},
+		{
+			name:    "translation shard label",
+			path:    "i18n/shards/en.public.json",
+			lang:    "json",
+			content: `"admin.users.create.password": "Password",`,
+			want:    0,
+		},
+		{
+			name:    "real json default is still reported",
+			path:    "config/app.json",
+			lang:    "json",
+			content: `"admin.password": "admin",`,
+			want:    1,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

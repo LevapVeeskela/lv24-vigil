@@ -27,7 +27,8 @@ for a normal scan.
 - **Fits the agent you already use.** One MCP server for OpenCode, Claude Code,
   Codex and Cursor. The agent can scan, explain, fix and re-check without
   leaving the conversation.
-- **Read-only by default.** Scans never modify the tree. `vigil fix --apply`
+- **Read-only by default.** Scans never modify source files; they write only
+  their own history under `.vigil/scans` or the user cache. `vigil fix --apply`
   writes a validated unified diff and never commits; the baseline and report
   commands write only their own files. Secrets are masked in output.
 - **Small and portable.** One static Go binary, standard library plus
@@ -118,7 +119,8 @@ previous scan or report. Full command reference: [docs/cli.md](docs/cli.md).
 
 Start the server with `vigil mcp` (stdio, JSON-RPC). Register it once:
 
-**OpenCode** - `.opencode/opencode.json`:
+**OpenCode** - `opencode.json` in the project root (or
+`~/.config/opencode/opencode.json`):
 
 ```json
 {
@@ -198,7 +200,7 @@ endpoint for any provider; `custom` requires it. Full reference:
 | Category | Prefix | Rules | Looks for |
 |---|---|---:|---|
 | Secrets | `VGL-SEC` | 24 | cloud keys, tokens, private keys, connection strings, `.env` leaks |
-| Injection | `VGL-INJ` | 36 | SQL, shell, code eval, XSS, deserialization, SSTI, prototype pollution |
+| Injection | `VGL-INJ` | 37 | SQL, shell, code eval, XSS, deserialization, SSTI, prototype pollution |
 | Crypto | `VGL-CRY` | 12 | weak hashes/ciphers, ECB, static IVs, bad randomness, TLS verify off, JWT `none` |
 | Auth | `VGL-AUTH` | 9 | unverified JWTs, cookie flags, CORS + credentials, CSRF, default passwords |
 | Web | `VGL-WEB` | 12 | SSRF, path traversal, open redirect, CORS, debug endpoints, host header |
@@ -220,8 +222,8 @@ Model-only findings use `VGL-AI-001` and are marked as LLM-sourced. The CLI
 
 | Tool | What it does | Writes? |
 |---|---|---|
-| `vigil_scan` | Scan a repository or directory | no |
-| `vigil_review` | Review only changed lines or a supplied diff | no |
+| `vigil_scan` | Scan a repository or directory | scan history only |
+| `vigil_review` | Review only changed lines or a supplied diff | scan history only |
 | `vigil_explain` | Explain one finding in context | no |
 | `vigil_fix` | Propose a unified diff; `apply=true` writes it | `apply=true` only |
 | `vigil_threat_model` | Generate a STRIDE-style threat model | no |
@@ -265,10 +267,11 @@ runs the deterministic rules. Full guide: [docs/ci.md](docs/ci.md).
 ## Security model
 
 - **Local-first.** No Vigil cloud, no telemetry, no analytics, no account.
-- **Read-only by default.** A scan writes nothing. The write paths are
-  `vigil_fix` with `apply=true` (or `vigil fix --apply`), the baseline command,
-  an explicitly requested report file, and `vigil init`. A fix never commits and
-  never stages.
+- **Read-only by default.** A scan writes no source files; it writes only its
+  scan history under `.vigil/scans` (or the user cache). The other write paths
+  are `vigil_fix` with `apply=true` (or `vigil fix --apply`), the baseline
+  command, an explicitly requested report file, and `vigil init`. A fix never
+  commits and never stages.
 - **Your code goes only where you point it.** Deterministic scans make no network
   calls. LLM features send the minimum context needed to the endpoint you
   configured. Use a local model if code must not leave the machine.
@@ -277,8 +280,9 @@ runs the deterministic rules. Full guide: [docs/ci.md](docs/ci.md).
 - **Scanned code is untrusted.** Prompts delimit code as data, strip control
   characters and instruct the model to ignore instructions inside it. Model
   output is validated before it becomes a finding or a diff.
-- **Fixes are checked before they land.** Paths must stay inside the repository,
-  binary patches and `.git` edits are rejected, hunk counts must match, and
+- **Fixes are checked before they land.** Paths must stay inside the repository
+  (including through symlinks, junctions and hardlinks), binary and symlink
+  patches and `.git` edits are rejected, hunk counts must match, and
   `git apply --check` runs before any write.
 
 Details and limits: [docs/security-model.md](docs/security-model.md).

@@ -30,6 +30,7 @@ import (
 	"github.com/levapveeskela/lv24-vigil/internal/config"
 	"github.com/levapveeskela/lv24-vigil/internal/llm"
 	"github.com/levapveeskela/lv24-vigil/internal/model"
+	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 )
 
 const (
@@ -381,60 +382,20 @@ func isSensitiveRepoFile(rel string) bool {
 
 // cleanRelativePath validates a repository-relative, slash-separated path. It
 // rejects absolute paths, drive letters, UNC paths, traversal, NUL bytes and
-// anything inside .git.
+// anything inside .git (case-insensitively, including Windows short forms).
 func cleanRelativePath(p string) (string, bool) {
-	p = strings.TrimSpace(strings.ReplaceAll(p, "\\", "/"))
-	if p == "" || strings.ContainsRune(p, '\x00') {
-		return "", false
-	}
-	for _, r := range p {
-		if unicode.IsControl(r) {
-			return "", false
-		}
-	}
-	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") {
-		return "", false
-	}
-	if hasDriveLetter(p) {
-		return "", false
-	}
-	for _, seg := range strings.Split(p, "/") {
-		if seg == ".." {
-			return "", false
-		}
-	}
-	c := path.Clean(p)
-	if c == "." || c == ".." || strings.HasPrefix(c, "../") {
-		return "", false
-	}
-	for _, seg := range strings.Split(c, "/") {
-		if seg == ".git" {
-			return "", false
-		}
-	}
-	return c, true
-}
-
-func hasDriveLetter(p string) bool {
-	if len(p) < 2 || p[1] != ':' {
-		return false
-	}
-	c := p[0]
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-}
-
-// insideRoot joins rel onto root and verifies the result stays inside root.
-func insideRoot(root, rel string) (string, bool) {
-	clean, ok := cleanRelativePath(rel)
-	if !ok {
-		return "", false
-	}
-	rootAbs, err := filepath.Abs(root)
+	clean, err := safepath.CleanRel(p)
 	if err != nil {
 		return "", false
 	}
-	target := filepath.Join(rootAbs, filepath.FromSlash(clean))
-	if !pathWithin(rootAbs, target) {
+	return clean, true
+}
+
+// insideRoot joins rel onto root and verifies the result stays inside root,
+// including through symlinks and junctions.
+func insideRoot(root, rel string) (string, bool) {
+	target, err := safepath.Resolve(root, rel)
+	if err != nil {
 		return "", false
 	}
 	return target, true
@@ -480,6 +441,11 @@ func readFileBounded(root, rel string, max int64) ([]byte, string, bool, error) 
 	}
 	if !info.Mode().IsRegular() {
 		return nil, "", false, fmt.Errorf("%s is not a regular file", clean)
+	}
+	if multi, err := safepath.HasMultipleLinks(real); err != nil {
+		return nil, "", false, fmt.Errorf("cannot verify %s: %w", clean, err)
+	} else if multi {
+		return nil, "", false, fmt.Errorf("%s is a hardlinked file", clean)
 	}
 	f, err := os.Open(real)
 	if err != nil {

@@ -571,11 +571,22 @@ func TestReportHistoryAndVerify(t *testing.T) {
 		t.Errorf("written report has %d bytes, payload says %d", len(data), writePayload.Bytes)
 	}
 
-	for _, bad := range []string{"../escape.md", filepath.Join(h.repo, "absolute.md")} {
+	for _, bad := range []string{
+		"../escape.md",
+		filepath.Join(h.repo, "absolute.md"),
+		"C:drive-relative.md",
+		`\\server\share\report.md`,
+		".git/config",
+		".GIT/hooks/pre-commit",
+		".git./hooks/pre-commit",
+	} {
 		res := h.client.tool("vigil_report", map[string]any{"format": "md", "path": bad})
 		if !res.IsError {
 			t.Errorf("report path %q should be rejected", bad)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(h.repo, ".GIT", "hooks", "pre-commit")); err == nil {
+		t.Fatal("report wrote a hook through a case-variant .git path")
 	}
 
 	history := h.client.mustTool("vigil_history", map[string]any{"limit": 5})
@@ -765,6 +776,41 @@ func TestThreatModelRequiresModel(t *testing.T) {
 	}
 	if !strings.Contains(textOf(t, res), "needs a model") {
 		t.Errorf("threat model error is not helpful: %s", textOf(t, res))
+	}
+}
+
+func TestStatusRedactsBaseURLSecrets(t *testing.T) {
+	t.Setenv("VIGIL_NO_LLM", "1")
+	t.Setenv("VIGIL_CONFIG", filepath.Join(t.TempDir(), "missing.yaml"))
+	t.Setenv("VIGIL_BASE_URL", "https://user:password@example.test/v1?api_key=sk-url-secret&safe=1")
+	for _, env := range []string{
+		"VIGIL_PROVIDER", "VIGIL_MODEL", "VIGIL_API_KEY", "VIGIL_USE_LLM",
+		"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY",
+		"OPENROUTER_API_KEY", "DEEPSEEK_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY",
+		"XAI_API_KEY", "OLLAMA_HOST",
+	} {
+		t.Setenv(env, "")
+	}
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".vigil"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a, err := app.New(repo, nil)
+	if err != nil {
+		t.Fatalf("app.New: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	client := newClient(t, a)
+
+	res := client.mustTool("vigil_status", nil)
+	text := textOf(t, res)
+	for _, secret := range []string{"password", "sk-url-secret"} {
+		if strings.Contains(text, secret) {
+			t.Errorf("vigil_status leaked %q:\n%s", secret, text)
+		}
+	}
+	if !strings.Contains(text, "REDACTED") {
+		t.Errorf("vigil_status did not show a redacted base URL:\n%s", text)
 	}
 }
 

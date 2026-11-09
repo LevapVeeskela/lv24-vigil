@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // RepoRoot returns the absolute root of the git repository containing path.
@@ -59,6 +60,9 @@ func ChangedFiles(ctx context.Context, root, baseRef string) ([]string, error) {
 	baseRef = strings.TrimSpace(baseRef)
 	if baseRef == "" {
 		baseRef = "HEAD"
+	}
+	if err := validateRef(baseRef); err != nil {
+		return nil, err
 	}
 
 	tracked, err := runGit(ctx, repo, "diff", "--name-only", "-z", "--no-ext-diff", baseRef, "--")
@@ -113,7 +117,29 @@ func Diff(ctx context.Context, root, baseRef string) (string, error) {
 	if baseRef == "" {
 		baseRef = "HEAD"
 	}
+	if err := validateRef(baseRef); err != nil {
+		return "", err
+	}
 	return runGit(ctx, rootAbs, "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--unified=0", "--relative", baseRef, "--")
+}
+
+// validateRef rejects a base ref that git could parse as an option or that
+// contains whitespace/control characters. Without this a caller (or an agent
+// reading a repository file) could pass --output=..., --ext-diff or a similar
+// flag and make git write a file or run a repository-controlled diff driver.
+func validateRef(ref string) error {
+	if ref == "" {
+		return nil
+	}
+	if strings.HasPrefix(ref, "-") {
+		return fmt.Errorf("gitutil: refusing base ref %q: refs must not start with '-'", ref)
+	}
+	for _, r := range ref {
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			return fmt.Errorf("gitutil: refusing base ref %q: refs must not contain whitespace or control characters", ref)
+		}
+	}
+	return nil
 }
 
 // ApplyCheck verifies that diff applies cleanly to root without touching the
@@ -169,11 +195,24 @@ func absDir(root string) (string, error) {
 	return abs, nil
 }
 
-func runGit(ctx context.Context, dir string, args ...string) (string, error) {
+// gitArgs builds the argv for every git invocation. core.fsmonitor is disabled
+// because a hostile repository can set it to a hook path, and git executes that
+// hook during ordinary diff/status work.
+func gitArgs(dir string, args ...string) []string {
 	if strings.TrimSpace(dir) == "" {
 		dir = "."
 	}
-	cmdArgs := append([]string{"-C", dir}, args...)
+	out := make([]string, 0, len(args)+6)
+	out = append(out,
+		"-c", "core.fsmonitor=false",
+		"-c", "core.untrackedCache=false",
+		"-C", dir,
+	)
+	return append(out, args...)
+}
+
+func runGit(ctx context.Context, dir string, args ...string) (string, error) {
+	cmdArgs := gitArgs(dir, args...)
 	cmd := exec.CommandContext(ctx, "git", cmdArgs...)
 
 	var stdout, stderr bytes.Buffer

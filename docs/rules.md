@@ -16,16 +16,17 @@ a complete list and will lag behind the code.
 | Family | Prefix | Rules | Focus |
 |---|---|---:|---|
 | Secrets | `VGL-SEC` | 24 | Credentials committed to the repository |
-| Injection | `VGL-INJ` | 36 | Sinks that turn untrusted input into code, SQL, shell or markup |
+| Injection | `VGL-INJ` | 37 | Sinks that turn untrusted input into code, SQL, shell or markup |
 | Crypto | `VGL-CRY` | 12 | Broken algorithms, weak parameters and disabled verification |
 | Auth | `VGL-AUTH` | 9 | JWT, cookies, CORS, CSRF and default credentials |
 | Web | `VGL-WEB` | 12 | SSRF, traversal, redirects, headers, debug surfaces |
 | Config / IaC | `VGL-CFG` | 17 | Docker, Compose, Kubernetes, Terraform, nginx, env files |
 | CI | `VGL-CI` | 11 | Workflow permissions, untrusted checkouts and shell injection |
 | Dependencies | `VGL-DEP` | 7 | Lockfiles, version ranges, install sources and TLS |
-| Model findings | `VGL-AI` | 1 | Issues found only by the LLM deep review |
 
-Counts are for 0.1.0. `vigil rules` is always current.
+The table counts the 129 deterministic rules in 0.1.0; `vigil rules` is always
+current. `VGL-AI-001` is synthesized by the LLM deep review and is not part of
+the deterministic catalog, so it does not appear in `vigil rules`.
 
 ## Representative rules
 

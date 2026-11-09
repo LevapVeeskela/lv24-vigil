@@ -16,9 +16,13 @@ Values are resolved in this order, later wins:
    root. The first name is the convention.
 4. Environment variables.
 
-A project config is committed to git, so it may not contain `api_key`. Vigil
-rejects the file with an explicit error if it does. Keep the key in the user
-config or the environment.
+A project config is committed to git, so it may not contain `api_key` or
+`base_url`. Vigil rejects the file with an explicit error if it does. Keep both
+in the user config or the environment. A project config must be a regular file
+inside the project; a symlink that leaves the project, or a hardlinked
+`.vigil.yaml`, is rejected. A project file also cannot enable
+`scan.follow_symlinks` or point `scan.baseline` / `output.path` outside the
+project; `scan.baseline` is always resolved inside the project root.
 
 ## Provider reference
 
@@ -202,8 +206,8 @@ output:
   show_fix: true
 ```
 
-Do not add `api_key` to a project file. Put it in the user config or the
-environment.
+Do not add `api_key` or `base_url` to a project file. Put them in the user
+config or the environment.
 
 ## Checking the result
 
@@ -213,7 +217,8 @@ vigil status
 
 The output shows the resolved provider, model, base URL, and the source of a
 value when known (a config path or `env:NAME`; a bare value is the built-in
-default). The API key is redacted.
+default). The API key and any userinfo or key-shaped query parameter in the base
+URL are redacted.
 
 If `vigil status` says the LLM is disabled, the scan still works; it simply skips
 triage, deep review, fixes and threat models. The reason is printed as a warning.

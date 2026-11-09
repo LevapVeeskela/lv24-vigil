@@ -46,6 +46,13 @@ func runReport(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	path := firstNonEmpty(*output, a.Config.Output.Path)
+	if *output == "" && path != "" {
+		resolved, rerr := resolveConfigOutputPath(a.Root, path)
+		if rerr != nil {
+			return rerr
+		}
+		path = resolved
+	}
 	if path == "" || path == "-" {
 		if _, err := stdout.Write(data); err != nil {
 			return fmt.Errorf("write report: %w", err)

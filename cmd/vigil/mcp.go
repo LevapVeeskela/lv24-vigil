@@ -41,7 +41,7 @@ func runMCP(args []string, stdout, stderr io.Writer) error {
 
 	srv := mcp.NewServer("vigil", version.Version, "Vigil security auditor")
 	srv.Logger = logger
-	srv.Instructions = "Vigil audits the configured project for security issues. Tools are prefixed vigil_; paths are confined to the server root."
+	srv.Instructions = "Vigil audits the configured project for security issues. Tools are prefixed vigil_; write paths are confined to the server root."
 	tools.Register(srv, tools.Deps{App: a, Version: version.Version})
 
 	ctx, stop := signalContext()

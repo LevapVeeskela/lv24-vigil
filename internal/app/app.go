@@ -75,6 +75,10 @@ func New(root string, logger *slog.Logger) (*App, error) {
 	}
 	a.Analyzer = analysis.New(cfg, nil, logger)
 
+	if cfg.Scan.OSV {
+		a.Warnings = append(a.Warnings, "scan.osv is reserved and has no effect in this build: dependency advisory lookups are not implemented")
+	}
+
 	if cfg.LLMEnabled() {
 		client, err := llm.New(cfg, logger)
 		if err != nil {
@@ -83,7 +87,13 @@ func New(root string, logger *slog.Logger) (*App, error) {
 		} else {
 			a.Analyzer = analysis.New(cfg, client, logger)
 			a.LLM = true
-			a.Model = &model.ModelInfo{Provider: cfg.Provider, Model: cfg.Model, BaseURL: cfg.BaseURL}
+			// The base URL is stored for display and reports, so redact any
+			// userinfo or key-shaped query parameter before it is persisted.
+			a.Model = &model.ModelInfo{
+				Provider: cfg.Provider,
+				Model:    cfg.Model,
+				BaseURL:  config.RedactURL(cfg.BaseURL),
+			}
 		}
 	}
 	return a, nil
@@ -179,7 +189,7 @@ func (a *App) Scan(ctx context.Context, req model.ScanRequest) (*model.ScanResul
 			res.Findings = triaged
 		}
 
-		deep := req.DeepReview || opts.Mode == "deep"
+		deep := req.DeepReview || a.Config.Scan.DeepReview || opts.Mode == "deep"
 		if deep {
 			files, ferr := a.Scanner.CollectFiles(ctx, opts)
 			if ferr != nil {
@@ -252,9 +262,14 @@ func (a *App) ProposeFix(ctx context.Context, f model.Finding) (*model.Fix, erro
 }
 
 // ApplyFix applies a validated diff to the working tree. It never commits.
+// The diff is validated again here so a caller cannot bypass the path, binary
+// and hunk checks that ProposeFix performs.
 func (a *App) ApplyFix(ctx context.Context, fix *model.Fix) error {
 	if fix == nil || strings.TrimSpace(fix.Diff) == "" {
 		return errors.New("empty fix")
+	}
+	if err := analysis.ValidateDiff(a.Root, fix.Diff); err != nil {
+		return fmt.Errorf("refusing to apply an unsafe diff: %w", err)
 	}
 	if err := gitutil.Apply(ctx, a.Root, fix.Diff); err != nil {
 		return err

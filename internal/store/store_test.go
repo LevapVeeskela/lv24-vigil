@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,21 @@ import (
 
 var scanIDRE = regexp.MustCompile(`^scan_\d{8}T\d{6}_[0-9a-f]{6}$`)
 
+func makeDirLink(t *testing.T, link, target string) error {
+	t.Helper()
+	if err := os.Symlink(target, link); err == nil {
+		return nil
+	}
+	if runtime.GOOS != "windows" {
+		return fmt.Errorf("symlink is not available")
+	}
+	out, err := exec.Command("cmd", "/c", "mklink", "/J", link, target).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("mklink /J: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 func newProjectStore(t *testing.T) (*Store, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -27,6 +43,76 @@ func newProjectStore(t *testing.T) (*Store, string) {
 		t.Fatalf("Open: %v", err)
 	}
 	return st, root
+}
+
+func TestOpenRejectsSymlinkedVigilDir(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := makeDirLink(t, filepath.Join(root, ".vigil"), outside); err != nil {
+		t.Skipf("cannot create a directory link: %v", err)
+	}
+	checkStoreFallsBack(t, root, outside)
+}
+
+func TestOpenRejectsBrokenVigilSymlink(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	missing := filepath.Join(outside, "missing")
+	if err := makeDirLink(t, filepath.Join(root, ".vigil"), missing); err != nil {
+		t.Skipf("cannot create a directory link: %v", err)
+	}
+	checkStoreFallsBack(t, root, outside)
+}
+
+func TestOpenWithVigilFileFallsBackToCache(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".vigil"), []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cache := t.TempDir()
+	t.Setenv("LOCALAPPDATA", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	t.Setenv("HOME", cache)
+	t.Setenv("USERPROFILE", cache)
+	st, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if strings.HasPrefix(st.Dir(), root) {
+		t.Fatalf("store dir %q uses the hostile .vigil file", st.Dir())
+	}
+}
+
+func TestOpenRejectsSymlinkedScansDir(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".vigil"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := makeDirLink(t, filepath.Join(root, ".vigil", "scans"), outside); err != nil {
+		t.Skipf("cannot create a directory link: %v", err)
+	}
+	checkStoreFallsBack(t, root, outside)
+}
+
+func checkStoreFallsBack(t *testing.T, root, outside string) {
+	t.Helper()
+	cache := t.TempDir()
+	t.Setenv("LOCALAPPDATA", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	t.Setenv("HOME", cache)
+	t.Setenv("USERPROFILE", cache)
+
+	st, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if strings.HasPrefix(st.Dir(), outside) {
+		t.Fatalf("store dir %q is inside the symlink target %q", st.Dir(), outside)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "scans")); err == nil {
+		t.Fatalf("store created %s outside the project", filepath.Join(outside, "scans"))
+	}
 }
 
 func sampleResult(started time.Time) *model.ScanResult {

@@ -36,8 +36,9 @@ vigil init                         # write a starter .vigil.yaml
 
 Configure the model with environment variables (for example
 `VIGIL_PROVIDER`, `VIGIL_MODEL`, `VIGIL_API_KEY`, `VIGIL_BASE_URL`) or with
-`.vigil.yaml`. `OLLAMA_HOST` points Vigil at a local model. Secrets are masked
-in every output.
+provider/model in `.vigil.yaml`. Keys and `base_url` stay in the environment or
+the user config; a project file may not contain them. `OLLAMA_HOST` points Vigil
+at a local model. Secrets are masked in every output.
 
 ## MCP server
 
@@ -54,9 +55,10 @@ Vigil speaks MCP over stdio:
 }
 ```
 
-Add that block to your MCP client configuration (Claude Code/Desktop, Codex,
-OpenCode) and ask the agent to scan a repository, explain a finding or propose
-a fix. Deterministic findings are never blocked by an LLM outage.
+That `mcpServers` shape fits Claude Code/Desktop and Cursor. Codex uses
+`~/.codex/config.toml` and OpenCode uses an `mcp` block; see the main README for
+both. Then ask the agent to scan a repository, explain a finding or propose a
+fix. Deterministic findings are never blocked by an LLM outage.
 
 ## Links
 

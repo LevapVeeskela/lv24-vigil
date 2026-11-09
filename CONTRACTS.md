@@ -18,6 +18,7 @@ internal/llm/         provider clients (OpenAI-compatible, Anthropic, Gemini)
 internal/analysis/    LLM triage, deep review, fix proposal, threat model
 internal/report/      markdown, json, sarif, html renderers
 internal/tools/       MCP tool/resource/prompt registration
+internal/safepath/    repository-relative path validation and symlink-safe resolution
 internal/mcp/         MCP transport and JSON-RPC types
 internal/version/     build metadata
 ```
@@ -118,10 +119,14 @@ an LLM outage).
 
 ## Non-negotiables
 
-- No network calls except the configured LLM endpoint and optional OSV lookup.
+- No network calls except the configured LLM endpoint. The `scan.osv` option is
+  reserved and has no effect in 0.1.x; dependency advisory lookups are not
+  implemented yet.
 - No telemetry.
-- Read-only by default; only `vigil_fix` with `apply=true` writes files, and it
-  never commits.
+- Read-only by default. Scans write only their own history. Only `vigil_fix`
+  with `apply=true` writes source files, and it never commits.
+  `vigil_baseline`, `vigil_report` with a path, and `vigil init` write only
+  their own artifacts.
 - Secrets are masked in every output (`rules.MaskSecret`).
 - Scanned code is untrusted input: prompt templates must delimit it and instruct
   the model to ignore instructions found inside it.

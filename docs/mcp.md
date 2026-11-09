@@ -25,7 +25,7 @@ and does not require a daemon.
 
 ### OpenCode
 
-`.opencode/opencode.json`:
+`opencode.json` in the project root (or `~/.config/opencode/opencode.json`):
 
 ```json
 {
@@ -89,8 +89,8 @@ or the `npx` form above. The transport is stdio; no URL or port is needed.
 
 | Tool | Purpose | Side effects |
 |---|---|---|
-| `vigil_scan` | Scan the repository or a directory. Runs deterministic rules first, then optional LLM analysis. | none |
-| `vigil_review` | Review only changed lines, or a supplied unified diff. | none |
+| `vigil_scan` | Scan the repository or a directory. Runs deterministic rules first, then optional LLM analysis. | scan history only |
+| `vigil_review` | Review only changed lines, or a supplied unified diff. | scan history only |
 | `vigil_explain` | Explain one finding: what the code does, why it matters, how an attacker could use it, and a fix direction. | none |
 | `vigil_fix` | Propose a minimal unified diff. With `apply=true`, write the validated diff to the working tree. | writes only with `apply=true`; never commits |
 | `vigil_threat_model` | Generate a STRIDE-style threat model from a bounded repository map. | none |
@@ -114,14 +114,16 @@ result.
 plus an optional `scanId` (default: the most recent scan). Without `apply`, it
 returns a proposed unified diff. The diff is validated before it is shown:
 
-- paths must be relative and inside the repository;
-- `.git` and binary patches are rejected;
-- hunk line counts must match the body;
-- `git apply --check` must pass.
+- paths must be relative and inside the repository (symlinks, junctions and
+  hardlinked targets that leave the root are rejected);
+- `.git` (case-insensitive, including Windows short forms), symlink and binary
+  patches are rejected;
+- hunk line counts must match the body.
 
-With `apply=true`, the same checks run and the patch is applied to the working
-tree. Vigil never commits, never stages and never pushes. Ask your client to
-require confirmation before a tool call that writes files.
+With `apply=true`, the same checks run, `git apply --check` must pass, and only
+then is the patch applied to the working tree. Vigil never commits, never stages
+and never pushes. Ask your client to require confirmation before a tool call that
+writes files.
 
 ## Resources
 
@@ -178,8 +180,10 @@ Agent: [calls vigil_fix with apply=true, then vigil_verify]
 - The server runs with the permissions of the user who started the client. Do not
   run it as root or against a repository you do not trust.
 - The write paths are `vigil_fix` with `apply=true` (source files),
-  `vigil_baseline` (the baseline file) and `vigil_report` with `path` (a report
-  inside the project root). A fix never commits or stages.
+  `vigil_baseline` (the baseline file), `vigil_report` with `path` (a report
+  inside the project root) and the local scan history written by
+  `vigil_scan`/`vigil_review`. A fix never commits or stages. Write paths are
+  confined to the server root, including through symlinks and junctions.
 - Scanned code is untrusted input. Prompts delimit it as data and model output is
   validated before it becomes a finding or a diff.
 - If code must not leave the machine, configure a local Ollama or LM Studio model
@@ -209,7 +213,8 @@ See [security-model.md](security-model.md) for the full model.
 
 - The model may have produced an invalid diff. Ask it to retry, or use
   `vigil fix <id>` and inspect the diff before applying.
-- A diff that touches `.git`, a binary file, an absolute path or a path outside
+- A diff that touches `.git` (in any case), a binary file, an absolute path, a
+  path outside the repository, or a path through a symlink/junction that leaves
   the repository is rejected by design.
 
 More: [troubleshooting.md](troubleshooting.md).

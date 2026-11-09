@@ -33,8 +33,8 @@ These flags are shared by `vigil scan` and `vigil review`, except where noted.
 | `--path DIR` | directory | Scan root. Default `.`; a positional path also works. |
 | `--mode MODE` | `quick`, `standard`, `deep` | Analysis depth. Default from config (`standard`). |
 | `--changed` | - | Scan only files changed against `--base`. `scan` only. |
-| `--base REF` | git ref | Ref for `--changed` and `--diff`. Default `HEAD`. |
-| `--diff FILE` | path or `-` | Scan added lines from a unified diff. `-` reads stdin. |
+| `--base REF` | git ref | Ref for `--changed` (and for `review` when no `--diff` is given). Default `HEAD`. |
+| `--diff FILE` | path or `-` | Scan added lines from a unified diff file. `-` reads stdin. It is not a git ref; use `--base` for that. |
 | `--no-llm` | - | Deterministic rules only. |
 | `--deep` | - | Run the LLM deep review. |
 | `--threat-model` | - | Generate a threat model during the scan. |
@@ -42,12 +42,12 @@ These flags are shared by `vigil scan` and `vigil review`, except where noted.
 | `--exclude GLOB` | glob, repeatable | Skip matching paths. Comma-separated values also work. |
 | `--rules ID[,ID]` | rule IDs | Run only these rules. |
 | `--disable ID[,ID]` | rule IDs | Skip these rules. |
-| `--min-severity LEVEL` | `low`, `medium`, `high`, `critical` | Hide findings below this level. Default from config. |
+| `--min-severity LEVEL` | `info`, `low`, `medium`, `high`, `critical` | Hide findings below this level. Default from config. |
 | `--max-findings N` | integer | Cap the number of findings. `0` uses the config default. |
 | `--no-baseline` | - | Ignore the suppression baseline. |
 | `--format FMT` | `md`, `json`, `sarif`, `html` | Report format. Default from config (`md`). |
 | `--output FILE` | path or `-` | Write the report to a file. `-` means stdout. |
-| `--fail-on LEVEL` | `low`, `medium`, `high`, `critical` | Exit `2` when a finding at or above this level exists. |
+| `--fail-on LEVEL` | `info`, `low`, `medium`, `high`, `critical` | Exit `2` when a finding at or above this level exists. |
 | `--quiet` | - | Skip the human summary. |
 | `--color MODE` | `auto`, `always`, `never` | ANSI color in the human summary only. |
 
@@ -65,8 +65,9 @@ report and therefore also what can trip the gate.
 | `standard` | yes | yes, if a model is configured | only with `--deep` |
 | `deep` | yes | yes, if a model is configured | yes |
 
-`--no-llm` turns off triage, deep review, fixes and threat models. The
-deterministic rules always run.
+All three modes run the same deterministic rule set. The mode controls the
+optional LLM passes. `--no-llm` turns off triage, deep review, fixes and threat
+models; the deterministic rules always run.
 
 Deep review is bounded: at most eight high-risk files, ten windows per file and
 forty windows per scan. It is not a full-repository LLM read.
@@ -109,10 +110,10 @@ Review a saved diff:
 vigil review --diff change.diff
 ```
 
-`review` always uses `--mode quick` (no deep review) and only looks at added
-lines. It does not have a `--changed` flag because reviewing changes is the
-whole point. Use `fetch-depth: 0` in GitHub Actions so the base ref exists. See
-[ci.md](ci.md).
+`review` uses `--mode quick` and only looks at added lines; passing `--deep`
+still enables the optional LLM deep review. It does not have a `--changed` flag
+because reviewing changes is the whole point. Use `fetch-depth: 0` in GitHub
+Actions so the base ref exists. See [ci.md](ci.md).
 
 ## Fix
 
@@ -136,8 +137,9 @@ vigil fix VGL-XXXXXXXXXX --apply
 
 The finding ID can be exact, case-insensitive or a unique prefix. Suppressed
 findings are searchable too. The diff must stay inside the repository, must not
-touch `.git`, must not be a binary patch and must pass `git apply --check`. Vigil
-never commits, stages or pushes.
+touch `.git` (in any case), must not be a binary or symlink patch, and must have
+matching hunk counts. Before `--apply` writes anything, `git apply --check` must
+also pass. Vigil never commits, stages or pushes.
 
 A fix needs a model. If no provider is configured, `vigil fix` returns an error
 that tells you which variables to set.
@@ -151,7 +153,7 @@ vigil report
 vigil report --format json
 vigil report --format sarif --output vigil.sarif
 vigil report --format html --output vigil.html
-vigil report --scan scan_20260101T120000Z_ab12cd
+vigil report --scan scan_20260101T120000_ab12cd
 ```
 
 | Flag | Meaning |
@@ -295,16 +297,20 @@ project settings:
 | `scan.exclude` | built-in list | Extra exclude globs |
 | `scan.disable_rules` | empty | Rule IDs to skip |
 | `scan.use_llm` | `true` when a provider exists | Enable model analysis |
-| `scan.max_file_bytes` | `2 MiB` | Skip larger files |
-| `scan.follow_symlinks` | `false` | Follow symlinks during the walk |
-| `scan.baseline` | `.vigil-baseline.json` | Suppression file |
+| `scan.deep_review` | `false` | Run the LLM deep review on every scan |
+| `scan.max_file_bytes` | `2 MiB` | Skip larger files; the effective limit is capped at 64 MiB |
+| `scan.follow_symlinks` | `false` | Follow symlinks during the walk (user config only) |
+| `scan.baseline` | `.vigil-baseline.json` | Suppression file; must stay inside the project root |
+| `scan.osv` | `false` | Reserved; dependency advisory lookups are not implemented in 0.1.x |
 | `output.format` | `md` | Default report format |
 | `output.path` | empty | Default report path |
 | `output.color` | `auto` | `auto`, `always` or `never` |
 | `output.show_fix` | `true` | Include fix diffs in Markdown and HTML |
 
-`api_key` is only accepted in the user config or the environment, never in a
-project file. A project file with `api_key` is rejected.
+`api_key` and `base_url` are only accepted in the user config or the environment,
+never in a project file. A project file that sets either is rejected, as are
+absolute or `..` paths in `scan.baseline` and `output.path`; this keeps a hostile
+repository from redirecting model traffic or writing outside the project tree.
 
 Example: [../examples/.vigil.yaml](../examples/.vigil.yaml).
 

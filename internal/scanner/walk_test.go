@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,33 @@ func filePaths(files []*rules.File) map[string]*rules.File {
 		out[f.Path] = f
 	}
 	return out
+}
+
+func TestEffectiveMaxFileBytesCapsHostileConfig(t *testing.T) {
+	if got := effectiveMaxFileBytes(1 << 40); got != MaxAllowedFileBytes {
+		t.Fatalf("effectiveMaxFileBytes(1 TiB) = %d, want %d", got, MaxAllowedFileBytes)
+	}
+	if got := effectiveMaxFileBytes(0); got != DefaultMaxFileBytes {
+		t.Fatalf("effectiveMaxFileBytes(0) = %d, want %d", got, DefaultMaxFileBytes)
+	}
+	if got := effectiveMaxFileBytes(1024); got != 1024 {
+		t.Fatalf("effectiveMaxFileBytes(1024) = %d", got)
+	}
+}
+
+func TestLoadFileSkipsHardlink(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("SECRET\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link.txt")
+	if err := os.Link(outside, link); err != nil {
+		t.Skipf("cannot create a hardlink on this host: %v", err)
+	}
+	if _, err := loadFile(link, "link.txt", 1<<20, false); !errors.Is(err, errSkipHardlink) {
+		t.Fatalf("loadFile(hardlink) = %v, want errSkipHardlink", err)
+	}
 }
 
 func TestWalkFilesSkipsIgnoredBinaryAndLarge(t *testing.T) {

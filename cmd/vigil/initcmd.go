@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 )
 
 const initTemplate = `# Vigil configuration — https://github.com/LevapVeeskela/lv24-vigil
@@ -16,12 +18,12 @@ const initTemplate = `# Vigil configuration — https://github.com/LevapVeeskela
 #
 # provider: openai        # openai | anthropic | gemini | openrouter | groq |
 # model: gpt-4.1-mini     # deepseek | mistral | xai | ollama | lmstudio | custom
-# base_url: ""            # only for custom or self-hosted endpoints
+# base_url: ""            # user config only — never here
 # api_key: ""             # user config only — never here
 
 scan:
-  # quick = secrets and obvious mistakes, standard = full rule pack,
-  # deep = standard plus the LLM deep review.
+  # All modes run the same deterministic rules. quick/standard differ only in
+  # the optional LLM passes; deep adds the LLM deep review.
   mode: standard
   min_severity: low
   max_findings: 200
@@ -66,13 +68,20 @@ func runInit(args []string, stdout, stderr io.Writer) error {
 	}
 
 	const path = ".vigil.yaml"
-	if _, err := os.Stat(path); err == nil && !*force {
+	// Refuse to follow a symlink or junction out of the current directory,
+	// even with --force: a hostile repository must not turn `vigil init` into
+	// an arbitrary-file overwrite.
+	target, err := safepath.Resolve(".", path)
+	if err != nil {
+		return fmt.Errorf("refusing to write %s: %w", path, err)
+	}
+	if _, err := os.Stat(target); err == nil && !*force {
 		return fmt.Errorf("%s already exists; pass --force to overwrite it", path)
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("check %s: %w", path, err)
 	}
 
-	if err := writeFile(path, []byte(initTemplate)); err != nil {
+	if err := writeFile(target, []byte(initTemplate)); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, `Created %s

@@ -58,7 +58,9 @@ ending in `/v1`.
 ### "api_key must live in the user config or the environment"
 
 A project `.vigil.yaml` contains `api_key`. Remove it. Project config is committed
-to git; put the key in the user config or the environment instead.
+to git; put the key in the user config or the environment instead. The same rule
+applies to `base_url`, which is rejected in a project file because it controls
+where code and the key are sent.
 
 ## Local model problems
 
@@ -152,8 +154,9 @@ if supplied.
 Common reasons:
 
 - the model returned a diff that does not modify the finding file;
-- a path is absolute or escapes the repository;
-- the diff touches `.git` or contains a binary patch;
+- a path is absolute, escapes the repository, or goes through a symlink or
+  junction that leaves it;
+- the diff touches `.git`, contains a binary patch, or creates a symlink;
 - the hunk header counts do not match the body;
 - `git apply --check` fails because the file changed since the scan.
 

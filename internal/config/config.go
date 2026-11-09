@@ -8,15 +8,18 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/levapveeskela/lv24-vigil/internal/model"
+	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 )
 
 // Provider names understood by the LLM factory.
@@ -36,6 +39,10 @@ const (
 
 // DefaultModel is used when a provider is configured without a model.
 const DefaultModel = "gpt-4.1-mini"
+
+// maxConfigBytes bounds a config file before it is read into memory. A hostile
+// repository must not be able to make `vigil scan` allocate an arbitrary file.
+const maxConfigBytes = 1 << 20
 
 // Config is the fully resolved runtime configuration.
 type Config struct {
@@ -184,7 +191,14 @@ func Load(root string) (Config, error) {
 	}
 	if root != "" {
 		for _, name := range []string{".vigil.yaml", ".vigil.yml", "vigil.yaml"} {
-			if err := mergeFile(&cfg, filepath.Join(root, name), false); err != nil {
+			path, err := safepath.Resolve(root, name)
+			if err != nil {
+				return cfg, fmt.Errorf("config %s: %w", name, err)
+			}
+			if multi, lerr := safepath.HasMultipleLinks(path); lerr == nil && multi {
+				return cfg, fmt.Errorf("config %s: hardlinked project config files are not accepted", name)
+			}
+			if err := mergeFile(&cfg, path, false); err != nil {
 				return cfg, err
 			}
 		}
@@ -210,10 +224,20 @@ func UserConfigPath() (string, error) {
 }
 
 func mergeFile(cfg *Config, path string, allowSecret bool) error {
-	data, err := os.ReadFile(path)
+	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
+	if err != nil {
+		return fmt.Errorf("stat config %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("config %s is not a regular file", path)
+	}
+	if info.Size() > maxConfigBytes {
+		return fmt.Errorf("config %s is larger than %d bytes", path, maxConfigBytes)
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read config %s: %w", path, err)
 	}
@@ -221,8 +245,31 @@ func mergeFile(cfg *Config, path string, allowSecret bool) error {
 	if err := yaml.Unmarshal(data, &fc); err != nil {
 		return fmt.Errorf("parse config %s: %w", path, err)
 	}
-	if !allowSecret && fc.APIKey != nil && strings.TrimSpace(*fc.APIKey) != "" {
-		return fmt.Errorf("config %s: api_key must live in the user config or the environment, not in a project file", path)
+	if !allowSecret {
+		if fc.APIKey != nil && strings.TrimSpace(*fc.APIKey) != "" {
+			return fmt.Errorf("config %s: api_key must live in the user config or the environment, not in a project file", path)
+		}
+		// A project file is committed by whoever owns the repository. It must
+		// not be able to redirect model traffic (and the user's key) to an
+		// arbitrary endpoint or write outside the project tree.
+		if fc.BaseURL != nil && strings.TrimSpace(*fc.BaseURL) != "" {
+			return fmt.Errorf("config %s: base_url must live in the user config or the environment, not in a project file", path)
+		}
+		if fc.Output != nil && fc.Output.Path != nil {
+			if err := validateProjectPath("output.path", *fc.Output.Path); err != nil {
+				return fmt.Errorf("config %s: %w", path, err)
+			}
+		}
+		if fc.Scan != nil {
+			if fc.Scan.Baseline != nil {
+				if err := validateProjectPath("scan.baseline", *fc.Scan.Baseline); err != nil {
+					return fmt.Errorf("config %s: %w", path, err)
+				}
+			}
+			if fc.Scan.FollowLinks != nil && *fc.Scan.FollowLinks {
+				return fmt.Errorf("config %s: scan.follow_symlinks may only be enabled in the user config", path)
+			}
+		}
 	}
 	cfg.ConfigFiles = append(cfg.ConfigFiles, path)
 	merge(&cfg.Provider, fc.Provider, "provider", path, cfg.Sources)
@@ -299,6 +346,19 @@ func mergeFile(cfg *Config, path string, allowSecret bool) error {
 	return nil
 }
 
+// validateProjectPath rejects absolute, traversal and .git paths in a project
+// file. The value is only validated; callers keep the original spelling.
+func validateProjectPath(key, value string) error {
+	v := strings.TrimSpace(value)
+	if v == "" || v == "-" {
+		return nil
+	}
+	if _, err := safepath.CleanRel(v); err != nil {
+		return fmt.Errorf("%s must be a relative path inside the project: %v", key, err)
+	}
+	return nil
+}
+
 func merge(dst *string, src *string, key, path string, sources map[string]string) {
 	if src == nil {
 		return
@@ -360,7 +420,11 @@ func applyEnv(cfg *Config) {
 			cfg.Sources["provider"] = "env:OPENAI_API_KEY"
 		case os.Getenv("GEMINI_API_KEY") != "" || os.Getenv("GOOGLE_API_KEY") != "":
 			cfg.Provider = ProviderGemini
-			cfg.Sources["provider"] = "env:GEMINI_API_KEY"
+			if os.Getenv("GEMINI_API_KEY") != "" {
+				cfg.Sources["provider"] = "env:GEMINI_API_KEY"
+			} else {
+				cfg.Sources["provider"] = "env:GOOGLE_API_KEY"
+			}
 		case os.Getenv("OPENROUTER_API_KEY") != "":
 			cfg.Provider = ProviderOpenRouter
 			cfg.Sources["provider"] = "env:OPENROUTER_API_KEY"
@@ -428,7 +492,10 @@ func providerKeyName(provider string) string {
 	case ProviderAnthropic:
 		return "ANTHROPIC_API_KEY"
 	case ProviderGemini:
-		return "GEMINI_API_KEY"
+		if os.Getenv("GEMINI_API_KEY") != "" {
+			return "GEMINI_API_KEY"
+		}
+		return "GOOGLE_API_KEY"
 	case ProviderOpenRouter:
 		return "OPENROUTER_API_KEY"
 	case ProviderGroq:
@@ -588,7 +655,38 @@ func (c Config) Redacted() Config {
 	if c.APIKey != "" {
 		c.APIKey = "***"
 	}
+	c.BaseURL = RedactURL(c.BaseURL)
 	return c
+}
+
+// RedactURL removes userinfo and key-like query parameters from a base URL so
+// it can be printed in status output and stored in scan results.
+func RedactURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	if u.User != nil {
+		u.User = url.User("REDACTED")
+	}
+	q := u.Query()
+	changed := false
+	for k := range q {
+		lk := strings.ToLower(k)
+		if strings.Contains(lk, "key") || strings.Contains(lk, "token") ||
+			strings.Contains(lk, "secret") || strings.Contains(lk, "auth") {
+			q.Set(k, "REDACTED")
+			changed = true
+		}
+	}
+	if changed {
+		u.RawQuery = q.Encode()
+	}
+	return u.String()
 }
 
 func setStr(dst *string, env string, sources map[string]string) {
@@ -600,8 +698,7 @@ func setStr(dst *string, env string, sources map[string]string) {
 
 func setInt(dst *int, env string, sources map[string]string) {
 	if v := strings.TrimSpace(os.Getenv(env)); v != "" {
-		var n int
-		if _, err := fmt.Sscanf(v, "%d", &n); err == nil {
+		if n, err := strconv.Atoi(v); err == nil {
 			*dst = n
 			sources[strings.ToLower(strings.TrimPrefix(env, "VIGIL_"))] = "env:" + env
 		}
@@ -610,8 +707,7 @@ func setInt(dst *int, env string, sources map[string]string) {
 
 func setFloat(dst *float64, env string, sources map[string]string) {
 	if v := strings.TrimSpace(os.Getenv(env)); v != "" {
-		var f float64
-		if _, err := fmt.Sscanf(v, "%g", &f); err == nil {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			*dst = f
 			sources[strings.ToLower(strings.TrimPrefix(env, "VIGIL_"))] = "env:" + env
 		}

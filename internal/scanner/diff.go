@@ -220,9 +220,10 @@ func buildDiffFiles(ctx context.Context, root string, opts Options) ([]*rules.Fi
 	sort.Strings(paths)
 
 	var (
-		files   []*rules.File
-		skipped int
-		errs    []string
+		files       []*rules.File
+		skipped     int
+		errs        []string
+		totalPadded int
 	)
 	for _, rel := range paths {
 		if err := ctx.Err(); err != nil {
@@ -250,11 +251,12 @@ func buildDiffFiles(ctx context.Context, root string, opts Options) ([]*rules.Fi
 			skipped++
 			continue
 		}
-		if maxLine > maxDiffPaddedLines {
+		if maxLine > maxDiffPaddedLines || totalPadded+maxLine > maxDiffPaddedLines {
 			skipped++
-			errs = append(errs, fmt.Sprintf("diff %s: line range ends at %d, refusing to allocate", rel, maxLine))
+			errs = append(errs, fmt.Sprintf("diff %s: padded line budget exceeded (line range ends at %d)", rel, maxLine))
 			continue
 		}
+		totalPadded += maxLine
 
 		lines := make([]string, maxLine)
 		for n, text := range parsed.text[rel] {

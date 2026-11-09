@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/levapveeskela/lv24-vigil/internal/mcp"
+	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 	"github.com/levapveeskela/lv24-vigil/internal/scanner"
 )
 
@@ -50,7 +51,10 @@ func handleBaseline(d Deps, raw json.RawMessage) (*mcp.CallToolResult, error) {
 	if action == "" {
 		action = "list"
 	}
-	path := baselinePath(d)
+	path, err := baselinePath(d)
+	if err != nil {
+		return errorResult(d, "baseline: %v", err), nil
+	}
 
 	switch action {
 	case "list":
@@ -66,15 +70,19 @@ func handleBaseline(d Deps, raw json.RawMessage) (*mcp.CallToolResult, error) {
 	}
 }
 
-func baselinePath(d Deps) string {
+func baselinePath(d Deps) (string, error) {
 	p := strings.TrimSpace(d.App.Config.Scan.Baseline)
 	if p == "" {
 		p = scanner.DefaultBaselineFile
 	}
 	if filepath.IsAbs(p) {
-		return filepath.Clean(p)
+		return "", fmt.Errorf("baseline path %q must be relative to the project root", p)
 	}
-	return filepath.Join(d.App.Root, p)
+	resolved, err := safepath.Resolve(d.App.Root, p)
+	if err != nil {
+		return "", fmt.Errorf("path %q: %w", p, err)
+	}
+	return resolved, nil
 }
 
 func baselineList(d Deps, path string) (*mcp.CallToolResult, error) {

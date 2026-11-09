@@ -2,12 +2,73 @@ package scanner
 
 import (
 	"context"
+	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/levapveeskela/lv24-vigil/internal/model"
 	"github.com/levapveeskela/lv24-vigil/internal/rules"
 )
+
+func TestBuildDiffFilesRejectsUnsafePaths(t *testing.T) {
+	root := t.TempDir()
+	type diffCase struct {
+		name string
+		path string
+	}
+	cases := []diffCase{
+		{"traversal", "../outside.go"},
+		{"nested traversal", "src/../../outside.go"},
+		{"absolute", "/etc/passwd"},
+		{"git directory", ".GIT/hooks/pre-commit"},
+	}
+	if runtime.GOOS == "windows" {
+		cases = append(cases,
+			diffCase{"windows drive", `C:\Windows\win.ini`},
+			diffCase{"unc", `\\server\share\evil.go`},
+		)
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			diff := "--- /dev/null\n+++ b/" + tc.path + "\n@@ -0,0 +1 @@\n+package x\n"
+			files, skipped, errs, err := buildDiffFiles(context.Background(), root, Options{Diff: diff})
+			if err != nil {
+				t.Fatalf("buildDiffFiles: %v", err)
+			}
+			if len(files) != 0 {
+				t.Fatalf("accepted unsafe path %q: %+v", tc.path, files)
+			}
+			if skipped == 0 {
+				t.Fatalf("unsafe path %q was not skipped", tc.path)
+			}
+			if len(errs) == 0 && tc.name != "git directory" {
+				t.Fatalf("unsafe path %q produced no error: %v", tc.path, errs)
+			}
+		})
+	}
+}
+
+func TestBuildDiffFilesBoundsPaddedLineBudget(t *testing.T) {
+	root := t.TempDir()
+	var diff strings.Builder
+	for i := 0; i < 3; i++ {
+		fmt.Fprintf(&diff, "--- /dev/null\n+++ b/f%d.go\n@@ -0,0 +999999,1 @@\n+package x\n", i)
+	}
+	files, skipped, errs, err := buildDiffFiles(context.Background(), root, Options{Diff: diff.String()})
+	if err != nil {
+		t.Fatalf("buildDiffFiles: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("accepted %d files, want 2 before the padded-line budget is exhausted", len(files))
+	}
+	if skipped == 0 {
+		t.Fatal("the over-budget file was not skipped")
+	}
+	if len(errs) == 0 || !strings.Contains(strings.Join(errs, " "), "budget") {
+		t.Fatalf("errors = %v, want a padded-line budget message", errs)
+	}
+}
 
 func TestParseDiffAddedRanges(t *testing.T) {
 	diff := `diff --git a/main.go b/main.go

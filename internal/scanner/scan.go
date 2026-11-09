@@ -22,6 +22,7 @@ import (
 	"github.com/levapveeskela/lv24-vigil/internal/gitutil"
 	"github.com/levapveeskela/lv24-vigil/internal/model"
 	"github.com/levapveeskela/lv24-vigil/internal/rules"
+	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 )
 
 const (
@@ -97,7 +98,7 @@ func (s *Scanner) Scan(ctx context.Context, opts Options) (*model.ScanResult, er
 		if err != nil {
 			return nil, err
 		}
-		return s.ScanPaths(ctx, root, paths, opts)
+		return s.ScanPaths(ctx, root, filterChangedPaths(paths, opts), opts)
 	default:
 		walked, err := walkFiles(ctx, root, opts)
 		if err != nil {
@@ -229,6 +230,23 @@ func (s *Scanner) scanFiles(ctx context.Context, input []*rules.File, opts Optio
 		return res, err
 	}
 	return res, nil
+}
+
+// filterChangedPaths applies the same hard-skip directories and include/exclude
+// patterns as a normal walk. Changed mode gets its paths from git, so without
+// this a repository's own .vigil history, node_modules or generated bundles
+// would be scanned as if they were source.
+func filterChangedPaths(paths []string, opts Options) []string {
+	excludes := append(defaultExcludePatterns(), opts.Exclude...)
+	matcher := newIgnoreMatcher(excludes, opts.Include)
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if hasHardSkipSegment(p) || matcher.ignored(p, false) || !matcher.included(p) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 func (s *Scanner) selectedRules(opts Options) []rules.Rule {
@@ -403,9 +421,17 @@ func applyBaseline(findings []model.Finding, opts Options) (kept, suppressed []m
 		if strings.TrimSpace(opts.Root) == "" {
 			return findings, nil, nil
 		}
-		path = filepath.Join(opts.Root, DefaultBaselineFile)
-	} else if !filepath.IsAbs(path) && strings.TrimSpace(opts.Root) != "" {
-		path = filepath.Join(opts.Root, path)
+		path = DefaultBaselineFile
+	}
+	if filepath.IsAbs(path) {
+		return findings, nil, []string{fmt.Sprintf("baseline %s: path must be relative to the scan root", path)}
+	}
+	if strings.TrimSpace(opts.Root) != "" {
+		resolved, err := safepath.Resolve(opts.Root, path)
+		if err != nil {
+			return findings, nil, []string{fmt.Sprintf("baseline %s: %v", path, err)}
+		}
+		path = resolved
 	}
 
 	baseline, err := LoadBaseline(path)

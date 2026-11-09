@@ -28,7 +28,7 @@ func Apply(ctx context.Context, root, diff string) error {
 	if err := os.WriteFile(patch, []byte(diff), 0o600); err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, "git", "-C", root, "apply", "--whitespace=nowarn", patch)
+	cmd := exec.CommandContext(ctx, "git", gitArgs(root, "apply", "--unidiff-zero", "--whitespace=nowarn", patch)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git apply: %w: %s", err, strings.TrimSpace(string(out)))

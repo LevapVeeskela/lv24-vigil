@@ -54,6 +54,7 @@ findings remain, and the scan still finishes.
 | `internal/report` | Markdown, JSON, SARIF and HTML renderers |
 | `internal/mcp` | JSON-RPC types, stdio transport, tool/resource/prompt dispatch |
 | `internal/tools` | MCP tool, resource and prompt registration |
+| `internal/safepath` | Repository-relative path validation and symlink/junction-safe resolution |
 | `internal/app` | Wiring of config, registry, scanner, analyzer and store |
 | `internal/version` | Build metadata injected with `-ldflags` |
 
@@ -64,10 +65,13 @@ MCP server or a provider. `app` is the composition root.
 
 - The walker skips hard-coded directories such as `.git`, `node_modules`,
   `vendor`, `dist`, `build`, `target`, virtual environments, caches and `.vigil`.
-- Files larger than `scan.max_file_bytes` (2 MiB by default) are skipped.
+- Files larger than `scan.max_file_bytes` (2 MiB by default, capped at 64 MiB)
+  are skipped.
 - Binary files are detected by content sniffing, not only by extension.
 - Symlinks are skipped unless `scan.follow_symlinks` is enabled; followed
   directory links are cycle-checked by resolved path.
+- Files with more than one hardlink are skipped: a hardlink can reference an
+  inode outside the tree, so reading or writing it would cross the boundary.
 - Rules run over a worker pool. The result is sorted by severity, confidence,
   path and line.
 - A baseline is applied after the rules. Suppressed findings move to a separate

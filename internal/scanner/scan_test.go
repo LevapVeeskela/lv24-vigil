@@ -371,6 +371,31 @@ func TestScanMissingRoot(t *testing.T) {
 	}
 }
 
+func TestBaselinePathMustStayInsideRoot(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "a.go", "SECRET\n")
+	outside := filepath.Join(t.TempDir(), "baseline.json")
+	if err := os.WriteFile(outside, []byte(`{"version":1,"fingerprints":[],"findings":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	reg := rules.NewRegistry()
+	reg.Add(matchRule("TEST-SECRET", model.SeverityHigh, "SECRET"))
+	res, err := New(reg, nil).Scan(context.Background(), Options{
+		Root:         root,
+		BaselinePath: outside,
+	})
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(res.Findings) != 1 {
+		t.Fatalf("findings = %d, want 1", len(res.Findings))
+	}
+	if len(res.Errors) == 0 || !strings.Contains(strings.Join(res.Errors, " "), "relative to the scan root") {
+		t.Fatalf("errors = %v, want an absolute-baseline warning", res.Errors)
+	}
+}
+
 func TestScanChangedOnly(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not available")
@@ -400,6 +425,16 @@ func TestScanChangedOnly(t *testing.T) {
 
 	writeTestFile(t, root, "a.go", "package a\n// SECRET\n")
 	writeTestFile(t, root, "c.go", "// SECRET\n")
+	// Untracked tool state and generated trees must not be scanned in changed
+	// mode just because git reports them as untracked.
+	for _, dir := range []string{".vigil/scans", "node_modules/pkg", "dist"} {
+		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(dir)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTestFile(t, root, ".vigil/scans/old.json", "SECRET\n")
+	writeTestFile(t, root, "node_modules/pkg/index.js", "SECRET\n")
+	writeTestFile(t, root, "dist/bundle.min.js", "SECRET\n")
 
 	reg := rules.NewRegistry()
 	reg.Add(matchRule("TEST-SECRET", model.SeverityHigh, "SECRET"))

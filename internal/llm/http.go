@@ -35,6 +35,7 @@ var (
 	// part of a URL query string (Gemini puts the key there).
 	querySecretPattern = regexp.MustCompile(`(?i)([?&](key|api_key|api-key|access_token|token)=)[^&\s"'<>]+`)
 	bearerPattern      = regexp.MustCompile(`(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+`)
+	userInfoPattern    = regexp.MustCompile(`(?i)(https?://)[^/@\s"'<>]+@`)
 )
 
 // transport is the shared HTTP layer for every provider. It owns one
@@ -310,6 +311,7 @@ func redact(s string, secrets ...string) string {
 		}
 		s = strings.ReplaceAll(s, secret, "[REDACTED]")
 	}
+	s = userInfoPattern.ReplaceAllString(s, "${1}[REDACTED]@")
 	s = querySecretPattern.ReplaceAllString(s, "${1}[REDACTED]")
 	s = bearerPattern.ReplaceAllString(s, "${1}[REDACTED]")
 	return s

@@ -4,6 +4,44 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.1.1 - 2026-11-09
+
+Security hardening after an independent review of 0.1.0.
+
+### Security
+
+- Reject git refs that start with `-`, contain whitespace or control characters,
+  closing option injection through `--base` / `baseRef`; run git with
+  `core.fsmonitor=false` and `core.untrackedCache=false` so a hostile
+  repository config cannot execute a hook during a scan.
+- Confine every read and write to the project root through the new
+  `internal/safepath` package: symlinks, junctions, hardlinks, `.GIT` case
+  variants, trailing-dot names and UNC/drive-relative paths are rejected.
+- Project configs may no longer set `base_url` (egress hijack), absolute or
+  out-of-root `output.path` / `scan.baseline`, or `scan.follow_symlinks: true`.
+  Config files must be regular, non-hardlinked files of at most 1 MiB.
+- Redact userinfo and key-shaped query parameters from base URLs in `status`,
+  scan metadata and provider errors.
+- Bound diff padding (2,000,000 lines), MCP handler concurrency (16) and recover
+  handler panics; reject oversized MCP lines without killing the server.
+- Write reports, baselines and configs atomically through a temp file and
+  rename, so a hardlinked target cannot be modified outside the tree.
+- `installers/unix/install.sh`: `wget --https-only` for redirects.
+
+### Fixed
+
+- `git apply` now uses the same zero-context flag as `git apply --check`.
+- `scan.deep_review` is honored; `scan.osv` is documented as reserved.
+- `--changed` applies the normal hard-skip, include and exclude filters.
+- `VGL-AUTH-006` no longer flags i18n translation catalogs.
+- Documentation corrected for `--diff` (file or `-`), OpenCode config path,
+  rule counts, MCP side effects and path restrictions.
+
+### Added
+
+- 61 new unit and adversarial tests: config, model, MCP protocol, app pipeline,
+  safepath, tool paths and prompt-injection defenses.
+
 ## 0.1.0 - 2026-11-09
 
 Initial public release.

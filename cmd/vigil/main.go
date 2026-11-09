@@ -95,7 +95,7 @@ Scan flags:
   --path DIR                     scan root (default .); a positional path also works
   --mode quick|standard|deep     scan depth (default from config: standard)
   --changed                      only files changed against --base
-  --base REF                     git ref for --changed/--diff (default HEAD)
+  --base REF                     git ref for --changed (default HEAD)
   --diff FILE                    scan added lines from a unified diff ("-" = stdin)
   --no-llm                       deterministic rules only
   --deep                         run the deep LLM review
@@ -127,6 +127,7 @@ Environment:
   OLLAMA_HOST (local models)
   VIGIL_NO_LLM=1 (force deterministic-only scans)
   VIGIL_CONFIG (override the user config path)
+  VIGIL_BASE_URL and VIGIL_API_KEY belong in the user config or env, not in a project file.
 
 Exit codes:
   0 success · 1 error · 2 findings at or above --fail-on

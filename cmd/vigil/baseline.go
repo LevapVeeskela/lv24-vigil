@@ -10,6 +10,7 @@ import (
 
 	"github.com/levapveeskela/lv24-vigil/internal/app"
 	"github.com/levapveeskela/lv24-vigil/internal/model"
+	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 	"github.com/levapveeskela/lv24-vigil/internal/scanner"
 )
 
@@ -54,7 +55,10 @@ func baselineList(a *app.App, args []string, stdout io.Writer) error {
 		return fmt.Errorf("baseline list takes no arguments (got %q)", positional[0])
 	}
 
-	path := baselinePath(a)
+	path, err := baselinePath(a)
+	if err != nil {
+		return err
+	}
 	baseline, err := scanner.LoadBaseline(path)
 	if err != nil {
 		return err
@@ -90,7 +94,10 @@ func baselineAdd(a *app.App, args []string, stdout io.Writer) error {
 		return errors.New("usage: vigil baseline add FINDING_ID [--reason TEXT]")
 	}
 
-	path := baselinePath(a)
+	path, err := baselinePath(a)
+	if err != nil {
+		return err
+	}
 	baseline, err := scanner.LoadBaseline(path)
 	if err != nil {
 		return err
@@ -135,7 +142,10 @@ func baselineRemove(a *app.App, args []string, stdout io.Writer) error {
 		return errors.New("usage: vigil baseline remove FINDING_ID")
 	}
 
-	path := baselinePath(a)
+	path, err := baselinePath(a)
+	if err != nil {
+		return err
+	}
 	baseline, err := scanner.LoadBaseline(path)
 	if err != nil {
 		return err
@@ -196,7 +206,10 @@ func baselineClear(a *app.App, args []string, stdout io.Writer) error {
 		return errors.New("refusing to clear the baseline; pass --yes to confirm")
 	}
 
-	path := baselinePath(a)
+	path, err := baselinePath(a)
+	if err != nil {
+		return err
+	}
 	if err := scanner.SaveBaseline(path, scanner.NewBaseline()); err != nil {
 		return err
 	}
@@ -205,15 +218,22 @@ func baselineClear(a *app.App, args []string, stdout io.Writer) error {
 }
 
 // baselinePath resolves the configured baseline file against the project root.
-func baselinePath(a *app.App) string {
+// The path is always confined to the root (including through symlinks); an
+// absolute path is rejected even in the user config so the baseline cannot be
+// used as an arbitrary-file read or write primitive.
+func baselinePath(a *app.App) (string, error) {
 	path := strings.TrimSpace(a.Config.Scan.Baseline)
 	if path == "" {
 		path = scanner.DefaultBaselineFile
 	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(a.Root, path)
+	if filepath.IsAbs(path) {
+		return "", fmt.Errorf("baseline path %q must be relative to the project root", path)
 	}
-	return filepath.Clean(path)
+	resolved, err := safepath.Resolve(a.Root, path)
+	if err != nil {
+		return "", fmt.Errorf("baseline path %q: %w", path, err)
+	}
+	return resolved, nil
 }
 
 // lookupFinding searches the last scan and then recent history for a finding.

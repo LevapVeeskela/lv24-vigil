@@ -62,6 +62,23 @@ func TestStatusJSONShape(t *testing.T) {
 	}
 }
 
+func TestStatusRedactsBaseURLSecrets(t *testing.T) {
+	newTestRepo(t)
+	t.Setenv("VIGIL_BASE_URL", "https://user:password@example.test/v1?api_key=sk-url-secret&safe=1")
+
+	for _, args := range [][]string{{"status"}, {"status", "--json"}} {
+		out, stderr, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v: %v\nstderr:\n%s", args, err, stderr)
+		}
+		for _, secret := range []string{"password", "sk-url-secret"} {
+			if strings.Contains(out, secret) {
+				t.Errorf("%v leaked %q:\n%s", args, secret, out)
+			}
+		}
+	}
+}
+
 func TestStatusHumanOutput(t *testing.T) {
 	newTestRepo(t)
 

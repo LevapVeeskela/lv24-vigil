@@ -19,6 +19,7 @@ import (
 
 	"github.com/levapveeskela/lv24-vigil/internal/gitutil"
 	"github.com/levapveeskela/lv24-vigil/internal/model"
+	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 )
 
 const (
@@ -53,11 +54,36 @@ func Open(root string) (*Store, error) {
 	abs = filepath.Clean(abs)
 
 	var dir string
-	if info, err := os.Stat(filepath.Join(abs, ".vigil")); err == nil && info.IsDir() {
+	unsafeVigil := false
+	vigilPath := filepath.Join(abs, ".vigil")
+	if info, err := os.Lstat(vigilPath); err == nil {
+		isLink := info.Mode()&os.ModeSymlink != 0
+		if !isLink {
+			// Windows junctions are reparse points but not ModeSymlink.
+			if _, rerr := os.Readlink(vigilPath); rerr == nil {
+				isLink = true
+			}
+		}
+		if isLink || info.IsDir() {
+			// .vigil (or its scans subdirectory) can be a symlink or junction
+			// in a hostile repository. Only use it when the whole path resolves
+			// inside the project; otherwise fall back to the user cache instead
+			// of writing scan history outside the tree.
+			if resolved, rerr := safepath.Resolve(abs, ".vigil/scans"); rerr == nil {
+				dir = resolved
+			} else {
+				unsafeVigil = true
+			}
+		} else {
+			// .vigil exists but is not a directory (for example a hostile
+			// placeholder file); do not let it break the whole scan.
+			unsafeVigil = true
+		}
+	}
+	if dir == "" && !unsafeVigil && isGitRoot(abs) {
 		dir = filepath.Join(abs, ".vigil", "scans")
-	} else if isGitRoot(abs) {
-		dir = filepath.Join(abs, ".vigil", "scans")
-	} else {
+	}
+	if dir == "" {
 		cache, err := os.UserCacheDir()
 		if err != nil {
 			return nil, fmt.Errorf("store: resolve cache directory: %w", err)
@@ -155,7 +181,7 @@ func (s *Store) Get(id string) (*model.ScanResult, error) {
 	if !validID(id) {
 		return nil, fmt.Errorf("store: invalid scan id %q", id)
 	}
-	data, err := os.ReadFile(filepath.Join(s.dir, id+".json"))
+	data, err := readRegularFile(filepath.Join(s.dir, id+".json"))
 	if err != nil {
 		return nil, fmt.Errorf("store: read scan %s: %w", id, err)
 	}
@@ -271,7 +297,7 @@ func (s *Store) entries() ([]scanEntry, error) {
 		if info, err := de.Info(); err == nil {
 			started = info.ModTime()
 		}
-		if data, err := os.ReadFile(filepath.Join(s.dir, name)); err == nil {
+		if data, err := readRegularFile(filepath.Join(s.dir, name)); err == nil {
 			var head struct {
 				StartedAt time.Time `json:"startedAt"`
 			}
@@ -308,7 +334,7 @@ func (s *Store) ensureLast(kept []scanEntry) error {
 }
 
 func (s *Store) readLastID() (string, error) {
-	data, err := os.ReadFile(filepath.Join(s.dir, lastFile))
+	data, err := readRegularFile(filepath.Join(s.dir, lastFile))
 	if err != nil {
 		return "", err
 	}
@@ -370,6 +396,20 @@ func newScanID() string {
 			fmt.Sprintf("%06x", time.Now().UnixNano()&0xffffff)
 	}
 	return "scan_" + time.Now().UTC().Format("20060102T150405") + "_" + hex.EncodeToString(b[:])
+}
+
+// readRegularFile refuses FIFOs, devices and directories. A hostile repository
+// can pre-create them in .vigil/scans; opening a FIFO would block the scan
+// indefinitely.
+func readRegularFile(path string) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	return os.ReadFile(path)
 }
 
 func writeAtomic(path string, data []byte, perm os.FileMode) error {

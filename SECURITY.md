@@ -69,7 +69,8 @@ The design assumptions are documented in
 - deterministic scans are local and make no network calls;
 - LLM features send context only to the endpoint the user configures;
 - scans are read-only by default;
-- only `vigil_fix` with `apply=true` writes files, and it never commits;
+- only `vigil_fix` with `apply=true` writes source files, and it never commits;
+  the baseline, report and init commands write only their own artifacts;
 - detected secrets are masked in output;
 - scanned code is treated as untrusted input in every prompt;
 - model-proposed paths, lines and diffs are validated before use.

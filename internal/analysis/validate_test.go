@@ -66,6 +66,14 @@ func TestValidateDiffRejectsBinary(t *testing.T) {
 	}
 }
 
+func TestValidateDiffRejectsSymlinkPatch(t *testing.T) {
+	root := t.TempDir()
+	diff := "diff --git a/link b/link\nnew file mode 120000\n--- /dev/null\n+++ b/link\n@@ -0,0 +1 @@\n+../../outside\n"
+	if err := ValidateDiff(root, diff); err == nil {
+		t.Fatal("expected a symlink patch to be rejected")
+	}
+}
+
 func TestValidateDiffRejectsBadHunkCounts(t *testing.T) {
 	root := t.TempDir()
 	diff := "--- a/auth.go\n+++ b/auth.go\n@@ -1,3 +1,3 @@\n-old\n+new\n"

@@ -230,7 +230,9 @@ http_get() {
             --connect-timeout 15 --retry 2 --retry-delay 1 --max-redirs 5 \
             --max-time 300 -o "$destination" "$url"
     else
-        "$WGET" -q -T 30 -t 2 -O "$destination" "$url"
+        # --https-only prevents a redirect from downgrading the download to
+        # plain HTTP; --max-redirect keeps the chain bounded.
+        "$WGET" -q -T 30 -t 2 --https-only --max-redirect=5 -O "$destination" "$url"
     fi
 }
 
@@ -253,13 +255,13 @@ api_get() {
         "$CURL" "${args[@]}" -o "$destination" "$API_ROOT$path"
     else
         if [ -n "${GITHUB_TOKEN:-}" ]; then
-            "$WGET" -q -T 30 -t 2 -O "$destination" \
+            "$WGET" -q -T 30 -t 2 --https-only --max-redirect=5 -O "$destination" \
                 --header='Accept: application/vnd.github+json' \
                 --header='User-Agent: lv24-vigil-installer' \
                 --header="Authorization: Bearer $GITHUB_TOKEN" \
                 "$API_ROOT$path"
         else
-            "$WGET" -q -T 30 -t 2 -O "$destination" \
+            "$WGET" -q -T 30 -t 2 --https-only --max-redirect=5 -O "$destination" \
                 --header='Accept: application/vnd.github+json' \
                 --header='User-Agent: lv24-vigil-installer' \
                 "$API_ROOT$path"

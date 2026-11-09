@@ -28,7 +28,13 @@ type Server struct {
 	prompts   map[string]Prompt
 	writerMu  sync.Mutex
 	out       io.Writer
+	sem       chan struct{}
 }
+
+// maxConcurrentRequests bounds in-flight tool calls. A hostile client can send
+// many lines quickly; without backpressure each line would start a goroutine
+// and an expensive scan, exhausting memory and CPU.
+const maxConcurrentRequests = 16
 
 type registeredResource struct {
 	resource Resource
@@ -48,6 +54,7 @@ func NewServer(name, version, title string) *Server {
 		tools:     map[string]Tool{},
 		resources: map[string]registeredResource{},
 		prompts:   map[string]Prompt{},
+		sem:       make(chan struct{}, maxConcurrentRequests),
 	}
 }
 
@@ -113,7 +120,18 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 			s.handleNotification(ctx, req)
 			continue
 		}
-		go s.handleRequest(ctx, req)
+		// Backpressure: wait for a free slot before starting another handler.
+		// A nil channel (a Server built as a struct literal in a test) means
+		// no limit.
+		if s.sem != nil {
+			s.sem <- struct{}{}
+		}
+		go func(req Request) {
+			if s.sem != nil {
+				defer func() { <-s.sem }()
+			}
+			s.handleRequest(ctx, req)
+		}(req)
 	}
 	if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
 		return err
@@ -127,12 +145,24 @@ func (s *Server) handleNotification(ctx context.Context, req Request) {
 		// Nothing to do: requests are short-lived and cancellation is best
 		// effort through the client closing the stream.
 	default:
-		s.Logger.Debug("unhandled notification", "method", req.Method)
+		if s.Logger != nil {
+			s.Logger.Debug("unhandled notification", "method", req.Method)
+		}
 	}
 }
 
 func (s *Server) handleRequest(ctx context.Context, req Request) {
 	resp := Response{JSONRPC: JSONRPC, ID: req.ID}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			if s.Logger != nil {
+				s.Logger.Error("handler panicked", "method", req.Method, "panic", recovered)
+			}
+			resp.Result = nil
+			resp.Error = NewError(CodeInternalError, "internal error: %v", recovered)
+			s.write(resp)
+		}
+	}()
 	result, rpcErr := s.dispatch(ctx, req)
 	if rpcErr != nil {
 		resp.Error = rpcErr
@@ -230,7 +260,9 @@ func (s *Server) callTool(ctx context.Context, raw json.RawMessage) (any, *RPCEr
 	}
 	result, err := tool.Handler(ctx, params.Arguments)
 	if err != nil {
-		s.Logger.Warn("tool failed", "tool", params.Name, "error", err)
+		if s.Logger != nil {
+			s.Logger.Warn("tool failed", "tool", params.Name, "error", err)
+		}
 		return TextError("%v", err), nil
 	}
 	if result == nil {
@@ -304,7 +336,9 @@ func (s *Server) getPrompt(ctx context.Context, raw json.RawMessage) (any, *RPCE
 func (s *Server) write(resp Response) {
 	data, err := json.Marshal(resp)
 	if err != nil {
-		s.Logger.Error("marshal response", "error", err)
+		if s.Logger != nil {
+			s.Logger.Error("marshal response", "error", err)
+		}
 		return
 	}
 	s.writerMu.Lock()

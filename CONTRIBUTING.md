@@ -48,6 +48,7 @@ change is discussed first.
 | `internal/report/` | Markdown, JSON, SARIF and HTML renderers |
 | `internal/mcp/` | MCP transport and JSON-RPC types |
 | `internal/tools/` | MCP tool, resource and prompt registration |
+| `internal/safepath/` | repository-relative path validation and symlink-safe resolution |
 | `internal/app/` | wiring of config, scanner, analyzer and store |
 
 Dependencies flow inward. `rules` and `model` must not import the CLI, the MCP

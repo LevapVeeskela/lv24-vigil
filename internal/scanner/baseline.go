@@ -19,6 +19,9 @@ const DefaultBaselineFile = ".vigil-baseline.json"
 // BaselineVersion is the on-disk schema version.
 const BaselineVersion = 1
 
+// maxBaselineBytes bounds a baseline file before it is read into memory.
+const maxBaselineBytes = 8 << 20
+
 // Baseline records findings that have been reviewed and accepted. Matching is
 // intentionally loose: a fingerprint survives small line moves, an ID is an
 // exact match.
@@ -46,10 +49,20 @@ func NewBaseline() *Baseline {
 // LoadBaseline reads a baseline file. A missing or empty file is an empty
 // baseline, not an error, so first runs do not need special cases.
 func LoadBaseline(path string) (*Baseline, error) {
-	data, err := os.ReadFile(path)
+	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return NewBaseline(), nil
 	}
+	if err != nil {
+		return nil, fmt.Errorf("stat baseline %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("baseline %s is not a regular file", path)
+	}
+	if info.Size() > maxBaselineBytes {
+		return nil, fmt.Errorf("baseline %s is larger than %d bytes", path, maxBaselineBytes)
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read baseline %s: %w", path, err)
 	}

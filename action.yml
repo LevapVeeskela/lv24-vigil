@@ -9,7 +9,7 @@ author: "LV24"
 # with code 2 because findings were found):
 #
 #   - id: vigil
-#     uses: LevapVeeskela/lv24-vigil@v1
+#     uses: LevapVeeskela/lv24-vigil@v0.1.0
 #     with:
 #       path: .
 #       fail-on: high

@@ -10,7 +10,8 @@ where the boundaries are.
    crash reporter.
 2. **Deterministic before probabilistic.** Rules run first and produce findings
    without a model. A model outage cannot hide them.
-3. **Read-only by default.** A scan never writes to the scanned tree.
+3. **Read-only by default.** A scan never modifies source files; it writes only
+   its own history under `.vigil/scans` or the user cache.
 4. **Least context.** LLM features send only the context needed for the task, to
    the endpoint you configure.
 5. **Treat code as untrusted.** Every prompt delimits repository content as data
@@ -70,14 +71,16 @@ Scanned code is untrusted input. Vigil:
 
 - wraps code in `<untrusted_code path="..."> ... </untrusted_code>` delimiters;
 - neutralises tag-looking text inside the excerpt so it cannot close the
-  delimiter;
+  delimiter, and a hostile repository cannot inject a second wrapper;
 - strips control characters;
 - uses a system prompt that tells the model the content is data, never
   instructions;
 - tells the model not to reveal, repeat or invent credentials;
 - validates returned paths and line ranges against the real files;
 - drops findings that point outside the reviewed file or repository;
-- validates a proposed diff before it can be applied.
+- validates a proposed diff before it can be applied;
+- rejects hardlinked files, because a hardlink inside the tree can reference an
+  inode outside it.
 
 The model does not get a shell, a browser, a network tool or the ability to run
 the scanned code. It returns text and structured JSON; Vigil decides what to do
@@ -88,11 +91,12 @@ review are advisory, and the deterministic evidence stays attached.
 
 ## Read-only scans and fix safety
 
-A scan never modifies the tree. It walks files, reads them, runs rules and writes
-only to the local scan store.
+A scan never modifies source files. It walks files, reads them, runs rules and
+writes only to the local scan store.
 
-Scans write nothing. The source-writing path is `vigil fix --apply` or
-`vigil_fix` with `apply=true`. Other commands write only their own artifacts:
+Scans write no source files; they write only their own history. The
+source-writing path is `vigil fix --apply` or `vigil_fix` with `apply=true`.
+Other commands write only their own artifacts:
 `vigil init` (`.vigil.yaml`), `vigil baseline` / `vigil_baseline` (the baseline
 file), and `vigil report --output` / `vigil_report` with `path` (a report file).
 
@@ -100,8 +104,11 @@ Before writing a fix, Vigil checks:
 
 - the diff is non-empty and has a file header and at least one hunk;
 - every path is relative, clean and inside the repository;
-- no path is `.git`;
-- the patch is not a binary patch;
+- no path is `.git` (case-insensitive, including Windows short forms such as
+  `.GIT` and `.git.`);
+- the patch is not a binary or symlink patch;
+- no target is a hardlinked file that could reference an inode outside the
+  repository;
 - each hunk's declared old/new line counts match its body;
 - `git apply --check` succeeds.
 
@@ -128,11 +135,12 @@ The server does not expose an HTTP port. It speaks JSON-RPC over stdio.
 ## Keys and configuration
 
 - The API key is read from `VIGIL_API_KEY` or the provider's key variable.
-- A user config may contain `api_key`; a project `.vigil.yaml` may not. Vigil
-  rejects a project file with a key.
-- `vigil status` redacts the key.
-- Provider error messages redact the key and bearer tokens. Response bodies are
-  capped at 4 MiB.
+- A user config may contain `api_key` and `base_url`; a project `.vigil.yaml`
+  may not. Vigil rejects a project file that sets either.
+- `vigil status` redacts the key and any userinfo or key-shaped query parameter
+  in the base URL.
+- Provider error messages redact the key, bearer tokens and URL userinfo.
+  Response bodies are capped at 4 MiB.
 - Keys are never written to scan results or reports.
 
 Use a key with the minimum scope your provider allows. For CI, use a dedicated

@@ -106,6 +106,13 @@ func runScanLike(name string, args []string, review bool, stdout, stderr io.Writ
 		return err
 	}
 	outputPath := firstNonEmpty(o.output, a.Config.Output.Path)
+	if o.output == "" && outputPath != "" {
+		resolved, rerr := resolveConfigOutputPath(a.Root, outputPath)
+		if rerr != nil {
+			return rerr
+		}
+		outputPath = resolved
+	}
 	color := useColor(firstNonEmpty(o.color, a.Config.Output.Color), stdout)
 	if o.threatModel && !a.LLM {
 		fmt.Fprintln(stderr, "vigil: warning: --threat-model needs a configured model; skipping the threat model")

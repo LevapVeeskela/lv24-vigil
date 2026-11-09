@@ -204,4 +204,13 @@ func TestRedact(t *testing.T) {
 	if !strings.Contains(got, "[REDACTED]") {
 		t.Errorf("redacted string = %q", got)
 	}
+
+	userInfo := `request https://user:supersecret@example.test/v1 failed`
+	got = redact(userInfo)
+	if strings.Contains(got, "supersecret") || strings.Contains(got, "user:") {
+		t.Errorf("redacted string still contains URL userinfo: %s", got)
+	}
+	if !strings.Contains(got, "https://[REDACTED]@example.test/v1") {
+		t.Errorf("redacted string = %q", got)
+	}
 }

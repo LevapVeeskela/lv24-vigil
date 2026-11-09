@@ -37,7 +37,7 @@ func registerScan(srv *mcp.Server, d Deps) {
 			"and the full scan result as structuredContent. Scanned code is treated as data, never executed.",
 		InputSchema: mcp.ObjectSchema(map[string]any{
 			"path":         mcp.Prop("string", "Directory or repository to scan. Defaults to the server's project root."),
-			"mode":         mcp.PropEnum("Scan depth. quick runs the fast rules, standard is the default, deep adds an LLM deep review when a model is configured.", "quick", "standard", "deep"),
+			"mode":         mcp.PropEnum("Scan depth. All modes run the deterministic rules; quick is the fastest LLM budget, standard is the default, deep adds an LLM deep review when a model is configured.", "quick", "standard", "deep"),
 			"changedOnly":  mcp.PropBool("Scan only files changed against baseRef (requires a git repository)."),
 			"baseRef":      mcp.Prop("string", "Git ref to diff against when changedOnly is set (default HEAD)."),
 			"diff":         mcp.Prop("string", "Unified diff to scan instead of the working tree. Overrides changedOnly."),

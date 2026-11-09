@@ -75,6 +75,7 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 		sources[key] = value
 	}
 
+	baseline, baselineErr := baselinePath(a)
 	report := statusReport{
 		Version:     version.Version,
 		Commit:      version.Commit,
@@ -83,18 +84,21 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 		Root:        a.Root,
 		Provider:    a.Config.Provider,
 		Model:       a.Config.Model,
-		BaseURL:     a.Config.BaseURL,
+		BaseURL:     config.RedactURL(a.Config.BaseURL),
 		APIKeySet:   a.Config.APIKey != "",
 		LLM:         a.LLM,
 		LLMStatus:   llmStatus(a.LLM, a.Config.Provider),
 		Rules:       len(a.Registry.Metas()),
 		ScanStore:   a.Store.Dir(),
-		Baseline:    baselinePath(a),
+		Baseline:    baseline,
 		ConfigFiles: append([]string{}, a.Config.ConfigFiles...),
 		Sources:     sources,
 		Warnings:    append([]string{}, a.Warnings...),
 	}
 
+	if baselineErr != nil {
+		report.Warnings = append(report.Warnings, "baseline: "+baselineErr.Error())
+	}
 	if userPath, err := config.UserConfigPath(); err == nil {
 		report.UserConfig = userPath
 		if _, statErr := os.Stat(userPath); statErr == nil {

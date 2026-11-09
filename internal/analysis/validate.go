@@ -3,10 +3,13 @@ package analysis
 import (
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 )
 
 // diffHunk tracks the declared and observed line counts of one unified-diff
@@ -75,6 +78,9 @@ func ValidateDiff(root, diff string) error {
 	for _, line := range lines {
 		if strings.HasPrefix(line, "GIT binary patch") || strings.HasPrefix(line, "Binary files ") {
 			return errors.New("binary diffs are not accepted")
+		}
+		if strings.HasPrefix(line, "new file mode 120000") {
+			return errors.New("symlink patches are not accepted")
 		}
 	}
 
@@ -245,8 +251,21 @@ func validateDiffPath(root, raw string) error {
 	if _, ok := cleanRelativePath(p); !ok {
 		return fmt.Errorf("unsafe diff path %q: paths must be relative, clean and outside .git", raw)
 	}
-	if _, ok := insideRoot(root, p); !ok {
+	target, ok := insideRoot(root, p)
+	if !ok {
 		return fmt.Errorf("diff path %q escapes the scan root", raw)
+	}
+	// A hardlink inside the tree can point at a file outside it. Reject an
+	// existing multi-linked target before git apply writes through it.
+	multi, err := safepath.HasMultipleLinks(target)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("diff path %q: cannot verify the target: %w", raw, err)
+	}
+	if multi {
+		return fmt.Errorf("diff path %q is a hardlinked file", raw)
 	}
 	return nil
 }

@@ -13,12 +13,18 @@ import (
 
 	"github.com/levapveeskela/lv24-vigil/internal/config"
 	"github.com/levapveeskela/lv24-vigil/internal/rules"
+	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 )
 
 // DefaultMaxFileBytes is the size limit applied when Options.MaxFileBytes is
 // unset. Larger files are skipped: a security scanner should not read a
 // multi-gigabyte blob into memory by accident.
 const DefaultMaxFileBytes int64 = 2 << 20
+
+// MaxAllowedFileBytes caps a configured per-file limit. A hostile project
+// config must not be able to raise the limit to a multi-gigabyte value and
+// exhaust memory during a scan.
+const MaxAllowedFileBytes int64 = 64 << 20
 
 const binarySniffBytes = 8 << 10
 
@@ -45,6 +51,7 @@ var (
 	errSkipTooLarge = errors.New("file exceeds size limit")
 	errSkipSpecial  = errors.New("not a regular file")
 	errSkipSymlink  = errors.New("symlink")
+	errSkipHardlink = errors.New("hardlinked file")
 )
 
 type walkResult struct {
@@ -230,6 +237,16 @@ func loadFile(absPath, relPath string, maxBytes int64, followLinks bool) (*rules
 	if !info.Mode().IsRegular() {
 		return nil, errSkipSpecial
 	}
+	// A hardlink can point at a file outside the repository; reading it would
+	// leak that file into findings or a model prompt, and writing it would
+	// modify it. Git does not track hardlinks, so this is safe to reject.
+	multi, linkErr := safepath.HasMultipleLinks(absPath)
+	if linkErr != nil {
+		return nil, fmt.Errorf("check links for %s: %w", relPath, linkErr)
+	}
+	if multi {
+		return nil, errSkipHardlink
+	}
 	if info.Size() > maxBytes {
 		return nil, errSkipTooLarge
 	}
@@ -265,6 +282,9 @@ func effectiveMaxFileBytes(n int64) int64 {
 	if n <= 0 {
 		return DefaultMaxFileBytes
 	}
+	if n > MaxAllowedFileBytes {
+		return MaxAllowedFileBytes
+	}
 	return n
 }
 
@@ -272,7 +292,8 @@ func isSkipError(err error) bool {
 	return errors.Is(err, errSkipBinary) ||
 		errors.Is(err, errSkipTooLarge) ||
 		errors.Is(err, errSkipSpecial) ||
-		errors.Is(err, errSkipSymlink)
+		errors.Is(err, errSkipSymlink) ||
+		errors.Is(err, errSkipHardlink)
 }
 
 // hasHardSkipSegment reports whether any path segment is a directory that the

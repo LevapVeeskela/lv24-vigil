@@ -273,7 +273,7 @@ func pbCSRFDisabledRule(f *File) []model.Finding {
 }
 
 func pbDefaultPasswordRule(f *File) []model.Finding {
-	if pbDocsPath(f.Path) {
+	if pbDocsPath(f.Path) || pbTranslationCatalog(f.Path) {
 		return nil
 	}
 	typeOnly := pbTypeOnlyLines(f)
@@ -398,6 +398,22 @@ func pbIsAllCaps(s string) bool {
 		}
 	}
 	return hasLetter
+}
+
+// pbTranslationCatalog reports whether path is a UI translation catalog. A
+// locale entry such as "auth.login.password": "Password" is a label, not a
+// default credential; flagging it as a critical finding is pure noise.
+func pbTranslationCatalog(path string) bool {
+	p := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
+	for _, marker := range []string{
+		"i18n/", "locales/", "locale/", "translations/", "translation/",
+		"l10n/", "lang/", "langs/",
+	} {
+		if strings.Contains(p, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // pbUnquotedDefaultAllowed reports whether a bare word on the right of an

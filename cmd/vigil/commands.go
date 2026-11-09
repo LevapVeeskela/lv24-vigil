@@ -15,6 +15,7 @@ import (
 
 	"github.com/levapveeskela/lv24-vigil/internal/app"
 	"github.com/levapveeskela/lv24-vigil/internal/model"
+	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 )
 
 // stdinReader is swapped by tests that exercise --diff -.
@@ -177,11 +178,56 @@ func paint(s, code string, enabled bool) string {
 	return code + s + "\x1b[0m"
 }
 
-// writeFile writes a report or document with the conventional 0644 mode.
+// resolveConfigOutputPath resolves a relative output.path from configuration
+// against the project root and rejects a symlinked escape. An absolute path is
+// only accepted from a trusted user config; the config loader rejects one in a
+// project file. A CLI --output is user input and is not passed through here.
+func resolveConfigOutputPath(root, path string) (string, error) {
+	if path == "" || path == "-" {
+		return path, nil
+	}
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path), nil
+	}
+	resolved, err := safepath.Resolve(root, path)
+	if err != nil {
+		return "", fmt.Errorf("output.path %q: %w", path, err)
+	}
+	return resolved, nil
+}
+
+// writeFile writes a report or document with the conventional 0644 mode. It
+// writes a temporary file in the destination directory and renames it into
+// place, so a pre-existing symlink or hardlink cannot redirect the write to a
+// different file.
 func writeFile(path string, data []byte) error {
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".vigil-write-*")
+	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
+	tmpName := tmp.Name()
+	remove := true
+	defer func() {
+		if remove {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	remove = false
 	return nil
 }
 
