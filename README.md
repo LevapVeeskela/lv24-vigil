@@ -13,7 +13,7 @@ for a normal scan.
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![go](https://img.shields.io/badge/go-1.27-00ADD8)](https://go.dev/)
 
-> **Status: 0.1.0.** The deterministic engine is usable today. LLM output is
+> **Status: 0.1.4.** The deterministic engine is usable today. LLM output is
 > advisory, rule coverage is still growing, and Vigil is not a replacement for a
 > pentest. Treat every finding as a lead to verify, not a verdict.
 

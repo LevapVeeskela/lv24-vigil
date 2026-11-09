@@ -24,7 +24,7 @@ a complete list and will lag behind the code.
 | CI | `VGL-CI` | 11 | Workflow permissions, untrusted checkouts and shell injection |
 | Dependencies | `VGL-DEP` | 7 | Lockfiles, version ranges, install sources and TLS |
 
-The table counts the 129 deterministic rules in 0.1.0; `vigil rules` is always
+The table counts the 129 deterministic rules in 0.1.4; `vigil rules` is always
 current. `VGL-AI-001` is synthesized by the LLM deep review and is not part of
 the deterministic catalog, so it does not appear in `vigil rules`.
 

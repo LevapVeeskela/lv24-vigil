@@ -4,6 +4,35 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.1.4 - 2026-11-10
+
+### Changed
+
+- npm releases are published from GitHub Actions with Trusted Publishing
+  (OIDC), without a long-lived npm token. `0.1.4` is the first release
+  published end-to-end through the OIDC path.
+- Added `scripts/npm-publish-and-trust.ps1` and
+  `scripts/npm-trust-interactive.ps1` for the one-time bootstrap.
+
+## 0.1.3 - 2026-11-09
+
+### Fixed
+
+- OpenCode Go requests now send a stable `x-opencode-session` header; the
+  gateway rejects requests without it (`HTTP 400: Request is missing
+  x-opencode-session`). `VIGIL_OPENCODE_SESSION` / `OPENCODE_SESSION_ID`
+  override the generated id.
+
+## 0.1.2 - 2026-11-09
+
+### Added
+
+- First-class `opencode-go` provider (alias `opencode`): OpenAI-compatible
+  endpoint `https://opencode.ai/inference/go/openai/v1`, default model
+  `deepseek-v4.1-flash`, key from `OPENCODE_API_KEY` or
+  `OPENCODE_GO_API_KEY`. The MCP server still starts without a key and reports
+  `LLM not configured`.
+
 ## 0.1.1 - 2026-11-09
 
 Security hardening after an independent review of 0.1.0.
