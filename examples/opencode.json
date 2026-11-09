@@ -1,0 +1,9 @@
+{
+  "mcp": {
+    "vigil": {
+      "type": "local",
+      "command": ["npx", "-y", "lv24-vigil", "mcp"],
+      "enabled": true
+    }
+  }
+}

@@ -1,0 +1,35 @@
+# Project configuration for Vigil.
+#
+# This file is committed to git, so it must not contain an API key.
+# Put the key in ~/.config/vigil/config.yaml or the environment:
+#   export OPENAI_API_KEY=...
+#
+# Uncomment and set a provider/model if you do not want inference:
+# provider: openai
+# model: gpt-4.1-mini
+
+scan:
+  # quick | standard | deep
+  mode: standard
+
+  # low | medium | high | critical
+  min_severity: low
+
+  max_findings: 200
+
+  # Project-specific noise. Built-in excludes already cover node_modules,
+  # vendor, dist, build, target, virtualenvs and .vigil.
+  exclude:
+    - "fixtures/**"
+    - "testdata/**"
+
+  # Set false to make this project deterministic-only by default.
+  use_llm: true
+
+  baseline: .vigil-baseline.json
+
+output:
+  # md | json | sarif | html
+  format: md
+  color: auto
+  show_fix: true

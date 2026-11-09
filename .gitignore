@@ -1,0 +1,29 @@
+# Binaries and build output
+/bin/
+/dist/
+/vigil
+/vigil.exe
+*.exe
+*.test
+*.out
+
+# Local state
+.vigil/
+.vigil-baseline.json
+coverage.out
+coverage.html
+
+# npm build output
+/npm-out/
+/node_modules/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local config with secrets
+.vigil.local.yaml
+.env
+.env.*

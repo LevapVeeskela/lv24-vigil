@@ -1,0 +1,102 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build release artifacts
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean --skip=publish -f deploy/goreleaser.yaml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assemble release assets
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find dist -type f | while read -r file; do
+            base="$(basename "$file")"
+            case "$base" in
+              vigil_*|checksums.txt) cp "$file" "release-assets/$base" ;;
+            esac
+          done
+          count="$(find release-assets -maxdepth 1 -type f -name 'vigil_*' | wc -l | tr -d ' ')"
+          if [ "$count" -ne 6 ]; then
+            echo "expected 6 release binaries, found $count" >&2
+            exit 1
+          fi
+          if [ ! -f release-assets/checksums.txt ]; then
+            echo "checksums.txt is missing from the release assets" >&2
+            exit 1
+          fi
+          ls -l release-assets
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $TAG already exists; uploading missing assets"
+            existing="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+            for file in release-assets/*; do
+              base="$(basename "$file")"
+              if printf '%s\n' "$existing" | grep -Fxq "$base"; then
+                echo "skip existing asset $base"
+                continue
+              fi
+              gh release upload "$TAG" "$file" --repo "$GITHUB_REPOSITORY"
+            done
+          else
+            prerelease_args=()
+            case "$TAG" in
+              *-*) prerelease_args=(--prerelease) ;;
+            esac
+            gh release create "$TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Vigil ${TAG#v}" \
+              --generate-notes \
+              ${prerelease_args[@]+"${prerelease_args[@]}"}
+          fi
+
+  # npm is a separate job: a publish failure never removes the GitHub release
+  # that was already created. npm-publish.yml is also runnable by hand to
+  # re-publish an existing tag.
+  npm:
+    needs: release
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/npm-publish.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

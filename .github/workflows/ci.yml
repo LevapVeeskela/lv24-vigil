@@ -1,0 +1,125 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "LICENSE"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "LICENSE"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "Unformatted files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      - name: build
+        run: go build -o /tmp/vigil ./cmd/vigil
+
+      - name: node check and npm builder tests
+        run: |
+          node --check npm/bin/vigil.js
+          node --test npm/build.test.mjs
+
+  release-check:
+    # Mirrors the release workflow on pull requests so asset naming and npm
+    # package layout mistakes fail before a tag is cut. Snapshot only; nothing
+    # is published.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: goreleaser check
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: check -f deploy/goreleaser.yaml
+
+      - name: goreleaser snapshot build
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean --skip=publish -f deploy/goreleaser.yaml
+
+      - name: assemble release assets
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find dist -type f | while read -r file; do
+            base="$(basename "$file")"
+            case "$base" in
+              vigil_*|checksums.txt) cp "$file" "release-assets/$base" ;;
+            esac
+          done
+          count="$(find release-assets -maxdepth 1 -type f -name 'vigil_*' | wc -l | tr -d ' ')"
+          if [ "$count" -ne 6 ]; then
+            echo "expected 6 release binaries, found $count" >&2
+            exit 1
+          fi
+          if [ ! -f release-assets/checksums.txt ]; then
+            echo "checksums.txt is missing from the release assets" >&2
+            exit 1
+          fi
+          ls -l release-assets
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+
+      - name: npm packages dry run
+        run: |
+          set -euo pipefail
+          ASSET_VERSION="$(sed -n 's/.*[[:space:]]vigil_\(.*\)_linux_amd64$/\1/p' release-assets/checksums.txt | head -n1)"
+          test -n "$ASSET_VERSION"
+          node npm/build.mjs --version 0.0.0-ci --asset-version "$ASSET_VERSION" --dist release-assets --out npm-out
+          node --test npm/build.test.mjs
+          for manifest in npm-out/*/package.json npm-out/@*/*/package.json; do
+            [ -f "$manifest" ] || continue
+            (cd "$(dirname "$manifest")" && npm pack --dry-run >/dev/null)
+          done

@@ -1,0 +1,84 @@
+version: 2
+
+project_name: vigil
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: vigil
+    main: ./cmd/vigil
+    # GoReleaser appends .exe for windows itself; adding .Ext here produces
+    # .exe.exe files. Asset names must stay in sync with npm/build.mjs and the
+    # installers: vigil_<version>_<goos>_<goarch>[.exe].
+    binary: 'vigil_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/levapveeskela/lv24-vigil/internal/version.Version={{ .Version }}
+      - -X github.com/levapveeskela/lv24-vigil/internal/version.Commit={{ .Commit }}
+      - -X github.com/levapveeskela/lv24-vigil/internal/version.Date={{ .Date }}
+
+archives:
+  - id: vigil
+    ids:
+      - vigil
+    formats:
+      - binary
+    # format binary appends the platform extension (.exe) itself; .Ext is a
+    # build-only template field.
+    name_template: 'vigil_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: git
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "Bug fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Refactors
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: Documentation
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 4
+    - title: Other changes
+      order: 999
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - '^build:'
+      - 'Merge pull request'
+      - 'Merge branch'
+
+release:
+  draft: false
+  prerelease: auto
+  name_template: "Vigil {{ .Version }}"

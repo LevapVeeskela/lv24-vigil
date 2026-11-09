@@ -1,0 +1,238 @@
+name: "Vigil security scan"
+description: "Run the Vigil MCP security auditor (deterministic rules plus your own model) and expose the report path"
+author: "LV24"
+
+# Composite action. It downloads the release binary for the runner OS/arch,
+# verifies checksums.txt, runs `vigil scan`, and exposes the report path.
+# Composite actions cannot upload SARIF themselves; add the CodeQL action after
+# this step (use `if: always()` so the report is uploaded even when Vigil exits
+# with code 2 because findings were found):
+#
+#   - id: vigil
+#     uses: LevapVeeskela/lv24-vigil@v1
+#     with:
+#       path: .
+#       fail-on: high
+#   - uses: github/codeql-action/upload-sarif@v3
+#     if: always()
+#     with:
+#       sarif_file: ${{ steps.vigil.outputs.sarif }}
+
+branding:
+  icon: "shield"
+  color: "purple"
+
+inputs:
+  path:
+    description: "Repository path to scan."
+    required: false
+    default: "."
+  mode:
+    description: "Scan depth: quick, standard, or deep."
+    required: false
+    default: "standard"
+  fail-on:
+    description: "Exit with code 2 when a finding at or above this severity exists: low, medium, high, critical."
+    required: false
+    default: "high"
+  format:
+    description: "Report format: sarif, json, md, or html."
+    required: false
+    default: "sarif"
+  version:
+    description: "Vigil release tag to download, for example v1.2.3. Defaults to the latest release."
+    required: false
+    default: "latest"
+
+outputs:
+  sarif:
+    description: "Path to the generated report (SARIF by default)."
+    value: ${{ steps['scan-unix'].outputs.sarif || steps['scan-windows'].outputs.sarif }}
+  exit-code:
+    description: "Vigil exit code: 0 clean, 1 error, 2 findings at or above fail-on."
+    value: ${{ steps['scan-unix'].outputs['exit-code'] || steps['scan-windows'].outputs['exit-code'] }}
+  version:
+    description: "Downloaded Vigil release tag."
+    value: ${{ steps['binary-unix'].outputs.version || steps['binary-windows'].outputs.version }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: binary-unix
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        VIGIL_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        repo="LevapVeeskela/lv24-vigil"
+        tag="${VIGIL_VERSION:-latest}"
+        if [ "$tag" = "latest" ]; then
+          auth=()
+          if [ -n "${GH_TOKEN:-}" ]; then
+            auth=(-H "Authorization: Bearer ${GH_TOKEN}")
+          fi
+          tag="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H 'User-Agent: lv24-vigil-action' ${auth[@]+"${auth[@]}"} "https://api.github.com/repos/${repo}/releases/latest" | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+        else
+          case "$tag" in
+            v*) ;;
+            *) tag="v${tag}" ;;
+          esac
+        fi
+        [ -n "$tag" ] || { echo "vigil: could not resolve the latest release tag" >&2; exit 1; }
+        case "$tag" in
+          v[0-9]*) ;;
+          *) echo "vigil: unexpected release tag '$tag'" >&2; exit 1 ;;
+        esac
+        case "$tag" in
+          *[!0-9A-Za-z.+-]*) echo "vigil: release tag contains unexpected characters: $tag" >&2; exit 1 ;;
+        esac
+        version="${tag#v}"
+        case "$RUNNER_OS" in
+          Linux) goos="linux" ;;
+          macOS) goos="darwin" ;;
+          *) echo "vigil: unsupported runner OS $RUNNER_OS" >&2; exit 1 ;;
+        esac
+        case "$RUNNER_ARCH" in
+          X64) goarch="amd64" ;;
+          ARM64) goarch="arm64" ;;
+          *) echo "vigil: unsupported runner architecture $RUNNER_ARCH" >&2; exit 1 ;;
+        esac
+        asset="vigil_${version}_${goos}_${goarch}"
+        base="https://github.com/${repo}/releases/download/${tag}"
+        bin_dir="${RUNNER_TEMP}/vigil-bin"
+        mkdir -p "$bin_dir"
+        curl -fsSL --retry 3 -o "${bin_dir}/${asset}" "${base}/${asset}"
+        curl -fsSL --retry 3 -o "${bin_dir}/checksums.txt" "${base}/checksums.txt"
+        expected="$(awk -v name="$asset" '{ n=$2; sub(/^\*/, "", n); sub(/\r$/, "", n); if (n == name) { print tolower($1); exit } }' "${bin_dir}/checksums.txt")"
+        [ -n "$expected" ] || { echo "vigil: checksums.txt has no entry for $asset" >&2; exit 1; }
+        if command -v sha256sum >/dev/null 2>&1; then
+          actual="$(sha256sum "${bin_dir}/${asset}" | awk '{print $1}')"
+        else
+          actual="$(shasum -a 256 "${bin_dir}/${asset}" | awk '{print $1}')"
+        fi
+        [ "$actual" = "$expected" ] || { echo "vigil: checksum mismatch for $asset" >&2; exit 1; }
+        chmod +x "${bin_dir}/${asset}"
+        mv "${bin_dir}/${asset}" "${bin_dir}/vigil"
+        printf 'path=%s\n' "${bin_dir}/vigil" >> "$GITHUB_OUTPUT"
+        printf 'version=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+
+    - id: binary-windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        VIGIL_VERSION: ${{ inputs.version }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $ProgressPreference = 'SilentlyContinue'
+        $repo = 'LevapVeeskela/lv24-vigil'
+        $tag = $env:VIGIL_VERSION
+        if (-not $tag) { $tag = 'latest' }
+        $headers = @{
+          'Accept'     = 'application/vnd.github+json'
+          'User-Agent' = 'lv24-vigil-action'
+        }
+        if ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $($env:GH_TOKEN)" }
+        if ($tag -eq 'latest') {
+          $tag = (Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest" -Headers $headers -Method Get).tag_name
+        }
+        elseif (-not $tag.StartsWith('v')) {
+          $tag = "v$tag"
+        }
+        if (-not $tag) { throw 'could not resolve the latest release tag' }
+        if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$') {
+          throw "unexpected release tag '$tag'"
+        }
+        $version = $tag.TrimStart('v')
+        switch ($env:RUNNER_ARCH) {
+          'X64' { $goarch = 'amd64' }
+          'ARM64' { $goarch = 'arm64' }
+          default { throw "unsupported runner architecture $($env:RUNNER_ARCH)" }
+        }
+        $asset = "vigil_${version}_windows_${goarch}.exe"
+        $base = "https://github.com/$repo/releases/download/$tag"
+        $binDir = Join-Path $env:RUNNER_TEMP 'vigil-bin'
+        New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+        Invoke-WebRequest -Uri "$base/$asset" -OutFile (Join-Path $binDir $asset) -UseBasicParsing
+        Invoke-WebRequest -Uri "$base/checksums.txt" -OutFile (Join-Path $binDir 'checksums.txt') -UseBasicParsing
+        $expected = $null
+        foreach ($line in Get-Content -LiteralPath (Join-Path $binDir 'checksums.txt')) {
+          $parts = $line.Trim() -split '\s+', 2
+          if ($parts.Count -eq 2 -and $parts[1].TrimStart('*') -eq $asset) {
+            $expected = $parts[0].ToLowerInvariant()
+            break
+          }
+        }
+        if (-not $expected) { throw "checksums.txt has no entry for $asset" }
+        $actual = (Get-FileHash -LiteralPath (Join-Path $binDir $asset) -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $expected) { throw "checksum mismatch for $asset" }
+        Move-Item -LiteralPath (Join-Path $binDir $asset) -Destination (Join-Path $binDir 'vigil.exe') -Force
+        $encoding = New-Object System.Text.UTF8Encoding($false)
+        $out = "path=$(Join-Path $binDir 'vigil.exe')`nversion=$tag`n"
+        [IO.File]::AppendAllText($env:GITHUB_OUTPUT, $out, $encoding)
+
+    - id: scan-unix
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        VIGIL_PATH: ${{ inputs.path }}
+        VIGIL_MODE: ${{ inputs.mode }}
+        VIGIL_FAIL_ON: ${{ inputs['fail-on'] }}
+        VIGIL_FORMAT: ${{ inputs.format }}
+      run: |
+        set -uo pipefail
+        bin="${RUNNER_TEMP}/vigil-bin/vigil"
+        if [ ! -x "$bin" ]; then
+          echo "vigil: downloaded binary not found at $bin" >&2
+          exit 1
+        fi
+        format="${VIGIL_FORMAT:-sarif}"
+        case "$format" in
+          sarif|json|md|html) ;;
+          *) echo "vigil: unsupported format '$format' (use sarif, json, md or html)" >&2; exit 1 ;;
+        esac
+        if [ "$format" = "sarif" ]; then
+          out="vigil.sarif"
+        else
+          out="vigil.${format}"
+        fi
+        out_path="${GITHUB_WORKSPACE}/${out}"
+        set +e
+        "$bin" scan --path "$VIGIL_PATH" --mode "$VIGIL_MODE" --format "$format" --output "$out_path" --fail-on "$VIGIL_FAIL_ON"
+        code=$?
+        set -e
+        printf 'sarif=%s\n' "$out_path" >> "$GITHUB_OUTPUT"
+        printf 'exit-code=%s\n' "$code" >> "$GITHUB_OUTPUT"
+        exit "$code"
+
+    - id: scan-windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        VIGIL_PATH: ${{ inputs.path }}
+        VIGIL_MODE: ${{ inputs.mode }}
+        VIGIL_FAIL_ON: ${{ inputs['fail-on'] }}
+        VIGIL_FORMAT: ${{ inputs.format }}
+      run: |
+        $bin = Join-Path $env:RUNNER_TEMP 'vigil-bin\vigil.exe'
+        if (-not (Test-Path -LiteralPath $bin)) { throw "vigil binary not found at $bin" }
+        $format = $env:VIGIL_FORMAT
+        if (-not $format) { $format = 'sarif' }
+        if ($format -notin @('sarif', 'json', 'md', 'html')) {
+          throw "unsupported format '$format' (use sarif, json, md or html)"
+        }
+        if ($format -eq 'sarif') {
+          $out = 'vigil.sarif'
+        }
+        else {
+          $out = "vigil.$format"
+        }
+        $outPath = Join-Path $env:GITHUB_WORKSPACE $out
+        & $bin scan --path $env:VIGIL_PATH --mode $env:VIGIL_MODE --format $format --output $outPath --fail-on $env:VIGIL_FAIL_ON
+        $code = $LASTEXITCODE
+        if ($null -eq $code) { $code = 1 }
+        $encoding = New-Object System.Text.UTF8Encoding($false)
+        [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "sarif=$outPath`nexit-code=$code`n", $encoding)
+        exit $code
