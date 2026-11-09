@@ -27,3 +27,7 @@ Thumbs.db
 .vigil.local.yaml
 .env
 .env.*
+
+# Local release asset downloads
+/dist-*/
+
