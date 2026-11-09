@@ -39,3 +39,24 @@ output:
 # provider: opencode-go
 # model: deepseek-v4.1-flash
 # base_url: https://opencode.ai/inference/go/openai/v1
+
+# The `command` provider runs a local CLI with its own authentication (for
+# example `opencode run`). It cannot be configured in this committed file:
+# `command`, `command_env`, `command_prompt_mode` and `command_output` are
+# rejected here on purpose. Put them in ~/.config/vigil/config.yaml:
+#
+#   provider: command
+#   model: opencode-go/deepseek-v4.1-flash
+#   command:
+#     - opencode
+#     - run
+#     - --format
+#     - json
+#     - --model
+#     - opencode-go/deepseek-v4.1-flash
+#     - --agent
+#     - plan
+#     - "{prompt}"
+#   command_output: opencode-json
+#
+# See docs/providers.md for stdin mode, timeouts and the security notes.

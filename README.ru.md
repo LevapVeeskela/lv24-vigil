@@ -189,6 +189,7 @@ args = ["-y", "lv24-vigil", "mcp"]
 | OpenCode Go | `opencode-go` | `OPENCODE_API_KEY` | `deepseek-v4.1-flash` |
 | Ollama | `ollama` | не нужен | `qwen2.5-coder:14b` |
 | LM Studio | `lmstudio` | не нужен | `local-model` |
+| Локальный CLI | `command` | не нужен | `command` (произвольная метка) |
 | OpenAI-совместимый | `custom` | `VIGIL_API_KEY` | задайте `VIGIL_MODEL` |
 
 Локальные модели:
@@ -197,6 +198,20 @@ args = ["-y", "lv24-vigil", "mcp"]
 VIGIL_PROVIDER=ollama VIGIL_MODEL=qwen2.5-coder:14b vigil scan
 VIGIL_PROVIDER=lmstudio VIGIL_MODEL=local-model vigil scan
 ```
+
+Провайдер `command` переиспользует уже авторизованный локальный CLI (например,
+`opencode run`) и не хранит API-ключ. Настройте его в пользовательском конфиге:
+
+```yaml
+provider: command
+model: opencode-go/deepseek-v4.1-flash
+command: ["opencode", "run", "--format", "json", "--model", "opencode-go/deepseek-v4.1-flash", "--agent", "plan", "{prompt}"]
+command_output: opencode-json
+```
+
+Команда выполняется с вашими правами; используйте агент без инструментов
+(`--agent plan`). Проектный `.vigil.yaml` намеренно не может задать `command`
+или `command_env`.
 
 `OLLAMA_HOST` указывает на нестандартный Ollama. `VIGIL_BASE_URL` переопределяет
 endpoint любого провайдера; для `custom` он обязателен. Полный справочник:
@@ -259,13 +274,13 @@ vigil review --base origin/main --format sarif --fail-on high > vigil.sarif
 вызывает CLI напрямую, поэтому работает на любом runner.
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
   with: { fetch-depth: 0 }
 - run: npx -y lv24-vigil review --base origin/${{ github.base_ref }} --format sarif --fail-on high > vigil.sarif
   env:
     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 - if: always()
-  uses: github/codeql-action/upload-sarif@v3
+  uses: github/codeql-action/upload-sarif@v4
   with: { sarif_file: vigil.sarif }
 ```
 

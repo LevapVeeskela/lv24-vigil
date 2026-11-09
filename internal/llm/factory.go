@@ -84,6 +84,7 @@ var providerNames = []string{
 	config.ProviderLMStudio,
 	config.ProviderCustom,
 	config.ProviderOpenCodeGo,
+	config.ProviderCommand,
 }
 
 // New builds the provider client described by cfg. A missing provider, model
@@ -101,7 +102,7 @@ func New(cfg config.Config, logger *slog.Logger) (Client, error) {
 				strings.Join(detected, ", "))
 		}
 		return nil, fmt.Errorf(
-			"no LLM provider configured: set VIGIL_PROVIDER and VIGIL_API_KEY, or one of ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, GROQ_API_KEY, DEEPSEEK_API_KEY, MISTRAL_API_KEY, XAI_API_KEY, OLLAMA_HOST")
+			"no LLM provider configured: set VIGIL_PROVIDER and VIGIL_API_KEY (or VIGIL_COMMAND for the command provider), or one of ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, GROQ_API_KEY, DEEPSEEK_API_KEY, MISTRAL_API_KEY, XAI_API_KEY, OLLAMA_HOST")
 	}
 	if !isKnownProvider(provider) {
 		return nil, fmt.Errorf("unknown LLM provider %q (use one of: %s)", cfg.Provider, strings.Join(providerNames, ", "))
@@ -109,7 +110,17 @@ func New(cfg config.Config, logger *slog.Logger) (Client, error) {
 
 	model := strings.TrimSpace(cfg.Model)
 	if model == "" {
-		return nil, fmt.Errorf("provider %q requires a model (set VIGIL_MODEL)", provider)
+		if provider == config.ProviderCommand {
+			model = config.DefaultCommandModel
+		} else {
+			return nil, fmt.Errorf("provider %q requires a model (set VIGIL_MODEL)", provider)
+		}
+	}
+
+	// The command provider runs a local CLI with its own authentication. It
+	// has no endpoint and no key, so it is built before the HTTP settings.
+	if provider == config.ProviderCommand {
+		return newCommandClient(cfg, model, logger)
 	}
 
 	apiKey := strings.TrimSpace(cfg.APIKey)
@@ -216,6 +227,10 @@ func providerAppearsConfigured(provider string) bool {
 	switch provider {
 	case config.ProviderOllama, config.ProviderLMStudio:
 		return true
+	case config.ProviderCommand:
+		// Never inferred from the environment: only an explicit
+		// VIGIL_PROVIDER=command reaches this branch.
+		return true
 	case config.ProviderCustom:
 		return strings.TrimSpace(os.Getenv("VIGIL_BASE_URL")) != "" ||
 			strings.TrimSpace(os.Getenv("VIGIL_API_KEY")) != ""
@@ -248,7 +263,7 @@ func isKnownProvider(provider string) bool {
 // OpenAI-compatible servers (ollama, lmstudio, custom) may run without a key.
 func requiresAPIKey(provider string) bool {
 	switch provider {
-	case config.ProviderOllama, config.ProviderLMStudio, config.ProviderCustom:
+	case config.ProviderOllama, config.ProviderLMStudio, config.ProviderCustom, config.ProviderCommand:
 		return false
 	default:
 		return true

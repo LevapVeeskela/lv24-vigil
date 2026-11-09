@@ -20,6 +20,8 @@ func clearEnv(t *testing.T) {
 		"VIGIL_MAX_TOKENS", "VIGIL_TEMPERATURE", "VIGIL_MAX_STEPS", "VIGIL_TIMEOUT",
 		"VIGIL_MODE", "VIGIL_MIN_SEVERITY", "VIGIL_MAX_FINDINGS", "VIGIL_CONCURRENCY",
 		"VIGIL_FORMAT", "VIGIL_USE_LLM", "VIGIL_NO_LLM",
+		"VIGIL_COMMAND", "VIGIL_COMMAND_PROMPT_MODE", "VIGIL_COMMAND_OUTPUT",
+		"VIGIL_COMMAND_TIMEOUT",
 		"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY",
 		"OPENROUTER_API_KEY", "DEEPSEEK_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY",
 		"XAI_API_KEY", "OLLAMA_HOST",
@@ -456,5 +458,218 @@ func TestOpenCodeGoAllowsMissingKeyUntilConfigured(t *testing.T) {
 	}
 	if cfg.Provider != ProviderOpenCodeGo || cfg.APIKey != "" {
 		t.Fatalf("unexpected config: provider=%q key=%q", cfg.Provider, cfg.APIKey)
+	}
+}
+
+func TestCommandProviderUserConfig(t *testing.T) {
+	clearEnv(t)
+	dir := t.TempDir()
+	user := writeConfig(t, dir, "config.yaml", `provider: command
+model: opencode-go/deepseek-v4.1-flash
+command:
+  - opencode
+  - run
+  - --format
+  - json
+  - --model
+  - opencode-go/deepseek-v4.1-flash
+  - --agent
+  - plan
+  - "{prompt}"
+command_output: opencode-json
+command_timeout: 90s
+command_max_output_bytes: 1048576
+command_env:
+  OPENCODE_TEST: "1"
+`)
+	t.Setenv("VIGIL_CONFIG", user)
+
+	cfg, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Provider != ProviderCommand {
+		t.Fatalf("Provider = %q", cfg.Provider)
+	}
+	if cfg.Model != "opencode-go/deepseek-v4.1-flash" {
+		t.Errorf("Model = %q", cfg.Model)
+	}
+	if cfg.APIKey != "" || cfg.BaseURL != "" {
+		t.Errorf("command must not need a key or base URL: key=%q base=%q", cfg.APIKey, cfg.BaseURL)
+	}
+	if len(cfg.Command) != 9 || cfg.Command[8] != "{prompt}" {
+		t.Errorf("Command = %#v", cfg.Command)
+	}
+	if cfg.CommandPromptMode != CommandPromptArg {
+		t.Errorf("CommandPromptMode = %q, want arg", cfg.CommandPromptMode)
+	}
+	if cfg.CommandOutput != CommandOutputOpenCodeJSON {
+		t.Errorf("CommandOutput = %q", cfg.CommandOutput)
+	}
+	if cfg.CommandTimeout != 90*time.Second {
+		t.Errorf("CommandTimeout = %v", cfg.CommandTimeout)
+	}
+	if cfg.CommandMaxOutputBytes != 1048576 {
+		t.Errorf("CommandMaxOutputBytes = %d", cfg.CommandMaxOutputBytes)
+	}
+	if cfg.CommandEnv["OPENCODE_TEST"] != "1" {
+		t.Errorf("CommandEnv = %v", cfg.CommandEnv)
+	}
+	if cfg.Sources["command"] != user || cfg.Sources["command_output"] != user {
+		t.Errorf("Sources did not record the user config: %v", cfg.Sources)
+	}
+}
+
+func TestProjectConfigRejectsCommandSettings(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"command", "command:\n  - echo\n  - hi\n", "command"},
+		{"command env", "command_env:\n  TOKEN: value\n", "command_env"},
+		{"empty command env", "command_env: {}\n", "command_env"},
+		{"prompt mode", "command_prompt_mode: stdin\n", "command_prompt_mode"},
+		{"output", "command_output: text\n", "command_output"},
+		{"empty command list", "command: []\n", "command"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			clearEnv(t)
+			root := t.TempDir()
+			writeConfig(t, root, ".vigil.yaml", tc.body)
+			_, err := Load(root)
+			if err == nil {
+				t.Fatalf("Load accepted a project file with %q", tc.body)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %q, want it to mention %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestProjectConfigAllowsCommandLimits(t *testing.T) {
+	clearEnv(t)
+	root := t.TempDir()
+	writeConfig(t, root, ".vigil.yaml", "command_timeout: 10s\ncommand_max_output_bytes: 1024\n")
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.CommandTimeout != 10*time.Second || cfg.CommandMaxOutputBytes != 1024 {
+		t.Fatalf("command limits were not merged: timeout=%v max=%d", cfg.CommandTimeout, cfg.CommandMaxOutputBytes)
+	}
+}
+
+func TestCommandProviderEnvOverrides(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("VIGIL_PROVIDER", ProviderCommand)
+	t.Setenv("VIGIL_COMMAND", `["opencode","run","--format","json","{prompt}"]`)
+	t.Setenv("VIGIL_COMMAND_OUTPUT", "opencode-json")
+	t.Setenv("VIGIL_COMMAND_PROMPT_MODE", "stdin")
+	t.Setenv("VIGIL_COMMAND_TIMEOUT", "45s")
+
+	cfg, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Command) != 5 || cfg.Command[4] != "{prompt}" {
+		t.Errorf("Command = %#v", cfg.Command)
+	}
+	if cfg.CommandOutput != CommandOutputOpenCodeJSON || cfg.CommandPromptMode != CommandPromptStdin {
+		t.Errorf("output/mode = %q/%q", cfg.CommandOutput, cfg.CommandPromptMode)
+	}
+	if cfg.CommandTimeout != 45*time.Second {
+		t.Errorf("CommandTimeout = %v", cfg.CommandTimeout)
+	}
+	if cfg.Model != DefaultCommandModel {
+		t.Errorf("Model = %q, want %q", cfg.Model, DefaultCommandModel)
+	}
+	if cfg.Sources["command"] != "env:VIGIL_COMMAND" {
+		t.Errorf("command source = %q", cfg.Sources["command"])
+	}
+}
+
+func TestCommandEnvAcceptsSingleExecutablePath(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("VIGIL_PROVIDER", ProviderCommand)
+	path := `C:\Program Files\opencode\opencode.exe`
+	t.Setenv("VIGIL_COMMAND", path)
+
+	cfg, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Command) != 1 || cfg.Command[0] != path {
+		t.Fatalf("Command = %#v, want one unsplit path", cfg.Command)
+	}
+}
+
+func TestCommandEnvRejectsInvalidJSON(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("VIGIL_COMMAND", `["opencode",`)
+	if _, err := Load(t.TempDir()); err == nil || !strings.Contains(err.Error(), "VIGIL_COMMAND") {
+		t.Fatalf("Load = %v, want a VIGIL_COMMAND error", err)
+	}
+}
+
+func TestCommandProviderRequiresCommand(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("VIGIL_PROVIDER", ProviderCommand)
+	if _, err := Load(t.TempDir()); err == nil || !strings.Contains(err.Error(), "requires command") {
+		t.Fatalf("Load = %v, want a command error", err)
+	}
+}
+
+func TestCommandProviderRejectsInvalidModes(t *testing.T) {
+	cases := []struct {
+		env   string
+		value string
+		want  string
+	}{
+		{"VIGIL_COMMAND_PROMPT_MODE", "pipe", "command_prompt_mode"},
+		{"VIGIL_COMMAND_OUTPUT", "xml", "command_output"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.env, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("VIGIL_PROVIDER", ProviderCommand)
+			t.Setenv("VIGIL_COMMAND", `["echo","{prompt}"]`)
+			t.Setenv(tc.env, tc.value)
+			if _, err := Load(t.TempDir()); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Load = %v, want it to mention %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestCommandMaxOutputBytesIsCapped(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("VIGIL_PROVIDER", ProviderCommand)
+	t.Setenv("VIGIL_COMMAND", `["echo","{prompt}"]`)
+	dir := t.TempDir()
+	user := writeConfig(t, dir, "config.yaml", "command_max_output_bytes: 999999999\n")
+	t.Setenv("VIGIL_CONFIG", user)
+
+	cfg, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.CommandMaxOutputBytes != MaxCommandMaxOutputBytes {
+		t.Fatalf("CommandMaxOutputBytes = %d, want %d", cfg.CommandMaxOutputBytes, MaxCommandMaxOutputBytes)
+	}
+}
+
+func TestCommandEnvRejectsInvalidKey(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("VIGIL_PROVIDER", ProviderCommand)
+	t.Setenv("VIGIL_COMMAND", `["echo","{prompt}"]`)
+	dir := t.TempDir()
+	user := writeConfig(t, dir, "config.yaml", "command_env:\n  \"A=B\": value\n")
+	t.Setenv("VIGIL_CONFIG", user)
+
+	if _, err := Load(t.TempDir()); err == nil || !strings.Contains(err.Error(), "command_env") {
+		t.Fatalf("Load = %v, want a command_env key error", err)
 	}
 }

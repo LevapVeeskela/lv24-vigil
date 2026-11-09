@@ -17,8 +17,11 @@ Values are resolved in this order, later wins:
 4. Environment variables.
 
 A project config is committed to git, so it may not contain `api_key` or
-`base_url`. Vigil rejects the file with an explicit error if it does. Keep both
-in the user config or the environment. A project config must be a regular file
+`base_url`. Vigil rejects the file with an explicit error if it does. The same
+applies to the `command` provider's executable and environment (`command`,
+`command_env`, `command_prompt_mode`, `command_output`): a cloned repository
+must not be able to run arbitrary commands. Keep all of them in the user config
+or the environment. A project config must be a regular file
 inside the project; a symlink that leaves the project, or a hardlinked
 `.vigil.yaml`, is rejected. A project file also cannot enable
 `scan.follow_symlinks` or point `scan.baseline` / `output.path` outside the
@@ -39,6 +42,7 @@ project; `scan.baseline` is always resolved inside the project root.
 | OpenCode Go | `opencode-go` (alias `opencode`) | `OPENCODE_API_KEY` or `OPENCODE_GO_API_KEY` | `deepseek-v4.1-flash` | `https://opencode.ai/inference/go/openai/v1` |
 | Ollama | `ollama` | none | `qwen2.5-coder:14b` | `http://localhost:11434/v1` |
 | LM Studio | `lmstudio` | none | `local-model` | `http://localhost:1234/v1` |
+| Local CLI | `command` | none | `command` (free-form label) | none |
 | OpenAI-compatible | `custom` | `VIGIL_API_KEY` | set `VIGIL_MODEL` | set `VIGIL_BASE_URL` |
 
 Explicit `VIGIL_PROVIDER`, `VIGIL_MODEL`, `VIGIL_API_KEY` and `VIGIL_BASE_URL`
@@ -62,6 +66,9 @@ order:
 
 Anthropic is checked first. If you have several keys exported, set
 `VIGIL_PROVIDER` explicitly rather than relying on inference.
+
+The `command` provider is never inferred: it executes a local process, so it
+must be selected explicitly with `provider: command` or `VIGIL_PROVIDER=command`.
 
 ## Hosted providers
 
@@ -156,6 +163,85 @@ Change `VIGIL_BASE_URL` if it listens elsewhere.
 Local models are the right choice when code must not leave the machine. They are
 usually weaker at structured JSON and deep review than hosted frontier models;
 the deterministic findings are unaffected.
+
+## Command provider (local CLI)
+
+`command` runs a local executable that already owns its authentication and reads
+the completion from stdout. Vigil stores no key, makes no HTTP request and never
+invokes a shell. This is the way to reuse an authenticated `opencode run` model:
+
+```yaml
+provider: command
+model: opencode-go/deepseek-v4.1-flash
+command:
+  - opencode
+  - run
+  - --format
+  - json
+  - --model
+  - opencode-go/deepseek-v4.1-flash
+  - --agent
+  - plan
+  - "{prompt}"
+command_output: opencode-json
+```
+
+Put this in the **user** config (`%AppData%\vigil\config.yaml` on Windows,
+`~/.config/vigil/config.yaml` elsewhere) or set the environment:
+
+```bash
+export VIGIL_PROVIDER=command
+export VIGIL_MODEL=opencode-go/deepseek-v4.1-flash
+export VIGIL_COMMAND='["opencode","run","--format","json","--model","opencode-go/deepseek-v4.1-flash","--agent","plan","{prompt}"]'
+export VIGIL_COMMAND_OUTPUT=opencode-json
+```
+
+`VIGIL_COMMAND` is a JSON array of argv strings; a single executable path with no
+arguments is also accepted and is not split on whitespace. The same settings are
+available as `command_prompt_mode`, `command_output`, `command_timeout` and
+`command_max_output_bytes` in the user config, plus `command_env` for extra
+environment variables.
+
+`model` is a free-form label used in reports; the `--model` flag inside `command`
+is what actually selects the model. `max_tokens` and `temperature` are ignored
+because the CLI owns its own sampling.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `command` | required | argv array; `{prompt}` is replaced by the prompt as one argument |
+| `command_prompt_mode` | `arg` | `arg` appends the prompt as one argument when there is no `{prompt}`; `stdin` writes it to stdin |
+| `command_output` | `auto` | `auto` detects OpenCode JSONL, `text` takes stdout verbatim, `opencode-json` parses JSONL text parts |
+| `command_timeout` | `timeout` | per-invocation timeout, Go duration syntax |
+| `command_max_output_bytes` | `4 MiB` | stdout cap, clamped to `16 MiB` |
+| `command_env` | none | extra environment variables for the child process |
+
+Security notes:
+
+- **The command runs with your privileges.** Treat it like running it yourself.
+  Use `--agent plan` (or another no-tools agent) so triage cannot edit files,
+  run tools or fetch URLs. Vigil never passes scanned code to a shell, but the
+  CLI you choose decides what it does with the prompt.
+- **No key is stored.** OpenCode uses its own `opencode auth login` session. Vigil
+  does not read or forward that token.
+- **Prefer `command_env` for tokens.** Vigil redacts values of 8 or more
+  characters from error messages; `command` argv is not redacted.
+- **A project file cannot set this up.** `command`, `command_env`,
+  `command_prompt_mode` and `command_output` are rejected in `.vigil.yaml`; only
+  the user config and the environment may set them. `command_timeout` and
+  `command_max_output_bytes` are non-executable limits and may be set in a
+  project file.
+- **Windows argv limit.** The prompt is one argv element, and Windows
+  `CreateProcess` limits the whole command line to roughly 32k characters. For
+  very large prompts use `command_prompt_mode: stdin` (with no `{prompt}`) or a
+  small wrapper that reads stdin and calls the real CLI. On Windows a bare
+  `opencode` often resolves to `opencode.cmd`, a batch shim that re-parses `%*`
+  and can mangle a multi-line prompt (or make the CLI wait). Prefer the real
+  `.exe` path, or use stdin mode; Vigil logs a warning when it detects a batch
+  shim in argument mode.
+- **Output is bounded.** Stdout is capped by `command_max_output_bytes`; stderr
+  keeps only a 2 KiB tail for errors. ANSI colour and a leading
+  `> agent · model` header are removed in text mode. Prompts and completions are
+  never logged; debug logs contain lengths only.
 
 ## Any OpenAI-compatible endpoint
 

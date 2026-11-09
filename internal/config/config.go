@@ -6,6 +6,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -41,6 +42,28 @@ const (
 	ProviderOpenCodeGo = "opencode-go"
 	// ProviderOpenCode is accepted as a short alias for ProviderOpenCodeGo.
 	ProviderOpenCode = "opencode"
+	// ProviderCommand runs a local CLI that already has its own authentication
+	// (for example `opencode run`) and reads the completion from its stdout.
+	// It stores no API key and never talks to the network itself.
+	ProviderCommand = "command"
+)
+
+// Command provider settings.
+const (
+	CommandPromptArg   = "arg"
+	CommandPromptStdin = "stdin"
+
+	CommandOutputAuto         = "auto"
+	CommandOutputText         = "text"
+	CommandOutputOpenCodeJSON = "opencode-json"
+
+	// DefaultCommandModel is the free-form label shown when the command
+	// provider is configured without a model.
+	DefaultCommandModel = "command"
+	// DefaultCommandMaxOutputBytes bounds stdout by default (4 MiB).
+	DefaultCommandMaxOutputBytes = 4 << 20
+	// MaxCommandMaxOutputBytes is the largest accepted stdout cap (16 MiB).
+	MaxCommandMaxOutputBytes = 16 << 20
 )
 
 // DefaultModel is used when a provider is configured without a model.
@@ -62,6 +85,14 @@ type Config struct {
 	MaxSteps    int           `yaml:"max_steps"`
 	Scan        ScanConfig    `yaml:"scan"`
 	Output      OutputConfig  `yaml:"output"`
+	// Command provider settings. They are user-config/env only: a committed
+	// project file must not be able to run arbitrary commands.
+	Command               []string          `yaml:"command"`
+	CommandPromptMode     string            `yaml:"command_prompt_mode"`
+	CommandOutput         string            `yaml:"command_output"`
+	CommandTimeout        time.Duration     `yaml:"command_timeout"`
+	CommandMaxOutputBytes int               `yaml:"command_max_output_bytes"`
+	CommandEnv            map[string]string `yaml:"command_env"`
 	// Sources records where each value came from, for `vigil status`.
 	Sources map[string]string `yaml:"-"`
 	// ConfigFiles lists the files that were merged, in order.
@@ -110,6 +141,15 @@ type FileConfig struct {
 	MaxSteps    *int        `yaml:"max_steps"`
 	Scan        *ScanFile   `yaml:"scan"`
 	Output      *OutputFile `yaml:"output"`
+	// Command provider settings. A project file may not set the executable,
+	// its environment or its output handling; only the user config and the
+	// environment may do that.
+	Command               []string          `yaml:"command"`
+	CommandPromptMode     *string           `yaml:"command_prompt_mode"`
+	CommandOutput         *string           `yaml:"command_output"`
+	CommandTimeout        *string           `yaml:"command_timeout"`
+	CommandMaxOutputBytes *int              `yaml:"command_max_output_bytes"`
+	CommandEnv            map[string]string `yaml:"command_env"`
 }
 
 type ScanFile struct {
@@ -139,12 +179,15 @@ type OutputFile struct {
 // Defaults returns the built-in configuration.
 func Defaults() Config {
 	return Config{
-		Provider:    "",
-		Model:       "",
-		MaxTokens:   4096,
-		Temperature: 0.1,
-		Timeout:     120 * time.Second,
-		MaxSteps:    12,
+		Provider:              "",
+		Model:                 "",
+		MaxTokens:             4096,
+		Temperature:           0.1,
+		Timeout:               120 * time.Second,
+		MaxSteps:              12,
+		CommandPromptMode:     CommandPromptArg,
+		CommandOutput:         CommandOutputAuto,
+		CommandMaxOutputBytes: DefaultCommandMaxOutputBytes,
 		Scan: ScanConfig{
 			Mode:         "standard",
 			MinSeverity:  string(model.SeverityLow),
@@ -213,7 +256,9 @@ func Load(root string) (Config, error) {
 		}
 	}
 
-	applyEnv(&cfg)
+	if err := applyEnv(&cfg); err != nil {
+		return cfg, err
+	}
 	if err := cfg.Validate(); err != nil {
 		return cfg, err
 	}
@@ -264,6 +309,21 @@ func mergeFile(cfg *Config, path string, allowSecret bool) error {
 		if fc.BaseURL != nil && strings.TrimSpace(*fc.BaseURL) != "" {
 			return fmt.Errorf("config %s: base_url must live in the user config or the environment, not in a project file", path)
 		}
+		// The command provider executes a local process. A committed file must
+		// never be able to choose that process, its environment or how its
+		// output is interpreted: cloning a repository must not run code.
+		if fc.Command != nil {
+			return fmt.Errorf("config %s: command must live in the user config or the environment, not in a project file", path)
+		}
+		if fc.CommandEnv != nil {
+			return fmt.Errorf("config %s: command_env must live in the user config or the environment, not in a project file", path)
+		}
+		if fc.CommandPromptMode != nil {
+			return fmt.Errorf("config %s: command_prompt_mode must live in the user config or the environment, not in a project file", path)
+		}
+		if fc.CommandOutput != nil {
+			return fmt.Errorf("config %s: command_output must live in the user config or the environment, not in a project file", path)
+		}
 		if fc.Output != nil && fc.Output.Path != nil {
 			if err := validateProjectPath("output.path", *fc.Output.Path); err != nil {
 				return fmt.Errorf("config %s: %w", path, err)
@@ -297,6 +357,31 @@ func mergeFile(cfg *Config, path string, allowSecret bool) error {
 		}
 		cfg.Timeout = d
 		cfg.Sources["timeout"] = path
+	}
+	if fc.CommandTimeout != nil {
+		d, err := time.ParseDuration(*fc.CommandTimeout)
+		if err != nil {
+			return fmt.Errorf("config %s: command_timeout: %w", path, err)
+		}
+		cfg.CommandTimeout = d
+		cfg.Sources["command_timeout"] = path
+	}
+	mergeInt(&cfg.CommandMaxOutputBytes, fc.CommandMaxOutputBytes, "command_max_output_bytes", path, cfg.Sources)
+	if allowSecret {
+		if fc.Command != nil {
+			cfg.Command = append([]string(nil), fc.Command...)
+			cfg.Sources["command"] = path
+		}
+		merge(&cfg.CommandPromptMode, fc.CommandPromptMode, "command_prompt_mode", path, cfg.Sources)
+		merge(&cfg.CommandOutput, fc.CommandOutput, "command_output", path, cfg.Sources)
+		if fc.CommandEnv != nil {
+			env := make(map[string]string, len(fc.CommandEnv))
+			for key, value := range fc.CommandEnv {
+				env[key] = value
+			}
+			cfg.CommandEnv = env
+			cfg.Sources["command_env"] = path
+		}
 	}
 	if fc.Scan != nil {
 		s := fc.Scan
@@ -396,7 +481,7 @@ func mergeFloat(dst *float64, src *float64, key, path string, sources map[string
 	sources[key] = path
 }
 
-func applyEnv(cfg *Config) {
+func applyEnv(cfg *Config) error {
 	// Explicit Vigil variables win over provider conventions.
 	setStr(&cfg.Provider, "VIGIL_PROVIDER", cfg.Sources)
 	setStr(&cfg.Model, "VIGIL_MODEL", cfg.Sources)
@@ -406,6 +491,17 @@ func applyEnv(cfg *Config) {
 	setFloat(&cfg.Temperature, "VIGIL_TEMPERATURE", cfg.Sources)
 	setInt(&cfg.MaxSteps, "VIGIL_MAX_STEPS", cfg.Sources)
 	setDuration(&cfg.Timeout, "VIGIL_TIMEOUT", cfg.Sources)
+	setStr(&cfg.CommandPromptMode, "VIGIL_COMMAND_PROMPT_MODE", cfg.Sources)
+	setStr(&cfg.CommandOutput, "VIGIL_COMMAND_OUTPUT", cfg.Sources)
+	setDuration(&cfg.CommandTimeout, "VIGIL_COMMAND_TIMEOUT", cfg.Sources)
+	if raw := strings.TrimSpace(os.Getenv("VIGIL_COMMAND")); raw != "" {
+		argv, err := parseCommandEnv(raw)
+		if err != nil {
+			return err
+		}
+		cfg.Command = argv
+		cfg.Sources["command"] = "env:VIGIL_COMMAND"
+	}
 	setStr(&cfg.Scan.Mode, "VIGIL_MODE", cfg.Sources)
 	setStr(&cfg.Scan.MinSeverity, "VIGIL_MIN_SEVERITY", cfg.Sources)
 	setStr(&cfg.Scan.OSVBaseURL, "VIGIL_OSV_BASE_URL", cfg.Sources)
@@ -482,6 +578,22 @@ func applyEnv(cfg *Config) {
 	if cfg.Model == "" {
 		cfg.Model = providerDefaultModel(cfg.Provider)
 	}
+	return nil
+}
+
+// parseCommandEnv accepts either a JSON array of argv strings (the portable
+// form) or a single executable path with no arguments. A single path is never
+// split on whitespace, so "C:\Program Files\..." keeps working.
+func parseCommandEnv(raw string) ([]string, error) {
+	value := strings.TrimSpace(raw)
+	if strings.HasPrefix(value, "[") {
+		var argv []string
+		if err := json.Unmarshal([]byte(value), &argv); err != nil {
+			return nil, fmt.Errorf("VIGIL_COMMAND must be a JSON array of strings: %w", err)
+		}
+		return argv, nil
+	}
+	return []string{value}, nil
 }
 
 func providerKey(provider string) string {
@@ -608,6 +720,8 @@ func providerDefaultModel(provider string) string {
 		return "qwen2.5-coder:14b"
 	case ProviderLMStudio:
 		return "local-model"
+	case ProviderCommand:
+		return DefaultCommandModel
 	default:
 		return ""
 	}
@@ -629,22 +743,33 @@ func (c *Config) Validate() error {
 		switch c.Provider {
 		case ProviderOpenAI, ProviderAnthropic, ProviderGemini, ProviderOpenRouter,
 			ProviderGroq, ProviderDeepSeek, ProviderMistral, ProviderXAI,
-			ProviderOllama, ProviderLMStudio, ProviderCustom, ProviderOpenCodeGo:
+			ProviderOllama, ProviderLMStudio, ProviderCustom, ProviderOpenCodeGo,
+			ProviderCommand:
 		default:
-			return fmt.Errorf("unknown provider %q (use one of: openai, anthropic, gemini, openrouter, groq, deepseek, mistral, xai, opencode-go, ollama, lmstudio, custom)", c.Provider)
+			return fmt.Errorf("unknown provider %q (use one of: openai, anthropic, gemini, openrouter, groq, deepseek, mistral, xai, opencode-go, ollama, lmstudio, custom, command)", c.Provider)
 		}
 	}
-	if c.Provider != "" && c.Model == "" {
+	if c.Provider == ProviderCommand {
+		if c.Model == "" {
+			c.Model = DefaultCommandModel
+		}
+	} else if c.Provider != "" && c.Model == "" {
 		return fmt.Errorf("provider %q requires a model", c.Provider)
 	}
 	// opencode-go is allowed without a key so the MCP server can start and
 	// report "LLM disabled" until the user pastes the key; the LLM factory
-	// still refuses to build a client without one.
-	if c.Provider != "" && c.Provider != ProviderOllama && c.Provider != ProviderLMStudio && c.Provider != ProviderOpenCodeGo && c.APIKey == "" {
+	// still refuses to build a client without one. command uses the local
+	// CLI's own authentication, so it needs no key either.
+	if c.Provider != "" && c.Provider != ProviderOllama && c.Provider != ProviderLMStudio && c.Provider != ProviderOpenCodeGo && c.Provider != ProviderCommand && c.APIKey == "" {
 		return fmt.Errorf("provider %q requires an API key (set VIGIL_API_KEY or the provider's key variable)", c.Provider)
 	}
 	if c.Provider == ProviderCustom && c.BaseURL == "" {
 		return fmt.Errorf("provider custom requires base_url")
+	}
+	if c.Provider == ProviderCommand {
+		if err := c.validateCommand(); err != nil {
+			return err
+		}
 	}
 	if c.MaxTokens < 1 {
 		c.MaxTokens = 4096
@@ -694,6 +819,58 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// validateCommand checks the local CLI provider. The executable is required;
+// prompt and output modes are small closed sets so a typo fails at startup
+// instead of silently feeding the prompt on stdin or misparsing the output.
+func (c *Config) validateCommand() error {
+	if len(c.Command) == 0 || strings.TrimSpace(c.Command[0]) == "" {
+		return fmt.Errorf("provider %q requires command (set command in the user config or VIGIL_COMMAND)", c.Provider)
+	}
+	for _, arg := range c.Command {
+		if strings.ContainsRune(arg, 0) {
+			return fmt.Errorf("command arguments must not contain NUL bytes")
+		}
+	}
+
+	if c.CommandPromptMode == "" {
+		c.CommandPromptMode = CommandPromptArg
+	}
+	switch c.CommandPromptMode {
+	case CommandPromptArg, CommandPromptStdin:
+	default:
+		return fmt.Errorf("command_prompt_mode must be arg or stdin (got %q)", c.CommandPromptMode)
+	}
+
+	if c.CommandOutput == "" {
+		c.CommandOutput = CommandOutputAuto
+	}
+	switch c.CommandOutput {
+	case CommandOutputAuto, CommandOutputText, CommandOutputOpenCodeJSON:
+	default:
+		return fmt.Errorf("command_output must be auto, text or opencode-json (got %q)", c.CommandOutput)
+	}
+
+	if c.CommandTimeout < 0 {
+		return fmt.Errorf("command_timeout cannot be negative")
+	}
+	if c.CommandMaxOutputBytes < 0 {
+		return fmt.Errorf("command_max_output_bytes cannot be negative")
+	}
+	if c.CommandMaxOutputBytes == 0 {
+		c.CommandMaxOutputBytes = DefaultCommandMaxOutputBytes
+	}
+	if c.CommandMaxOutputBytes > MaxCommandMaxOutputBytes {
+		c.CommandMaxOutputBytes = MaxCommandMaxOutputBytes
+	}
+
+	for key := range c.CommandEnv {
+		if strings.TrimSpace(key) == "" || strings.ContainsAny(key, "=\x00") {
+			return fmt.Errorf("command_env keys must be non-empty and must not contain '=' or NUL")
+		}
+	}
+	return nil
+}
+
 // LLMEnabled reports whether the scan should call a model.
 func (c *Config) LLMEnabled() bool {
 	if c.Scan.UseLLM != nil {
@@ -708,6 +885,13 @@ func (c Config) Redacted() Config {
 		c.APIKey = "***"
 	}
 	c.BaseURL = RedactURL(c.BaseURL)
+	if len(c.CommandEnv) > 0 {
+		env := make(map[string]string, len(c.CommandEnv))
+		for key := range c.CommandEnv {
+			env[key] = "***"
+		}
+		c.CommandEnv = env
+	}
 	return c
 }
 

@@ -4,6 +4,21 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.3.0 - 2026-11-10
+
+### Added
+
+- `command` LLM provider: run a local CLI as the model backend without storing
+  an API key. The documented example uses `opencode run --format json --agent
+  plan` with OpenCode Go; `command_output: opencode-json` parses the JSONL
+  stream. A project `.vigil.yaml` cannot set the command or its environment.
+
+### Changed
+
+- Dependabot: `actions/checkout` v7, `actions/setup-go` v7,
+  `actions/setup-node` v7, `goreleaser/goreleaser-action` v7 and
+  `github/codeql-action/upload-sarif` v4 (all pinned to commit SHAs).
+
 ## 0.2.1 - 2026-11-10
 
 ### Fixed

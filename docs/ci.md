@@ -20,7 +20,7 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -35,7 +35,7 @@ jobs:
 
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: vigil.sarif
 ```
@@ -56,7 +56,7 @@ A complete example lives in
 runner, verifies it against `checksums.txt`, and runs a full `vigil scan`:
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
   with:
     fetch-depth: 0
 
@@ -71,7 +71,7 @@ runner, verifies it against `checksums.txt`, and runs a full `vigil scan`:
     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
 - if: always()
-  uses: github/codeql-action/upload-sarif@v3
+  uses: github/codeql-action/upload-sarif@v4
   with:
     sarif_file: ${{ steps.vigil.outputs.sarif }}
 ```

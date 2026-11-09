@@ -187,6 +187,7 @@ well-known key. Explicit `VIGIL_*` variables win over provider conventions.
 | OpenCode Go | `opencode-go` | `OPENCODE_API_KEY` | `deepseek-v4.1-flash` |
 | Ollama | `ollama` | none | `qwen2.5-coder:14b` |
 | LM Studio | `lmstudio` | none | `local-model` |
+| Local CLI | `command` | none | `command` (free-form label) |
 | OpenAI-compatible | `custom` | `VIGIL_API_KEY` | set `VIGIL_MODEL` |
 
 Local models:
@@ -195,6 +196,19 @@ Local models:
 VIGIL_PROVIDER=ollama VIGIL_MODEL=qwen2.5-coder:14b vigil scan
 VIGIL_PROVIDER=lmstudio VIGIL_MODEL=local-model vigil scan
 ```
+
+The `command` provider reuses an already-authenticated local CLI, for example
+`opencode run`, without storing an API key. Configure it in the user config:
+
+```yaml
+provider: command
+model: opencode-go/deepseek-v4.1-flash
+command: ["opencode", "run", "--format", "json", "--model", "opencode-go/deepseek-v4.1-flash", "--agent", "plan", "{prompt}"]
+command_output: opencode-json
+```
+
+The CLI runs with your privileges; use a no-tools agent such as `--agent plan`.
+A project `.vigil.yaml` cannot set `command` or `command_env` on purpose.
 
 `OLLAMA_HOST` points at a non-default Ollama. `VIGIL_BASE_URL` overrides the
 endpoint for any provider; `custom` requires it. Full reference:
@@ -256,13 +270,13 @@ at `fetch-depth: 0`. The repository ships a composite action in `action.yml`; th
 example below uses the CLI directly so it also works on any runner.
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
   with: { fetch-depth: 0 }
 - run: npx -y lv24-vigil review --base origin/${{ github.base_ref }} --format sarif --fail-on high > vigil.sarif
   env:
     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 - if: always()
-  uses: github/codeql-action/upload-sarif@v3
+  uses: github/codeql-action/upload-sarif@v4
   with: { sarif_file: vigil.sarif }
 ```
 

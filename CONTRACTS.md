@@ -14,7 +14,7 @@ internal/rules/       deterministic rules; File, Rule, Registry
 internal/scanner/     walker, ignore, language, diff, baseline, scan orchestration
 internal/gitutil/     git repo root, changed files, unified diff
 internal/store/       scan history on disk (~/.local/share/vigil/scans or .vigil/)
-internal/llm/         provider clients (OpenAI-compatible, Anthropic, Gemini)
+internal/llm/         provider clients (OpenAI-compatible, Anthropic, Gemini, local CLI)
 internal/analysis/    LLM triage, deep review, fix proposal, threat model
 internal/report/      markdown, json, sarif, html renderers
 internal/tools/       MCP tool/resource/prompt registration
@@ -80,6 +80,14 @@ func New(cfg config.Config, logger *slog.Logger) (Client, error)
 - retry 429/5xx/network errors twice with jitter;
 - never log the key or the prompt body;
 - return a typed `*llm.Error`.
+
+The `command` provider is the exception to the HTTP rules: it runs a local argv
+with no shell, no API key and no retry loop. It honours `cfg.CommandTimeout`
+(falling back to `cfg.Timeout`), caps stdout at `cfg.CommandMaxOutputBytes`, and
+returns typed errors for a missing executable, a non-zero exit, a timeout and an
+output cap. Its `command`, `command_env`, `command_prompt_mode` and
+`command_output` settings may only come from the user config or the environment;
+a project file must be rejected. It is never auto-detected.
 
 ## Analysis
 
