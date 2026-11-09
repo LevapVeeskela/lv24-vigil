@@ -1,6 +1,8 @@
 package llm
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,6 +19,9 @@ type baseClient struct {
 	model    string
 	baseURL  string
 	apiKey   string
+	// sessionID is sent as x-opencode-session for OpenCode Go. It is stable for
+	// the lifetime of the process so the gateway can route and cache prompts.
+	sessionID string
 
 	defaultMaxTokens   int
 	defaultTemperature float64
@@ -60,6 +65,9 @@ func (b baseClient) headers() http.Header {
 	h.Set("Content-Type", "application/json")
 	h.Set("Accept", "application/json")
 	h.Set("User-Agent", userAgent())
+	if b.sessionID != "" {
+		h.Set("x-opencode-session", b.sessionID)
+	}
 	return h
 }
 
@@ -119,11 +127,23 @@ func New(cfg config.Config, logger *slog.Logger) (Client, error) {
 		return nil, fmt.Errorf("provider %q requires a base URL (set VIGIL_BASE_URL)", provider)
 	}
 
+	sessionID := ""
+	if provider == config.ProviderOpenCodeGo {
+		sessionID = strings.TrimSpace(os.Getenv("VIGIL_OPENCODE_SESSION"))
+		if sessionID == "" {
+			sessionID = strings.TrimSpace(os.Getenv("OPENCODE_SESSION_ID"))
+		}
+		if sessionID == "" {
+			sessionID = newSessionID()
+		}
+	}
+
 	base := baseClient{
 		provider:           provider,
 		model:              model,
 		baseURL:            strings.TrimRight(baseURL, "/"),
 		apiKey:             apiKey,
+		sessionID:          sessionID,
 		defaultMaxTokens:   cfg.MaxTokens,
 		defaultTemperature: cfg.Temperature,
 		http:               newTransport(provider, cfg.Timeout, apiKey, logger),
@@ -266,4 +286,14 @@ func providerKeyEnv(provider string) string {
 		return "VIGIL_API_KEY"
 	}
 	return strings.Join(envs, " or ")
+}
+
+// newSessionID returns a stable-per-process identifier for OpenCode Go's
+// x-opencode-session routing header.
+func newSessionID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "vigil-session"
+	}
+	return "vigil-" + hex.EncodeToString(b[:])
 }

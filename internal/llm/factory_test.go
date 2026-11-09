@@ -1,6 +1,9 @@
 package llm
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -214,5 +217,57 @@ func clearProviderEnv(t *testing.T) {
 		"XAI_API_KEY", "OPENCODE_API_KEY", "OPENCODE_GO_API_KEY", "OLLAMA_HOST",
 	} {
 		t.Setenv(key, "")
+	}
+}
+
+func TestOpenCodeGoSendsSessionHeader(t *testing.T) {
+	t.Setenv("VIGIL_OPENCODE_SESSION", "")
+	t.Setenv("OPENCODE_SESSION_ID", "")
+	var gotSession, gotUA string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSession = r.Header.Get("x-opencode-session")
+		gotUA = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"deepseek-v4.1-flash","choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer server.Close()
+
+	client, err := New(config.Config{
+		Provider: config.ProviderOpenCodeGo,
+		Model:    "deepseek-v4.1-flash",
+		BaseURL:  server.URL,
+		APIKey:   "test-key",
+	}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := client.Complete(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if !strings.HasPrefix(gotSession, "vigil-") {
+		t.Fatalf("x-opencode-session = %q, want a vigil- id", gotSession)
+	}
+	if !strings.HasPrefix(gotUA, "lv24-vigil/") {
+		t.Fatalf("User-Agent = %q, want lv24-vigil/<version>", gotUA)
+	}
+}
+
+func TestOpenCodeGoSessionOverride(t *testing.T) {
+	t.Setenv("VIGIL_OPENCODE_SESSION", "my-stable-session")
+	client, err := New(config.Config{
+		Provider: config.ProviderOpenCodeGo,
+		Model:    "deepseek-v4.1-flash",
+		BaseURL:  "http://127.0.0.1:1",
+		APIKey:   "test-key",
+	}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	openAI, ok := client.(*openAIClient)
+	if !ok {
+		t.Fatalf("type = %T", client)
+	}
+	if openAI.sessionID != "my-stable-session" {
+		t.Fatalf("sessionID = %q", openAI.sessionID)
 	}
 }
