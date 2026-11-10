@@ -31,3 +31,6 @@ Thumbs.db
 # Local release asset downloads
 /dist-*/
 
+
+__pycache__/
+*.pyc
