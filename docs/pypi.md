@@ -58,13 +58,17 @@ later. `python/tests/test_cli.py` checks that `__version__` matches
 
 ## Release flow
 
-Publishing a GitHub release for tag `vX.Y.Z` triggers `pypi-publish.yml`:
+A GitHub release created **manually** (UI or a personal token) triggers
+`pypi-publish.yml`. A release created by `release.yml` with the repository
+`GITHUB_TOKEN` does **not**: GitHub suppresses workflows started by that token.
+In that case dispatch the workflow explicitly (see the fallback below).
 
 1. Bump the two Python version files and run the usual checks
    (`python -m unittest discover -s python/tests`, `python -m build` in
    `python/`).
 2. Commit, tag (`git tag vX.Y.Z`), push, and publish a GitHub release.
-3. Watch the `pypi-publish` run in Actions.
+3. Watch the `pypi-publish` run in Actions, or dispatch it manually when the
+   release was created by `release.yml`.
 
 Manual fallback, for example when a release tag predates the workflow:
 
