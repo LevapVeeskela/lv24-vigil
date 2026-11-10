@@ -482,7 +482,7 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     env:
-      FAIL_ON: ${{ inputs.fail-on || 'high' }}
+      FAIL_ON: ${{ inputs['fail-on'] || 'high' }}
       VIGIL_SECURITY_API_TOKEN: ${{ secrets.VIGIL_SECURITY_API_TOKEN }}
       VIGIL_SECURITY_API: ${{ vars.VIGIL_SECURITY_API }}
     steps:
