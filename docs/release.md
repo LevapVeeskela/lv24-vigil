@@ -196,6 +196,17 @@ and no provenance.
 The scripts are idempotent: an existing release is reused, present assets are
 skipped, and versions already on npm are skipped.
 
+## Release assets and repository size
+
+Release assets are published to the GitHub release and never committed. The
+workflows download them into `release-assets/`, and `/dist-*/`, `/dist/`,
+`/npm-out/` and `*.exe` are gitignored. One `dist-0.1.4/` directory was committed
+by mistake in `1c57bae` and removed in `601dfc3`; it still accounts for about
+17.5 MiB of `.git`. That history is deliberately not rewritten, because
+`v0.2.0` and later tags are immutable Go module versions. Measurements, the
+reasoning and the procedure if a rewrite is ever required are in
+[history.md](history.md).
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

@@ -345,6 +345,7 @@ Vigil и Strix дополняют друг друга: Vigil ловит дешё
 |---|---|
 | [docs/install.md](docs/install.md) | npm, Go, установщики, бинарники, контейнер |
 | [docs/release.md](docs/release.md) | релизный конвейер, npm Trusted Publishing, проверка, повторные запуски |
+| [docs/history.md](docs/history.md) | инцидент с `dist-0.1.4`, размер репозитория, почему история не переписывается |
 | [docs/providers.md](docs/providers.md) | провайдеры, ключи, локальные модели, приоритет настроек |
 | [docs/mcp.md](docs/mcp.md) | MCP-клиенты, инструменты, ресурсы, промпты |
 | [docs/cli.md](docs/cli.md) | команды, флаги, коды выхода, форматы |

@@ -354,6 +354,7 @@ Not commitments, just direction:
 |---|---|
 | [docs/install.md](docs/install.md) | npm, Go, installers, binaries, container |
 | [docs/release.md](docs/release.md) | release pipeline, npm Trusted Publishing, verification, re-runs |
+| [docs/history.md](docs/history.md) | the `dist-0.1.4` incident, repository size, why history is not rewritten |
 | [docs/providers.md](docs/providers.md) | providers, keys, local models, config precedence |
 | [docs/mcp.md](docs/mcp.md) | MCP clients, tools, resources, prompts |
 | [docs/cli.md](docs/cli.md) | commands, flags, exit codes, formats |
