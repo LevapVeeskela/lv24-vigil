@@ -87,6 +87,19 @@ Standalone binaries and installers are published with GitHub releases. A
 distroless Dockerfile is included for container use. Details:
 [docs/install.md](docs/install.md).
 
+### Python launcher (PyPI)
+
+```bash
+pip install lv24-vigil
+vigil scan --no-llm
+```
+
+The PyPI package is a thin launcher, not a second engine: it needs Node.js 18+
+and delegates to the canonical npm package through `npx`. Override the invoked
+npm version with `VIGIL_NPM_VERSION` (PowerShell:
+`$env:VIGIL_NPM_VERSION = "latest"`). Publishing setup:
+[docs/pypi.md](docs/pypi.md).
+
 ## 60-second quickstart
 
 ```bash

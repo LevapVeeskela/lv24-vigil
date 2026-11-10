@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lv24-vigil"
+version = "0.4.0"
+description = "Python launcher for the lv24-vigil (Vigil) CLI"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "LevapVeeskela" },
+]
+keywords = [
+    "security",
+    "audit",
+    "sast",
+    "cli",
+    "launcher",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/LevapVeeskela/lv24-vigil"
+Repository = "https://github.com/LevapVeeskela/lv24-vigil"
+Issues = "https://github.com/LevapVeeskela/lv24-vigil/issues"
+Documentation = "https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/pypi.md"
+Changelog = "https://github.com/LevapVeeskela/lv24-vigil/blob/main/CHANGELOG.md"
+
+[project.scripts]
+vigil = "lv24_vigil.cli:main"
+lv24-vigil = "lv24_vigil.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
