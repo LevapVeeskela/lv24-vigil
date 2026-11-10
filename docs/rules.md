@@ -24,7 +24,7 @@ a complete list and will lag behind the code.
 | CI | `VGL-CI` | 17 | Workflow permissions, untrusted checkouts and shell injection |
 | Dependencies | `VGL-DEP` | 12 | Lockfiles, version ranges, install sources and TLS |
 
-The table counts the 163 deterministic rules in 0.2.0; `vigil rules` is always
+The table counts the 163 deterministic rules in 0.4.x; `vigil rules` is always
 current. `VGL-AI-001` is synthesized by the LLM deep review and is not part of
 the deterministic catalog, so it does not appear in `vigil rules`. OSV findings
 use `VGL-OSV-<advisory>` and only appear when `scan.osv` is enabled.

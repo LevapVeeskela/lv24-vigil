@@ -78,7 +78,7 @@ that cannot find one still succeeds but the first `vigil` call exits `1` with
 `platform package ... is not installed`. The same message appears when the
 install skipped optional dependencies (`--no-optional` or `--omit=optional`).
 
-A prerelease version (for example `0.2.0-beta.1`) is published under the `beta`
+A prerelease version (for example `0.5.0-beta.1`) is published under the `beta`
 dist-tag; `latest` is left untouched.
 
 ## One-time bootstrap: Trusted Publishing
@@ -119,10 +119,10 @@ refuses an older npm). Use the same or newer npm for the `npm trust` commands.
 ## Verify a release
 
 ```bash
-npm view lv24-vigil version          # 0.2.0
-npm view lv24-vigil dist-tags        # { latest: '0.2.0' }
-npm i -g lv24-vigil@0.2.0            # or @latest
-vigil version                        # vigil 0.2.0 (<commit>, <date>, go<version>)
+npm view lv24-vigil version          # 0.4.1
+npm view lv24-vigil dist-tags        # { latest: '0.4.1' }
+npm i -g lv24-vigil@0.4.1            # or @latest
+vigil version                        # vigil 0.4.1 (<commit>, <date>, go<version>)
 ```
 
 Platform packages, one line each:
@@ -151,7 +151,7 @@ Provenance:
 npm view lv24-vigil dist.attestations
 ```
 
-For `0.2.0` this returns a `https://slsa.dev/provenance/v1` attestation built
+For `0.4.1` this returns a `https://slsa.dev/provenance/v1` attestation built
 from `.github/workflows/npm-publish.yml` on a GitHub-hosted runner. The npm page
 shows the matching provenance badge.
 
@@ -247,7 +247,7 @@ reasoning and the procedure if a rewrite is ever required are in
 ## Current state
 
 `0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
-path. All seven packages are live at `0.2.0`, and `latest` points at it:
+path. All seven packages are live at `0.4.1`, and `latest` points at it:
 
 ```bash
 npm view lv24-vigil version
