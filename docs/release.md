@@ -122,10 +122,10 @@ refuses an older npm). Use the same or newer npm for the `npm trust` commands.
 ## Verify a release
 
 ```bash
-npm view lv24-vigil version          # 0.5.1
-npm view lv24-vigil dist-tags        # { latest: '0.5.1' }
-npm i -g lv24-vigil@0.5.1            # or @latest
-vigil version                        # vigil 0.5.1 (<commit>, <date>, go<version>)
+npm view lv24-vigil version          # 0.5.2
+npm view lv24-vigil dist-tags        # { latest: '0.5.2' }
+npm i -g lv24-vigil@0.5.2            # or @latest
+vigil version                        # vigil 0.5.2 (<commit>, <date>, go<version>)
 ```
 
 Platform packages, one line each:
@@ -154,7 +154,7 @@ Provenance:
 npm view lv24-vigil dist.attestations
 ```
 
-For `0.5.1` this returns a `https://slsa.dev/provenance/v1` attestation built
+For `0.5.2` this returns a `https://slsa.dev/provenance/v1` attestation built
 from `.github/workflows/npm-publish.yml` on a GitHub-hosted runner. The npm page
 shows the matching provenance badge.
 
@@ -206,10 +206,16 @@ vigil version                                                 # reports the tag 
   warning; that is a release-object edit, so the tag still points at `2c26dfd`
   and `v0.5.1` at `600d850`. The npm package version is deprecated in place
   (`npm deprecate lv24-vigil@0.5.0`, a metadata change with no republish and no
-  tag move) once a token with publish rights is available: the stored npm token
-  returned `401`/`404` on 2026-11-10, so that step is owner-gated. The six
+  tag move) once the npm 2FA OTP is completed: the token is valid (`npm whoami`
+  succeeds) but `npm deprecate` returns `EOTP` on 2026-11-10, so that step is
+  owner-gated. The six
   platform packages are **not** deprecated: their binaries are correct and a
   deprecation notice there would only add noise to `npm i` output.
+- **0.5.2 packages the post-0.5.1 docs (2026-11-10).** `9e26aa6` (PyPI
+  release-trigger clarification) and `7ca84a5` (do not pin 0.5.0) are
+  docs-only. `v0.5.2` puts them in the tagged tree so a release pin carries the
+  corrected instructions and the 0.5.0 warning. No Go, npm launcher or Python
+  launcher behaviour changed.
 - **0.5.1 supersedes 0.5.0 for the CI templates (2026-11-10).** The follow-ups
   `5a39740` (bracket notation for `inputs['fail-on']`) and `c4fe00f` (guard the
   GitLab pre-check on an existing `vigil.sarif`) fix the examples users copy
@@ -314,16 +320,17 @@ reasoning and the procedure if a rewrite is ever required are in
 ## Current state
 
 `0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
-path. All seven npm packages and PyPI are live at `0.5.1`, and `latest` points
-at it. `v0.5.1` contains the corrected CI templates; `v0.5.0` remains published
+path. All seven npm packages and PyPI are live at `0.5.2`, and `latest` points
+at it. `v0.5.2` contains the corrected CI templates plus the post-0.5.1 docs
+(PyPI trigger clarification and the 0.5.0 warning); `v0.5.0` remains published
 and immutable, but its examples use `inputs.fail-on` and an unguarded GitLab
 pre-check, so do not copy them.
 
-**Do not pin `0.5.0`.** Use `0.5.1` or newer, or `@latest`. The `v0.5.0` tag is
+**Do not pin `0.5.0`.** Use `0.5.2` or newer, or `@latest`. The `v0.5.0` tag is
 immutable and still resolves, so pinning it silently keeps the stale templates;
 its GitHub release body carries the warning. The npm package version is marked
-with a deprecation notice (a metadata change, not a republish) once a token with
-publish rights is available. Check both markers with:
+with a deprecation notice (a metadata change, not a republish) once the npm 2FA
+OTP is completed. Check both markers with:
 
 ```bash
 npm view lv24-vigil@0.5.0 deprecated

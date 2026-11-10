@@ -4,6 +4,14 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.5.2 - 2026-11-10
+
+### Changed
+
+- Documentation-only release: the PyPI release-trigger clarification and the
+  `0.5.0` stale-template warning are now part of the tagged tree. No runtime,
+  rule, CLI or MCP behaviour changes.
+
 ## 0.5.1 - 2026-11-10
 
 ### Fixed

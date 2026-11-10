@@ -8,7 +8,7 @@ author: "LV24"
 # exits 2 because findings were found:
 #
 #   - id: vigil
-#     uses: LevapVeeskela/lv24-vigil@v0.5.1
+#     uses: LevapVeeskela/lv24-vigil@v0.5.2
 #     with:
 #       path: .
 #       fail-on: high
@@ -45,7 +45,7 @@ inputs:
     required: false
     default: "sarif"
   version:
-    description: "npm version or dist-tag of lv24-vigil to install, for example 0.5.1 or latest."
+    description: "npm version or dist-tag of lv24-vigil to install, for example 0.5.2 or latest."
     required: false
     default: "latest"
 
