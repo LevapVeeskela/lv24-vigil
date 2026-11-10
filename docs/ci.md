@@ -61,7 +61,7 @@ runner, verifies it against `checksums.txt`, and runs a full `vigil scan`:
     fetch-depth: 0
 
 - id: vigil
-  uses: LevapVeeskela/lv24-vigil@v0.2.0
+  uses: LevapVeeskela/lv24-vigil@v0.4.1
   with:
     path: .
     mode: standard
@@ -78,8 +78,8 @@ runner, verifies it against `checksums.txt`, and runs a full `vigil scan`:
 
 Inputs: `path`, `mode`, `fail-on`, `format`, `version`. Outputs: `sarif`
 (the report path), `exit-code` and `version`. The action defaults to the latest
-release; set `version` and pin the `uses:` tag for reproducible runs. `v0.2.0` is
-the initial release.
+release; set `version` and pin the `uses:` tag for reproducible runs. `v0.4.1` is
+the current release.
 
 The action runs a full scan, not a diff review. Use the CLI `review --base` form
 above when you want to gate only the lines a pull request changed.

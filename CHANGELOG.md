@@ -4,6 +4,29 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.4.1 - 2026-11-10
+
+### Changed
+
+- Public documentation rebuilt for humans and agents: a visual README with a
+  package-choice table and quickstart, and a matching npm page, so the registry
+  listing explains what Vigil is before the fold.
+- New SVG banner (`.github/assets/banner.svg`) used by both READMEs and the npm
+  page.
+- `llms.txt` and `AGENTS.md` give coding agents the install paths, CLI/MCP
+  surfaces and safety boundaries without scraping HTML; a Cursor MCP example
+  lives in `examples/cursor.md`.
+- npm metadata: the description now leads with the value proposition
+  ("security audit for your code on your own model") and the keywords target
+  discovery (`sast`, `mcp`, `vulnerability-scanner`, `code-review`, `go`).
+- `docs/install.md` and `docs/ci.md` pin `0.4.1`; the Python launcher moves to
+  `0.4.1` so it runs the matching npm version by default.
+
+### Unchanged
+
+- No runtime, rule, CLI or MCP behaviour changes: this release is documentation,
+  packaging metadata and version pins only.
+
 ## 0.4.0 - 2026-11-10
 
 ### Added

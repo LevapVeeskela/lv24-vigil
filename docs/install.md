@@ -7,7 +7,7 @@ for a normal scan.
 ## npm
 
 ```bash
-npm i -g lv24-vigil@latest     # or pin a release: lv24-vigil@0.2.0
+npm i -g lv24-vigil@latest     # or pin a release: lv24-vigil@0.4.1
 vigil version
 ```
 
@@ -19,7 +19,7 @@ platform package, and `vigil` then exits with `platform package ... is not
 installed`.
 
 Releases are published from GitHub Actions with npm Trusted Publishing (OIDC).
-`0.2.0` is the current version on the `latest` tag. Pipeline, verification and
+`0.4.1` is the current version on the `latest` tag. Pipeline, verification and
 re-run steps: [release.md](release.md).
 
 For a one-off run without a global install:
