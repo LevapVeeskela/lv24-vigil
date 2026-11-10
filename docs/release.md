@@ -15,9 +15,12 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-The version comes from the tag: GoReleaser injects it with `-ldflags`, so there
-is no version constant to bump. A local build without a tag reports
-`0.1.0-dev`.
+The release version comes from the tag: GoReleaser injects it with `-ldflags`,
+so the binaries follow the tag. The constant in `internal/version` is the local
+build fallback; the Python launcher version in `python/pyproject.toml` and
+`python/src/lv24_vigil/__init__.py` must be bumped in the release commit because
+the PyPI workflow validates it against the tag. npm package versions are
+generated from the tag.
 
 ```text
  git tag vX.Y.Z
@@ -78,7 +81,7 @@ that cannot find one still succeeds but the first `vigil` call exits `1` with
 `platform package ... is not installed`. The same message appears when the
 install skipped optional dependencies (`--no-optional` or `--omit=optional`).
 
-A prerelease version (for example `0.5.0-beta.1`) is published under the `beta`
+A prerelease version (for example `0.5.1-beta.1`) is published under the `beta`
 dist-tag; `latest` is left untouched.
 
 ## One-time bootstrap: Trusted Publishing
@@ -119,10 +122,10 @@ refuses an older npm). Use the same or newer npm for the `npm trust` commands.
 ## Verify a release
 
 ```bash
-npm view lv24-vigil version          # 0.5.0
-npm view lv24-vigil dist-tags        # { latest: '0.5.0' }
-npm i -g lv24-vigil@0.5.0            # or @latest
-vigil version                        # vigil 0.5.0 (<commit>, <date>, go<version>)
+npm view lv24-vigil version          # 0.5.1
+npm view lv24-vigil dist-tags        # { latest: '0.5.1' }
+npm i -g lv24-vigil@0.5.1            # or @latest
+vigil version                        # vigil 0.5.1 (<commit>, <date>, go<version>)
 ```
 
 Platform packages, one line each:
@@ -151,7 +154,7 @@ Provenance:
 npm view lv24-vigil dist.attestations
 ```
 
-For `0.5.0` this returns a `https://slsa.dev/provenance/v1` attestation built
+For `0.5.1` this returns a `https://slsa.dev/provenance/v1` attestation built
 from `.github/workflows/npm-publish.yml` on a GitHub-hosted runner. The npm page
 shows the matching provenance badge.
 
@@ -162,7 +165,8 @@ module versions, and `0.5.0`+ also name the binaries, npm packages and PyPI
 artifacts that users install. A fix that lands after a tag lives on `main`;
 `main` is the canonical documentation copy, and GitHub serves it by default.
 
-Cut a patch release only when a **shipped artifact** changes:
+Cut a patch release when a **shipped artifact** changes, or when a **shipped
+example that users copy** is wrong:
 
 | Changed after the tag | Patch release? |
 |---|---|
@@ -170,13 +174,20 @@ Cut a patch release only when a **shipped artifact** changes:
 | `npm/bin/vigil.js`, `npm/build.mjs`, `npm/README.md` (the npm page) | Yes |
 | `python/src/**`, `python/pyproject.toml`, `python/README.md` (PyPI page) | Yes |
 | `action.yml` (users pin `@vX.Y.Z`) | Yes |
-| `docs/**`, `examples/**`, root `README*.md`, `llms.txt`, `AGENTS.md`, CI workflows | No |
+| `examples/**`, CI snippets in `docs/ci.md`, or a version pin in the install docs | Yes, when the published snippet is wrong |
+| Prose-only `docs/**`, root `README*.md`, `llms.txt`, `AGENTS.md`, CI workflows | No |
 
-Documentation and CI-template fixes do not justify a re-tag: the released
-binaries and packages are byte-identical, so a patch version would only ask
-users to upgrade for prose. Note the fix in the CHANGELOG under `Unreleased`,
-keep the affected version sections untouched, and mention the current release
-in "Current state" below.
+The npm tarball ships only `bin/vigil.js`, `README.md`, `LICENSE` and
+`package.json` (`files: ['bin']`); the PyPI sdist ships `src/lv24_vigil/`,
+`tests/` and `README.md`. Neither contains `examples/` or `docs/`, so template
+fixes never reach an installed package. They do reach users who pin the **tag**
+or copy `examples/` from it, which is why a wrong template justifies a patch
+release: `v0.5.0` shipped `inputs.fail-on` and an unguarded GitLab pre-check,
+and `0.5.1` replaces it.
+
+Prose that is merely stale does not justify a re-tag: note it in the CHANGELOG
+under `Unreleased`, keep the affected version sections untouched, and mention
+the current release in "Current state" below.
 
 Before deciding, verify what users actually have:
 
@@ -187,22 +198,19 @@ curl -s https://pypi.org/pypi/lv24-vigil/X.Y.Z/json | jq '.urls[].filename'
 vigil version                                                 # reports the tag commit
 ```
 
-The npm tarball ships only `bin/vigil.js`, `README.md`, `LICENSE` and
-`package.json` (`files: ['bin']`); the PyPI sdist ships `src/lv24_vigil/`,
-`tests/` and `README.md`. Neither contains `examples/` or `docs/`, so template
-fixes never reach an installed package.
-
 ### Decision log
 
-- **0.5.0 stays current (2026-11-10).** Two follow-ups landed on `main` after
-  the tag: `5a39740` (bracket notation for `inputs['fail-on']` in the GitHub
-  workflow example, both READMEs and `docs/ci.md`) and `c4fe00f` (run the
-  GitLab pre-check only when `vigil.sarif` exists). Both touch documentation
-  and CI templates only. `action.yml` and the npm/PyPI READMEs already had the
-  correct form, no Go, npm launcher or Python launcher file changed, and the
-  published artifacts were verified: six assets plus `checksums.txt`, matching
-  SHA-256, `vigil version` reporting `2c26dfd`, npm and PyPI at `0.5.0`. No
-  patch release was cut.
+- **0.5.1 supersedes 0.5.0 for the CI templates (2026-11-10).** The follow-ups
+  `5a39740` (bracket notation for `inputs['fail-on']`) and `c4fe00f` (guard the
+  GitLab pre-check on an existing `vigil.sarif`) fix the examples users copy
+  from the tag. `v0.5.1` contains both plus the version metadata; no Go, npm
+  launcher or Python launcher behaviour changed. `v0.5.0` stays published and
+  immutable — it is not moved, retagged or deleted.
+- **0.5.0 stays current (2026-11-10; superseded).** The earlier decision in
+  `68c5149` kept `0.5.0` because the binaries and packages were byte-identical
+  and the templates only lived in the repository. That reasoning missed the tag
+  itself as a distribution surface: the examples on `v0.5.0` fail validation,
+  so a patch release is allowed. Superseded by the `0.5.1` entry above.
 
 ## Re-run a failed npm publish
 
@@ -296,9 +304,10 @@ reasoning and the procedure if a rewrite is ever required are in
 ## Current state
 
 `0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
-path. All seven packages are live at `0.5.0`, and `latest` points at it. The two
-documentation follow-ups `5a39740` and `c4fe00f` are on `main` only and do not
-change the release (see "Tags are immutable" above):
+path. All seven npm packages and PyPI are live at `0.5.1`, and `latest` points
+at it. `v0.5.1` contains the corrected CI templates; `v0.5.0` remains published
+and immutable, but its examples use `inputs.fail-on` and an unguarded GitLab
+pre-check, so do not copy them.
 
 ```bash
 npm view lv24-vigil version

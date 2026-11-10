@@ -179,13 +179,13 @@ runners should call `actions/setup-node` first.
 - uses: actions/checkout@v7
 
 - id: vigil
-  uses: LevapVeeskela/lv24-vigil@v0.5.0
+  uses: LevapVeeskela/lv24-vigil@v0.5.1
   with:
     path: .
     fail-on: high
     no-llm: true
     format: sarif
-    version: 0.5.0
+    version: 0.5.1
 
 - if: always()
   uses: github/codeql-action/upload-sarif@v4

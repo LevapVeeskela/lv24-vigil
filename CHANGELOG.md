@@ -4,7 +4,7 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
-## Unreleased
+## 0.5.1 - 2026-11-10
 
 ### Fixed
 
@@ -15,10 +15,15 @@ stable.
 - `examples/gitlab-ci.yml` and `docs/ci.md` run `vigil precheck` only when
   `vigil.sarif` exists, so a scan that failed before writing the report no
   longer turns into a confusing pre-check error.
+- The released tag now contains the corrected templates. `v0.5.0` predates
+  them; it stays published and immutable, and `0.5.1` supersedes it for anyone
+  copying the CI examples.
 
-These are documentation and CI-template fixes; no release artifact changed, so
-`0.5.0` remains the current release. See [release.md](docs/release.md) § "Tags
-are immutable; follow-ups after a release".
+### Unchanged
+
+- No runtime, rule, CLI or MCP behaviour changes: the Go engine, npm launcher
+  and Python launcher only carry the new version metadata. The composite action
+  example and the documentation pins move to `0.5.1`.
 
 ## 0.5.0 - 2026-11-10
 

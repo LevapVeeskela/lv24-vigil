@@ -69,7 +69,7 @@ Publishing a GitHub release for tag `vX.Y.Z` triggers `pypi-publish.yml`:
 Manual fallback, for example when a release tag predates the workflow:
 
 ```bash
-gh workflow run pypi-publish.yml -f version=0.5.0
+gh workflow run pypi-publish.yml -f version=0.5.1
 ```
 
 The input may include or omit the leading `v`. Existing versions are detected
@@ -93,7 +93,7 @@ Set `VIGIL_NPM_VERSION` to pin the npm CLI version or tag the wrapper invokes
 
 ```bash
 VIGIL_NPM_VERSION=latest vigil scan --no-llm
-VIGIL_NPM_VERSION=0.5.0 vigil scan --no-llm
+VIGIL_NPM_VERSION=0.5.1 vigil scan --no-llm
 ```
 
 On PowerShell: `$env:VIGIL_NPM_VERSION = "latest"`.
@@ -127,7 +127,7 @@ python -m twine upload --repository-url https://test.pypi.org/legacy/ python/dis
 The committed workflow publishes to PyPI only and never handles tokens. For a CI
 dry run, add a separate job that passes
 `repository-url: https://test.pypi.org/legacy/` to the publish action. Use a
-throwaway version such as `0.5.0rc1` and never reuse it for a real release.
+throwaway version such as `0.5.1rc1` and never reuse it for a real release.
 
 ## Cost
 
