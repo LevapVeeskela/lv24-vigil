@@ -23,6 +23,13 @@ jobs:
     name: self-scan
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Optional LV24 security pre-check. Both are empty by default, which
+      # makes the pre-check step a no-op: forks and clean checkouts stay green
+      # without any configuration. The variable/secret are only ever read here,
+      # never echoed.
+      SECURITY_PRECHECK_API_URL: ${{ vars.SECURITY_PRECHECK_API_URL }}
+      SECURITY_PRECHECK_TOKEN: ${{ secrets.SECURITY_PRECHECK_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -60,3 +67,31 @@ jobs:
         with:
           sarif_file: vigil.sarif
           category: vigil
+
+      - name: pre-check upload (optional)
+        # Evidence-only mirror of the same SARIF into the LV24 security control
+        # plane: it stores a pre-check row and never creates a run, never reads
+        # the scan settings and never touches the Strix execution plane or its
+        # kill-switch. This step needs no GitHub permission at all, so
+        # `permissions` above stays read-only apart from code scanning.
+        #
+        # SECURITY_PRECHECK_TOKEN is a staff JWT with `ops:security-scans` —
+        # NOT an npm token, not a registry token, not an API key.
+        #
+        # `if: always()` mirrors the SARIF step: a `--fail-on high` exit (2) is
+        # a policy failure, and the evidence is still worth recording. The
+        # shell guard below is what makes this optional — an unset variable or
+        # secret prints a notice and exits 0, while a real upload error with
+        # both values present fails the job.
+        if: always() && hashFiles('vigil.sarif') != ''
+        run: |
+          if [ -z "${SECURITY_PRECHECK_API_URL}" ] || [ -z "${SECURITY_PRECHECK_TOKEN}" ]; then
+            echo "::notice title=Pre-check skipped::Set the SECURITY_PRECHECK_API_URL repository variable and the SECURITY_PRECHECK_TOKEN secret to record pre-checks."
+            exit 0
+          fi
+          ./vigil precheck \
+            --sarif vigil.sarif \
+            --api "$SECURITY_PRECHECK_API_URL" \
+            --token "$SECURITY_PRECHECK_TOKEN" \
+            --target "$GITHUB_REPOSITORY" \
+            --commit "$GITHUB_SHA"

@@ -117,6 +117,66 @@ execution plane or its kill-switch. The control plane is stricter than GitHub
 code scanning: a result without a file URI is rejected, so keep the SARIF upload
 step above for code scanning and use the pre-check as an extra record.
 
+### Optional pre-check upload in the self-scan workflow
+
+The repository's own
+[`../.github/workflows/vigil.yml`](../.github/workflows/vigil.yml) records a
+pre-check only when it is configured. Two names control it:
+
+| Kind | Name | Meaning |
+|---|---|---|
+| Repository **variable** (`vars`) | `SECURITY_PRECHECK_API_URL` | Control-plane base URL, e.g. `https://lv24.by/api` |
+| Repository **secret** (`secrets`) | `SECURITY_PRECHECK_TOKEN` | **Staff JWT with `ops:security-scans`** — not an npm token, not a registry token, not an API key |
+
+Both are read as job-level environment variables:
+
+```yaml
+jobs:
+  scan:
+    env:
+      SECURITY_PRECHECK_API_URL: ${{ vars.SECURITY_PRECHECK_API_URL }}
+      SECURITY_PRECHECK_TOKEN: ${{ secrets.SECURITY_PRECHECK_TOKEN }}
+```
+
+The upload step runs after `vigil scan … --output vigil.sarif` and after the
+GitHub SARIF upload:
+
+```yaml
+- name: pre-check upload (optional)
+  if: always() && hashFiles('vigil.sarif') != ''
+  run: |
+    if [ -z "${SECURITY_PRECHECK_API_URL}" ] || [ -z "${SECURITY_PRECHECK_TOKEN}" ]; then
+      echo "::notice title=Pre-check skipped::…"
+      exit 0
+    fi
+    ./vigil precheck \
+      --sarif vigil.sarif \
+      --api "$SECURITY_PRECHECK_API_URL" \
+      --token "$SECURITY_PRECHECK_TOKEN" \
+      --target "$GITHUB_REPOSITORY" \
+      --commit "$GITHUB_SHA"
+```
+
+Behaviour to expect:
+
+- **Unset variable or secret** — the step prints a notice and exits `0`. Forks
+  and fresh clones stay green with no configuration, and the token is never
+  required for a public contribution.
+- **Both set, upload fails** — the step fails. A misconfigured control plane
+  should be visible, not silently skipped.
+- **`--fail-on high` exited `2`** — the pre-check still runs (`if: always()`),
+  exactly like the SARIF upload: the report is written before the exit code, and
+  a policy failure is the most useful moment to keep evidence.
+- **No extra GitHub permissions.** The step is a plain `run:` against a URL, so
+  `permissions` stays `contents: read` + `security-events: write` (the latter
+  only for `upload-sarif`). The workflow uses `ubuntu-latest` hosted runners
+  only — no larger runner, no paid feature.
+
+Pre-checks are **evidence only**. They never execute a scan, never read
+`security_scan_settings`, and keep working while the execution kill-switch is
+off. Retention is owned by the control plane, not by this workflow
+(`SECURITY_PRECHECK_RETENTION_DAYS` / `SECURITY_PRECHECK_RETENTION_BATCH`).
+
 ## Fork pull requests
 
 GitHub does not expose repository secrets to a `pull_request` workflow from a
