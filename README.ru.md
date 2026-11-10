@@ -23,7 +23,7 @@
 | --- | --- | --- |
 | [Установка](#установка) · [Посмотрите, как это работает](#посмотрите-как-это-работает) · [Быстрый старт](#быстрый-старт-за-60-секунд) | [Настройка MCP](#настройка-mcp) · [Для ИИ-агентов](#для-ии-агентов) · [Провайдеры](#провайдеры) · [Правила](#правила) | [CI и SARIF](#ci-sarif-и-precheck) · [Безопасность](#безопасность) · [Документация](#документация) |
 
-> **Статус: 0.4.x.** Детерминированный движок, CLI и MCP-сервер уже можно
+> **Статус: 0.5.x.** Детерминированный движок, CLI и MCP-сервер уже можно
 > использовать. Вывод модели носит рекомендательный характер, покрытие правил
 > растёт, и Vigil не заменяет пентест. Любая находка — это повод проверить, а не
 > готовый приговор.
@@ -416,7 +416,9 @@ Severity, confidence, baseline и маскирование: [docs/rules.md](docs
 - **По умолчанию только чтение.** Скан не пишет исходники; он пишет только
   историю сканов в `.vigil/scans` (или пользовательский кэш). Остальные пути
   записи: `vigil fix --apply` / `vigil_fix apply=true`, команда baseline, явно
-  запрошенный файл отчёта и `vigil init`. Фикс никогда не коммитит и не делает
+  запрошенный файл отчёта, `vigil init` и `vigil hook install`
+  (`.git/hooks/<mode>`, бэкап `.pre-vigil.bak` при замене чужого хука с
+  `--force`). Фикс никогда не коммитит и не делает
   staging.
 - **Секреты маскируются.** Найденные учётные данные редактируются в evidence,
   сниппетах и отчётах. Сырые значения секретов движок правил не печатает.
@@ -436,6 +438,114 @@ Severity, confidence, baseline и маскирование: [docs/rules.md](docs
   для неё нужен явный staff JWT.
 
 Детали и ограничения: [docs/security-model.md](docs/security-model.md).
+
+## Перед коммитом / перед деплоем
+
+Единый детерминированный гейт: `vigil scan --no-llm --fail-on high`. Без модели,
+без ключа, без сети.
+
+| Задача | Путь | Настройка |
+| --- | --- | --- |
+| Поймать проблему до коммита или пуша | Локальный git-хук | `vigil hook install` |
+| Блокировать pull request и `main` на GitHub | GitHub Actions | скопировать [`examples/github-workflow.yml`](examples/github-workflow.yml) |
+| Блокировать merge request и `main` на GitLab | GitLab CI | скопировать [`examples/gitlab-ci.yml`](examples/gitlab-ci.yml) |
+| Записать evidence в control plane LV24 | Опциональный pre-check | задать `VIGIL_SECURITY_API_TOKEN` |
+
+### Локальный хук (быстро, офлайн)
+
+```bash
+vigil hook install                  # pre-commit, падать на high
+vigil hook install --mode pre-push  # или перед пушем
+vigil hook status
+vigil hook uninstall
+```
+
+Хук коммита запускает `vigil scan --changed --base HEAD --no-llm --fail-on high --quiet`.
+Хук пуша сравнивает с `@{upstream}` и откатывается на `HEAD~1` (затем `HEAD` в
+ветке с одним коммитом). Файл помечен `# managed by lv24-vigil`, учитывает
+`VIGIL_BIN` (по умолчанию `vigil`) и не заменяет чужой хук без `--force`;
+старый хук сохраняется как `<hook>.pre-vigil.bak`. `uninstall` удаляет только
+хуки Vigil и возвращает бэкап.
+
+### GitHub Actions (PR, `main`, вручную)
+
+Скопируйте [`examples/github-workflow.yml`](examples/github-workflow.yml) в
+`.github/workflows/vigil.yml`:
+
+```yaml
+name: vigil
+on:
+  workflow_dispatch:
+    inputs:
+      fail-on:
+        default: high
+        type: choice
+        options: [low, medium, high, critical]
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    env:
+      FAIL_ON: ${{ inputs.fail-on || 'high' }}
+      VIGIL_SECURITY_API_TOKEN: ${{ secrets.VIGIL_SECURITY_API_TOKEN }}
+      VIGIL_SECURITY_API: ${{ vars.VIGIL_SECURITY_API }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - run: npm i -g lv24-vigil@latest
+      - run: vigil scan . --no-llm --format sarif --output vigil.sarif --fail-on "$FAIL_ON"
+      - if: always() && hashFiles('vigil.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with: { sarif_file: vigil.sarif }
+      - if: always() && env.VIGIL_SECURITY_API_TOKEN != '' && hashFiles('vigil.sarif') != ''
+        run: vigil precheck --sarif vigil.sarif --api "${VIGIL_SECURITY_API:-https://lv24.by/api}" --target "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA"
+```
+
+SARIF загружается с `if: always()`, потому что `--fail-on` завершает процесс с
+кодом `2` уже после записи отчёта. Pre-check опционален: без секрета шаг
+пропускается. `VIGIL_SECURITY_API_TOKEN` — это **staff JWT со scope
+`ops:security-scans`**, не API-ключ. Переменная `VIGIL_SECURITY_API` нужна,
+только если control plane отличается от `https://lv24.by/api`.
+
+### GitLab CI (MR, `main`, вручную)
+
+Скопируйте [`examples/gitlab-ci.yml`](examples/gitlab-ci.yml) в `.gitlab-ci.yml`:
+
+```yaml
+vigil:
+  image: node:22
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  variables:
+    GIT_DEPTH: "0"
+  script:
+    - npm i -g lv24-vigil@latest
+    - vigil scan . --no-llm --format sarif --output vigil.sarif --fail-on high
+  artifacts:
+    when: always
+    paths: [vigil.sarif]
+    reports:
+      sarif: vigil.sarif
+```
+
+Pre-check запускается, если задана CI/CD-переменная
+`VIGIL_SECURITY_API_TOKEN`. `reports: sarif` — нативная загрузка SARIF
+(GitLab 19.2+ Ultimate); в старых версиях оставьте обычный артефакт `paths` и
+уберите блок `reports`. `reports: sast` в GitLab ожидает собственный формат
+`gl-sast-report.json`, а не SARIF.
+
+Полные инструкции, секреты, коды выхода и SARIF: [docs/ci.md](docs/ci.md).
 
 ## CI, SARIF и precheck
 

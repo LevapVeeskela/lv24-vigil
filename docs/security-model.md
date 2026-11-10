@@ -105,7 +105,9 @@ Scans write no source files; they write only their own history. The
 source-writing path is `vigil fix --apply` or `vigil_fix` with `apply=true`.
 Other commands write only their own artifacts:
 `vigil init` (`.vigil.yaml`), `vigil baseline` / `vigil_baseline` (the baseline
-file), and `vigil report --output` / `vigil_report` with `path` (a report file).
+file), `vigil report --output` / `vigil_report` with `path` (a report file), and
+`vigil hook install` (`.git/hooks/<mode>`, plus a `.pre-vigil.bak` backup when a
+foreign hook is replaced with `--force`).
 
 Before writing a fix, Vigil checks:
 

@@ -22,7 +22,7 @@
 | --- | --- | --- |
 | [Install](#install) · [See it work](#see-it-work) · [Quickstart](#60-second-quickstart) | [MCP setup](#mcp-setup) · [For AI agents](#for-ai-agents) · [Providers](#providers) · [Rules](#rules) | [CI & SARIF](#ci-sarif-and-precheck) · [Safety](#safety) · [Docs](#documentation) |
 
-> **Status: 0.4.x.** The deterministic engine, CLI and MCP server are usable
+> **Status: 0.5.x.** The deterministic engine, CLI and MCP server are usable
 > today. LLM output is advisory, rule coverage keeps growing, and Vigil is not a
 > replacement for a pentest. Treat every finding as a lead to verify, not a
 > verdict.
@@ -406,8 +406,9 @@ Severity, confidence, baseline and masking details:
 - **Read-only by default.** A scan writes no source files; it writes only its
   scan history under `.vigil/scans` (or the user cache). The other write paths
   are `vigil fix --apply` / `vigil_fix apply=true`, the baseline command, an
-  explicitly requested report file and `vigil init`. A fix never commits and
-  never stages.
+  explicitly requested report file, `vigil init` and `vigil hook install`
+  (`.git/hooks/<mode>` plus a `.pre-vigil.bak` backup with `--force`). A fix
+  never commits and never stages.
 - **Secrets are masked.** Detected credentials are redacted in evidence,
   snippets and reports. Raw secret values are never printed by the rule engine.
 - **Your code goes only where you point it.** Deterministic scans make no
@@ -425,6 +426,116 @@ Severity, confidence, baseline and masking details:
   staff JWT.
 
 Details and limits: [docs/security-model.md](docs/security-model.md).
+
+## Before commit / before deploy
+
+One deterministic gate everywhere: `vigil scan --no-llm --fail-on high`. No
+model, no key, no network.
+
+| You want | Path | Setup |
+| --- | --- | --- |
+| Catch issues before a commit or push | Local git hook | `vigil hook install` |
+| Block pull requests and `main` on GitHub | GitHub Actions | copy [`examples/github-workflow.yml`](examples/github-workflow.yml) |
+| Block merge requests and `main` on GitLab | GitLab CI | copy [`examples/gitlab-ci.yml`](examples/gitlab-ci.yml) |
+| Record evidence in the LV24 control plane | Optional pre-check | set `VIGIL_SECURITY_API_TOKEN` |
+
+### Local hook (fastest, offline)
+
+```bash
+vigil hook install                  # pre-commit, fail on high
+vigil hook install --mode pre-push  # before push instead
+vigil hook status
+vigil hook uninstall
+```
+
+The hook runs `vigil scan --changed --base HEAD --no-llm --fail-on high --quiet`
+for a commit. A pre-push hook diffs against `@{upstream}` and falls back to
+`HEAD~1` (then `HEAD` on a single-commit branch). It is marked
+`# managed by lv24-vigil`, honours `VIGIL_BIN` (default `vigil`) and never
+replaces a foreign hook without `--force`, which saves it as
+`<hook>.pre-vigil.bak`. Uninstall removes only marked hooks and restores that
+backup.
+
+### GitHub Actions (PR, `main`, manual)
+
+Copy [`examples/github-workflow.yml`](examples/github-workflow.yml) to
+`.github/workflows/vigil.yml`:
+
+```yaml
+name: vigil
+on:
+  workflow_dispatch:
+    inputs:
+      fail-on:
+        default: high
+        type: choice
+        options: [low, medium, high, critical]
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    env:
+      FAIL_ON: ${{ inputs.fail-on || 'high' }}
+      VIGIL_SECURITY_API_TOKEN: ${{ secrets.VIGIL_SECURITY_API_TOKEN }}
+      VIGIL_SECURITY_API: ${{ vars.VIGIL_SECURITY_API }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - run: npm i -g lv24-vigil@latest
+      - run: vigil scan . --no-llm --format sarif --output vigil.sarif --fail-on "$FAIL_ON"
+      - if: always() && hashFiles('vigil.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with: { sarif_file: vigil.sarif }
+      - if: always() && env.VIGIL_SECURITY_API_TOKEN != '' && hashFiles('vigil.sarif') != ''
+        run: vigil precheck --sarif vigil.sarif --api "${VIGIL_SECURITY_API:-https://lv24.by/api}" --target "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA"
+```
+
+The SARIF upload uses `if: always()` because `--fail-on` exits `2` after writing
+the report. The pre-check is optional: without the secret the step is skipped.
+`VIGIL_SECURITY_API_TOKEN` is a **staff JWT with `ops:security-scans`**, not an
+API key; set the optional `VIGIL_SECURITY_API` repository variable only if your
+control plane is not `https://lv24.by/api`.
+
+### GitLab CI (MR, `main`, manual)
+
+Copy [`examples/gitlab-ci.yml`](examples/gitlab-ci.yml) to `.gitlab-ci.yml`:
+
+```yaml
+vigil:
+  image: node:22
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  variables:
+    GIT_DEPTH: "0"
+  script:
+    - npm i -g lv24-vigil@latest
+    - vigil scan . --no-llm --format sarif --output vigil.sarif --fail-on high
+  artifacts:
+    when: always
+    paths: [vigil.sarif]
+    reports:
+      sarif: vigil.sarif
+```
+
+The optional pre-check runs when the `VIGIL_SECURITY_API_TOKEN` CI/CD variable
+is set. `reports: sarif` is native SARIF ingestion (GitLab 19.2+ Ultimate); on
+older instances keep the plain `paths` artifact and remove the `reports` block.
+GitLab's `reports: sast` expects its own `gl-sast-report.json` schema, not
+SARIF.
+
+Full instructions, secrets, exit codes and SARIF details:
+[docs/ci.md](docs/ci.md).
 
 ## CI, SARIF and precheck
 

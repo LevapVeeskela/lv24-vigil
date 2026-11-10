@@ -1,0 +1,45 @@
+# Deterministic security gate for merge requests, main and manual runs.
+# Copy this file to .gitlab-ci.yml (or include it from your pipeline).
+#
+# The scan is offline (--no-llm): no model key is needed. The optional
+# pre-check uploads the same SARIF to the LV24 control plane only when the
+# VIGIL_SECURITY_API_TOKEN CI/CD variable is configured.
+
+vigil:
+  image: node:22
+  stage: test
+  rules:
+    # Every merge request pipeline.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    # Manual run from Run pipeline in the web UI.
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+    # Every push to the default branch.
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  variables:
+    GIT_DEPTH: "0"
+    VIGIL_FAIL_ON: "high"
+  script:
+    - npm i -g lv24-vigil@latest
+    - |
+      set +e
+      vigil scan . --no-llm --format sarif --output vigil.sarif --fail-on "$VIGIL_FAIL_ON"
+      code=$?
+      set -e
+      if [ -n "${VIGIL_SECURITY_API_TOKEN:-}" ]; then
+        vigil precheck \
+          --sarif vigil.sarif \
+          --api "${VIGIL_SECURITY_API:-https://lv24.by/api}" \
+          --target "$CI_PROJECT_PATH" \
+          --commit "$CI_COMMIT_SHA"
+      fi
+      exit "$code"
+  artifacts:
+    when: always
+    paths:
+      - vigil.sarif
+    reports:
+      # Native SARIF ingestion: GitLab 19.2+ (Ultimate). On older instances
+      # keep the plain artifact above and remove this block. `reports: sast`
+      # expects GitLab's own gl-sast-report.json schema, not SARIF.
+      sarif: vigil.sarif

@@ -21,9 +21,31 @@ vigil
 | `vigil baseline` | List, add, remove or clear the suppression baseline. |
 | `vigil report` | Render a stored scan. |
 | `vigil precheck` | Upload a SARIF report to the LV24 security control plane as a pre-check. |
+| `vigil hook install` | Install a local pre-commit or pre-push gate. |
+| `vigil hook status` | Show installed Vigil hooks, marker and target command. |
+| `vigil hook uninstall` | Remove Vigil hooks and restore a saved backup. |
 | `vigil threat-model [path]` | Generate a STRIDE-style threat model. Alias: `vigil threatmodel`. |
 | `vigil version` | Print the version. Also `--version` and `-v`. |
 | `vigil help` | Print the command summary. Also `--help` and `-h`. |
+
+## Local git hooks
+
+```bash
+vigil hook install [--mode pre-commit|pre-push] [--force] [--fail-on LEVEL] [--no-llm]
+vigil hook status
+vigil hook uninstall
+```
+
+`pre-commit` (default) runs
+`vigil scan --changed --base HEAD --no-llm --fail-on high --quiet`; `pre-push`
+uses `@{upstream}` and falls back to `HEAD~1` (then `HEAD` on a single-commit
+branch). The generated script is `#!/bin/sh`, executable and marked
+`# managed by lv24-vigil`. It honours `VIGIL_BIN` (default `vigil`) and fails
+with installation instructions when the binary is missing.
+
+A foreign hook is never replaced or removed silently: install refuses without
+`--force`, and `--force` saves it as `<hook>.pre-vigil.bak`. Uninstall removes
+only marked hooks and restores that backup.
 
 ## Scan and review flags
 

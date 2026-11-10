@@ -1,34 +1,78 @@
 name: vigil
 
+# Deterministic security gate for pull requests, main and manual runs.
+# Copy this file to .github/workflows/vigil.yml.
+#
+# The scan is offline (--no-llm): no model key is needed and forks stay green.
+# The optional pre-check uploads the same SARIF to the LV24 control plane only
+# when the VIGIL_SECURITY_API_TOKEN secret is configured.
+
 on:
+  workflow_dispatch:
+    inputs:
+      fail-on:
+        description: "Minimum severity that fails the scan"
+        required: false
+        default: high
+        type: choice
+        options:
+          - low
+          - medium
+          - high
+          - critical
   pull_request:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
   security-events: write
 
+concurrency:
+  group: vigil-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  review:
+  scan:
+    name: vigil scan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FAIL_ON: ${{ inputs.fail-on || 'high' }}
+      VIGIL_SECURITY_API_TOKEN: ${{ secrets.VIGIL_SECURITY_API_TOKEN }}
+      VIGIL_SECURITY_API: ${{ vars.VIGIL_SECURITY_API }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
-      - name: Vigil review
-        run: |
-          npx -y lv24-vigil review \
-            --base origin/${{ github.event.pull_request.base.ref }} \
-            --format sarif \
-            --fail-on high > vigil.sarif
-        env:
-          # Fork PRs do not receive repository secrets. Without this key the
-          # deterministic rules still run; only LLM analysis is skipped.
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Install Vigil
+        run: npm i -g lv24-vigil@latest
+
+      - name: Scan
+        # The report is written before the exit code, so a --fail-on failure
+        # still leaves vigil.sarif for the upload step below.
+        run: vigil scan . --no-llm --format sarif --output vigil.sarif --fail-on "$FAIL_ON"
 
       - name: Upload SARIF
-        if: always()
+        if: always() && hashFiles('vigil.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: vigil.sarif
+          category: vigil
+
+      - name: Pre-check upload (optional)
+        # Evidence only: stores the SARIF, never starts a scan. The token is a
+        # staff JWT with ops:security-scans, not an API key. Unset secret = skip.
+        if: always() && env.VIGIL_SECURITY_API_TOKEN != '' && hashFiles('vigil.sarif') != ''
+        run: |
+          vigil precheck \
+            --sarif vigil.sarif \
+            --api "${VIGIL_SECURITY_API:-https://lv24.by/api}" \
+            --target "$GITHUB_REPOSITORY" \
+            --commit "$GITHUB_SHA"

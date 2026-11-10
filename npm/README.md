@@ -63,6 +63,21 @@ vigil fix VGL-XXXXXXXXXX --apply   # validated diff, never commits
 
 Exit codes: `0` clean, `1` error, `2` findings at or above `--fail-on`.
 
+## Before commit / before deploy
+
+```bash
+vigil hook install                  # local pre-commit gate
+vigil hook install --mode pre-push  # or before push
+vigil scan . --no-llm --fail-on high # manual gate, no key, no network
+```
+
+The hook runs a deterministic changed-files scan and is marked
+`# managed by lv24-vigil`; `--force` backs up a foreign hook instead of
+clobbering it. GitHub Actions, GitLab CI, SARIF and the optional pre-check are
+documented in
+[Before commit / before deploy](https://github.com/LevapVeeskela/lv24-vigil#before-commit--before-deploy)
+and [docs/ci.md](https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/ci.md).
+
 ## MCP server
 
 Claude Code, Claude Desktop and Cursor (`mcpServers` shape):

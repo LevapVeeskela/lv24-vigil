@@ -4,6 +4,43 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.5.0 - 2026-11-10
+
+### Added
+
+- `vigil hook install|status|uninstall`: a first-class local audit gate.
+  `install` writes `.git/hooks/pre-commit` (default) or `pre-push` with the
+  `# managed by lv24-vigil` marker, `#!/bin/sh` and the executable bit. The
+  pre-commit hook runs
+  `vigil scan --changed --base HEAD --no-llm --fail-on high --quiet`; pre-push
+  diffs against `@{upstream}` with a `HEAD~1` fallback. Hooks honour
+  `VIGIL_BIN`, check `command -v`, and fail with installation instructions when
+  the binary is missing. A foreign hook is never replaced silently: install
+  refuses without `--force`, and `--force` saves `<hook>.pre-vigil.bak`.
+  `status` prints installed hooks, marker and target command; `uninstall`
+  removes only marked hooks and restores the backup.
+- `examples/gitlab-ci.yml`: a `vigil` job for merge requests, the default branch
+  and manual web runs, with a plain SARIF artifact, optional native SARIF
+  report ingestion and an optional LV24 pre-check.
+- `action.yml` is now a composite action that installs the npm package and runs
+  `vigil scan` with `path`, `fail-on`, `no-llm`, `format` and `version` inputs.
+  It needs Node.js 18+ on the runner.
+
+### Changed
+
+- `examples/github-workflow.yml` now covers `workflow_dispatch` (with a
+  `fail-on` input, default `high`), `pull_request` and pushes to `main`. It
+  installs `lv24-vigil@latest` with `actions/setup-node`, writes SARIF, uploads
+  it with `github/codeql-action/upload-sarif`, and optionally runs
+  `vigil precheck` when `VIGIL_SECURITY_API_TOKEN` is set.
+- README (English and Russian), npm README, `docs/ci.md`, `docs/cli.md`,
+  `llms.txt` and `AGENTS.md` document the three audit paths (local hook, GitHub
+  Actions, GitLab CI), the pre-check secret and the agent rule to run
+  `vigil scan --no-llm --fail-on high` before commit without auto-fixing or
+  committing.
+- The Go version constant and the Python launcher/pyproject move to `0.5.0`.
+  npm package versions are derived from the release tag.
+
 ## 0.4.1 - 2026-11-10
 
 ### Changed

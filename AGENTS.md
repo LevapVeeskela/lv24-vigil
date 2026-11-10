@@ -24,6 +24,42 @@ vigil status --json
 This reports the resolved provider, model, rule count, store, baseline and last
 scan. No model configured is fine: deterministic scans still work.
 
+## Before commit / before deploy
+
+Run the deterministic gate before you commit, hand off or deploy:
+
+```bash
+vigil scan . --no-llm --fail-on high
+```
+
+Install a local guard once per clone:
+
+```bash
+vigil hook install                  # pre-commit
+vigil hook install --mode pre-push  # or before push
+vigil hook status
+vigil hook uninstall
+```
+
+The hook is marked `# managed by lv24-vigil`, honours `VIGIL_BIN` (default
+`vigil`), and refuses to replace a foreign hook without `--force` (which saves
+`<hook>.pre-vigil.bak`). Uninstall removes only Vigil hooks and restores the
+backup.
+
+CI templates: [`examples/github-workflow.yml`](examples/github-workflow.yml)
+(PR, `main`, manual dispatch), [`examples/gitlab-ci.yml`](examples/gitlab-ci.yml)
+(MR, default branch, manual web) and the composite [`action.yml`](action.yml).
+All run `vigil scan --no-llm --fail-on high`; the optional pre-check needs a
+staff JWT with `ops:security-scans`.
+
+Rules:
+
+- Never auto-apply a fix (`vigil fix --apply` or `vigil_fix apply=true`), never
+  commit, stage or push on the user's behalf, and never suppress a finding
+  without an explicit baseline decision.
+- Exit code `2` is a policy failure, not a crash. Report it; do not retry it
+  away.
+
 ## Register the MCP server
 
 OpenCode (`opencode.json`):

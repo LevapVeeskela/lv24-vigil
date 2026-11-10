@@ -50,12 +50,12 @@ installation hint. An interrupted run exits with code `130`.
 ## Version pinning
 
 By default the launcher runs the npm package version matching its own version
-(currently `0.4.1`). Override it with `VIGIL_NPM_VERSION` to use any npm version
+(currently `0.5.0`). Override it with `VIGIL_NPM_VERSION` to use any npm version
 or tag:
 
 ```bash
 VIGIL_NPM_VERSION=latest vigil --help
-VIGIL_NPM_VERSION=0.4.1 vigil scan --no-llm
+VIGIL_NPM_VERSION=0.5.0 vigil scan --no-llm
 ```
 
 PowerShell:

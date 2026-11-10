@@ -8,7 +8,7 @@ binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud
 Repository: https://github.com/LevapVeeskela/lv24-vigil
 License: Apache-2.0
 Binary: vigil
-Current release line: 0.4.x
+Current release line: 0.5.x
 
 ## Canonical install
 
@@ -52,10 +52,42 @@ Install only `lv24-vigil`.
     vigil baseline list|add|remove|clear
     vigil report --format md|json|sarif|html
     vigil precheck --sarif FILE --api URL --token JWT
+    vigil hook install [--mode pre-commit|pre-push] [--force] [--fail-on LEVEL]
+    vigil hook status
+    vigil hook uninstall
     vigil mcp [--root DIR]
 
 Exit codes: 0 clean, 1 error, 2 findings at or above --fail-on.
 Default scan path is the current directory.
+
+## Before commit / before deploy
+
+Run the deterministic gate before every commit or handoff:
+
+    vigil scan . --no-llm --fail-on high
+
+Install the local guard once per clone:
+
+    vigil hook install                  # pre-commit
+    vigil hook install --mode pre-push  # or before push
+    vigil hook status
+    vigil hook uninstall
+
+Hooks are marked `# managed by lv24-vigil`, honour `VIGIL_BIN` (default
+`vigil`), and refuse to replace a foreign hook without `--force` (backup:
+`<hook>.pre-vigil.bak`). CI templates: `examples/github-workflow.yml` (PR, main,
+manual dispatch), `examples/gitlab-ci.yml` (MR, default branch, manual web), and
+the composite `action.yml`.
+
+Agent rules:
+
+- Run `vigil scan . --no-llm --fail-on high` before committing or deploying.
+- Use `vigil hook install` for a local pre-commit or pre-push gate.
+- Never auto-apply a fix (`vigil fix --apply` / `vigil_fix apply=true`), never
+  commit, stage or push on the user's behalf, and never suppress a finding
+  without an explicit baseline decision.
+- A `--fail-on` exit code 2 is a policy failure; report it, do not retry it
+  away.
 
 ## MCP
 
@@ -151,6 +183,8 @@ when scan.osv is enabled. `vigil rules` is authoritative.
 ## Safety
 
 - Scans are read-only; they write only .vigil/scans or the user cache.
+- vigil hook install writes .git/hooks/<mode> and may save a .pre-vigil.bak
+  backup with --force; uninstall removes only marked hooks.
 - vigil fix --apply writes a validated diff; it never commits or stages.
 - Baseline, an explicit report path and vigil init write their own files.
 - Secrets detected by rules are masked in evidence, snippets and reports.

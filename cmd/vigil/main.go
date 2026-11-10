@@ -63,6 +63,8 @@ func runWithIO(args []string, stdout, stderr io.Writer) error {
 		return runReport(rest, stdout, stderr)
 	case "precheck":
 		return runPrecheck(rest, stdout, stderr)
+	case "hook", "hooks":
+		return runHook(rest, stdout, stderr)
 	case "threat-model", "threatmodel":
 		return runThreatModel(rest, stdout, stderr)
 	case "version", "--version", "-v":
@@ -91,6 +93,9 @@ Usage:
   vigil baseline [list|add|remove|clear]
   vigil report [--scan ID]         render the last scan
   vigil precheck [flags]           upload a SARIF pre-check to LV24 security scans
+  vigil hook install [flags]       install a local pre-commit or pre-push gate
+  vigil hook status                show installed Vigil hooks
+  vigil hook uninstall             remove Vigil hooks and restore backups
   vigil version                    print the version
   vigil help                       show this help
 
@@ -124,6 +129,7 @@ Other flags:
   vigil rules --category C --language L --severity S --query Q --json
   vigil baseline add ID --reason TEXT
   vigil baseline clear --yes
+  vigil hook install --mode pre-push --fail-on critical --force
 
 Environment:
   VIGIL_PROVIDER, VIGIL_MODEL, VIGIL_API_KEY, VIGIL_BASE_URL
@@ -131,6 +137,7 @@ Environment:
   OLLAMA_HOST (local models)
   VIGIL_NO_LLM=1 (force deterministic-only scans)
   VIGIL_CONFIG (override the user config path)
+  VIGIL_BIN (binary a git hook runs; default: vigil)
   VIGIL_SECURITY_API_TOKEN (staff JWT fallback for vigil precheck --token)
   VIGIL_BASE_URL and VIGIL_API_KEY belong in the user config or env, not in a project file.
 
