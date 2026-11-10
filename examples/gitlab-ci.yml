@@ -26,7 +26,7 @@ vigil:
       vigil scan . --no-llm --format sarif --output vigil.sarif --fail-on "$VIGIL_FAIL_ON"
       code=$?
       set -e
-      if [ -n "${VIGIL_SECURITY_API_TOKEN:-}" ]; then
+      if [ -n "${VIGIL_SECURITY_API_TOKEN:-}" ] && [ -f vigil.sarif ]; then
         vigil precheck \
           --sarif vigil.sarif \
           --api "${VIGIL_SECURITY_API:-https://lv24.by/api}" \
