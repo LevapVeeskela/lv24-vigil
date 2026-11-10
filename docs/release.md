@@ -155,6 +155,55 @@ For `0.5.0` this returns a `https://slsa.dev/provenance/v1` attestation built
 from `.github/workflows/npm-publish.yml` on a GitHub-hosted runner. The npm page
 shows the matching provenance badge.
 
+## Tags are immutable; follow-ups after a release
+
+A published tag never moves and is never deleted: `v0.2.0` and later are Go
+module versions, and `0.5.0`+ also name the binaries, npm packages and PyPI
+artifacts that users install. A fix that lands after a tag lives on `main`;
+`main` is the canonical documentation copy, and GitHub serves it by default.
+
+Cut a patch release only when a **shipped artifact** changes:
+
+| Changed after the tag | Patch release? |
+|---|---|
+| Go code under `cmd/`, `internal/` (binaries) | Yes |
+| `npm/bin/vigil.js`, `npm/build.mjs`, `npm/README.md` (the npm page) | Yes |
+| `python/src/**`, `python/pyproject.toml`, `python/README.md` (PyPI page) | Yes |
+| `action.yml` (users pin `@vX.Y.Z`) | Yes |
+| `docs/**`, `examples/**`, root `README*.md`, `llms.txt`, `AGENTS.md`, CI workflows | No |
+
+Documentation and CI-template fixes do not justify a re-tag: the released
+binaries and packages are byte-identical, so a patch version would only ask
+users to upgrade for prose. Note the fix in the CHANGELOG under `Unreleased`,
+keep the affected version sections untouched, and mention the current release
+in "Current state" below.
+
+Before deciding, verify what users actually have:
+
+```bash
+gh release view vX.Y.Z --json assets --jq '.assets[].name'   # binaries + checksums.txt
+tar -tzf lv24-vigil-X.Y.Z.tgz                                 # npm: bin/, README, LICENSE
+curl -s https://pypi.org/pypi/lv24-vigil/X.Y.Z/json | jq '.urls[].filename'
+vigil version                                                 # reports the tag commit
+```
+
+The npm tarball ships only `bin/vigil.js`, `README.md`, `LICENSE` and
+`package.json` (`files: ['bin']`); the PyPI sdist ships `src/lv24_vigil/`,
+`tests/` and `README.md`. Neither contains `examples/` or `docs/`, so template
+fixes never reach an installed package.
+
+### Decision log
+
+- **0.5.0 stays current (2026-11-10).** Two follow-ups landed on `main` after
+  the tag: `5a39740` (bracket notation for `inputs['fail-on']` in the GitHub
+  workflow example, both READMEs and `docs/ci.md`) and `c4fe00f` (run the
+  GitLab pre-check only when `vigil.sarif` exists). Both touch documentation
+  and CI templates only. `action.yml` and the npm/PyPI READMEs already had the
+  correct form, no Go, npm launcher or Python launcher file changed, and the
+  published artifacts were verified: six assets plus `checksums.txt`, matching
+  SHA-256, `vigil version` reporting `2c26dfd`, npm and PyPI at `0.5.0`. No
+  patch release was cut.
+
 ## Re-run a failed npm publish
 
 The GitHub release is already published; only the npm packages are missing.
@@ -247,7 +296,9 @@ reasoning and the procedure if a rewrite is ever required are in
 ## Current state
 
 `0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
-path. All seven packages are live at `0.5.0`, and `latest` points at it:
+path. All seven packages are live at `0.5.0`, and `latest` points at it. The two
+documentation follow-ups `5a39740` and `c4fe00f` are on `main` only and do not
+change the release (see "Tags are immutable" above):
 
 ```bash
 npm view lv24-vigil version

@@ -4,6 +4,22 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## Unreleased
+
+### Fixed
+
+- `examples/github-workflow.yml`, the GitHub workflow snippet in `README.md`,
+  `README.ru.md` and `docs/ci.md` now read the `fail-on` dispatch input as
+  `${{ inputs['fail-on'] }}`. `inputs.fail-on` is parsed as a subtraction and
+  the workflow fails validation before it runs.
+- `examples/gitlab-ci.yml` and `docs/ci.md` run `vigil precheck` only when
+  `vigil.sarif` exists, so a scan that failed before writing the report no
+  longer turns into a confusing pre-check error.
+
+These are documentation and CI-template fixes; no release artifact changed, so
+`0.5.0` remains the current release. See [release.md](docs/release.md) § "Tags
+are immutable; follow-ups after a release".
+
 ## 0.5.0 - 2026-11-10
 
 ### Added
