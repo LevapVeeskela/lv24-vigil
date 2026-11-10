@@ -71,6 +71,19 @@ test('generates main and platform packages from a fake dist', async (t) => {
   assert.equal(main.homepage, 'https://github.com/LevapVeeskela/lv24-vigil#readme');
   assert.equal(main.bugs.url, 'https://github.com/LevapVeeskela/lv24-vigil/issues');
   assert.ok(main.keywords.includes('mcp'));
+  assert.match(main.description, /163 deterministic rules/);
+  for (const keyword of [
+    'security',
+    'sast',
+    'mcp',
+    'ai',
+    'vulnerability-scanner',
+    'code-review',
+    'llm',
+    'go',
+  ]) {
+    assert.ok(main.keywords.includes(keyword), `missing keyword ${keyword}`);
+  }
   assert.deepEqual(
     Object.keys(main.optionalDependencies).sort(),
     PLATFORMS.map((platform) => platform.packageName).sort(),

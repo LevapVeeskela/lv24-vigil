@@ -1,0 +1,178 @@
+# Vigil
+
+Vigil is a local-first security auditor for source repositories. It runs 163
+deterministic rules, then optionally uses the model configured by the user for
+triage, deep review, fix proposals and a STRIDE-style threat model. The same
+binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud.
+
+Repository: https://github.com/LevapVeeskela/lv24-vigil
+License: Apache-2.0
+Binary: vigil
+Current release line: 0.4.x
+
+## Canonical install
+
+    npm i -g lv24-vigil
+    vigil version
+
+One-off:
+
+    npx -y lv24-vigil scan --no-llm
+    npx -y lv24-vigil mcp
+
+Go 1.27+:
+
+    go install github.com/levapveeskela/lv24-vigil/cmd/vigil@latest
+
+## Package choice
+
+Install only `lv24-vigil`.
+
+- `lv24-vigil` is the launcher, CLI and MCP entry point.
+- `@lv24/vigil-<os>-<cpu>` are optionalDependencies containing the platform
+  binary. Never install them directly.
+- npm installs seven packages: one launcher plus six platform packages
+  (win32, darwin and linux; x64 and arm64).
+- Do not use --no-optional or --omit=optional; the launcher then has no binary.
+- PyPI `lv24-vigil` is a thin launcher that delegates to npm and needs Node.js
+  18+. npm is canonical.
+
+## Commands
+
+    vigil scan [path] --no-llm              deterministic rules only, no network
+    vigil scan [path]                       add LLM triage if a model is configured
+    vigil scan --format json                JSON report on stdout
+    vigil scan --format sarif --fail-on high
+    vigil review --base origin/main --format sarif
+    vigil fix <finding-id>                  print a unified diff
+    vigil fix <finding-id> --apply          write the diff, never commit
+    vigil threat-model [path]               STRIDE markdown, needs a model
+    vigil status --json                     provider, model, rules, store, last scan
+    vigil rules [--json]                    authoritative rule catalog
+    vigil baseline list|add|remove|clear
+    vigil report --format md|json|sarif|html
+    vigil precheck --sarif FILE --api URL --token JWT
+    vigil mcp [--root DIR]
+
+Exit codes: 0 clean, 1 error, 2 findings at or above --fail-on.
+Default scan path is the current directory.
+
+## MCP
+
+Server command: `vigil mcp` (stdio, newline-delimited JSON-RPC).
+Protocol versions: 2025-06-18, 2025-03-26, 2024-11-05.
+
+OpenCode (`opencode.json`):
+
+    {
+      "mcp": {
+        "vigil": {
+          "type": "local",
+          "command": ["npx", "-y", "lv24-vigil", "mcp"],
+          "enabled": true
+        }
+      }
+    }
+
+Claude Code:
+
+    claude mcp add vigil -- npx -y lv24-vigil mcp
+
+Codex (`~/.codex/config.toml`):
+
+    [mcp_servers.vigil]
+    command = "npx"
+    args = ["-y", "lv24-vigil", "mcp"]
+
+Cursor (`~/.cursor/mcp.json`):
+
+    {
+      "mcpServers": {
+        "vigil": {
+          "command": "npx",
+          "args": ["-y", "lv24-vigil", "mcp"]
+        }
+      }
+    }
+
+If Vigil is installed globally, use `["vigil", "mcp"]` instead of npx.
+
+## MCP tools
+
+Read-only unless noted.
+
+- vigil_scan(path?, mode?, useLlm?, ...) — scan a repository; writes scan history.
+- vigil_review(baseRef?, diff?, ...) — review changed lines; writes scan history.
+- vigil_explain(findingId) — explain one finding.
+- vigil_fix(findingId, apply?) — propose a diff; apply=true writes source files.
+- vigil_threat_model(path?) — STRIDE-style threat model.
+- vigil_status() — provider, model, engine and store status.
+- vigil_rules(category?, language?, severity?, query?) — rule catalog.
+- vigil_baseline(action, ...) — inspect or update the baseline file.
+- vigil_report(scanId?, format?, path?) — render a stored scan; writes only with path.
+- vigil_verify(findingId) — re-check whether a finding is still present.
+- vigil_history(limit?) — recent scans from the local store.
+
+Resources: vigil://status, vigil://rules, vigil://scan/last, vigil://scan/<id>.
+Prompts: security_review, threat_model, fix_finding.
+
+## Providers
+
+Set VIGIL_PROVIDER and the provider key, or let Vigil infer the provider from a
+known key. Explicit VIGIL_* variables win.
+
+    openai        OPENAI_API_KEY        gpt-4.1-mini
+    anthropic     ANTHROPIC_API_KEY     claude-sonnet-4-5
+    gemini        GEMINI_API_KEY        gemini-2.5-flash
+    openrouter    OPENROUTER_API_KEY    anthropic/claude-sonnet-4.5
+    groq          GROQ_API_KEY          llama-3.3-70b-versatile
+    deepseek      DEEPSEEK_API_KEY      deepseek-chat
+    mistral       MISTRAL_API_KEY       mistral-large-latest
+    xai           XAI_API_KEY           grok-4-fast
+    opencode-go   OPENCODE_API_KEY      deepseek-v4.1-flash
+    ollama        none                  qwen2.5-coder:14b
+    lmstudio      none                  local-model
+    command       none                  local CLI, no API key
+    custom        VIGIL_API_KEY         set VIGIL_MODEL and VIGIL_BASE_URL
+
+The `command` provider executes an already-authenticated local CLI (for example
+`opencode run`) and must be set in the user config, not in a project file.
+OLLAMA_HOST points at a non-default Ollama.
+
+## Rules
+
+163 deterministic rules in eight families:
+VGL-SEC 24 secrets, VGL-INJ 37 injection, VGL-CRY 12 crypto, VGL-AUTH 16 auth,
+VGL-WEB 17 web, VGL-CFG 28 config/IaC, VGL-CI 17 CI, VGL-DEP 12 dependencies.
+
+VGL-AI-001 is synthesized by the LLM deep review. VGL-OSV-<advisory> appears only
+when scan.osv is enabled. `vigil rules` is authoritative.
+
+## Safety
+
+- Scans are read-only; they write only .vigil/scans or the user cache.
+- vigil fix --apply writes a validated diff; it never commits or stages.
+- Baseline, an explicit report path and vigil init write their own files.
+- Secrets detected by rules are masked in evidence, snippets and reports.
+- Deterministic scans make no network calls.
+- LLM features send minimal context only to the configured endpoint.
+- Fix paths are confined to the repository; binary, symlink and .git patches are
+  rejected; git apply --check runs before any write.
+- No telemetry, analytics, account or update check.
+- vigil precheck is an explicit upload and requires a staff JWT with
+  ops:security-scans; it does not start a scan.
+
+## Docs
+
+- README: https://github.com/LevapVeeskela/lv24-vigil#readme
+- Install: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/install.md
+- CLI: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/cli.md
+- MCP: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/mcp.md
+- Providers: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/providers.md
+- Rules: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/rules.md
+- Security model: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/security-model.md
+- CI: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/ci.md
+- Architecture: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/architecture.md
+- Troubleshooting: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/troubleshooting.md
+- Changelog: https://github.com/LevapVeeskela/lv24-vigil/blob/main/CHANGELOG.md
+- Agent onboarding: https://github.com/LevapVeeskela/lv24-vigil/blob/main/AGENTS.md

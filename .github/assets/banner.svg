@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-label="Vigil — security audit on your own model. 163 deterministic rules, MCP server, SARIF, no telemetry.">
+  <title>Vigil — security audit on your own model</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#050a12"/>
+      <stop offset="0.55" stop-color="#08131c"/>
+      <stop offset="1" stop-color="#0a1b21"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.16" cy="0.5" r="0.46">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.86" cy="0.12" r="0.5">
+      <stop offset="0" stop-color="#38bdf8" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="shieldStroke" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a7f3e8"/>
+      <stop offset="1" stop-color="#0d9488"/>
+    </linearGradient>
+    <linearGradient id="shieldFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f3036" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#06141b" stop-opacity="0.96"/>
+    </linearGradient>
+    <linearGradient id="word" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="0.68" stop-color="#ccfbf1"/>
+      <stop offset="1" stop-color="#5eead4"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="0.55" stop-color="#2dd4bf" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#1e293b" stroke-opacity="0.32" stroke-width="1"/>
+    </pattern>
+    <filter id="softGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="320" fill="url(#bg)"/>
+  <rect width="1280" height="320" fill="url(#grid)"/>
+  <rect width="1280" height="320" fill="url(#glowA)"/>
+  <rect width="1280" height="320" fill="url(#glowB)"/>
+
+  <circle cx="180" cy="156" r="150" fill="none" stroke="#14b8a6" stroke-opacity="0.07" stroke-width="1"/>
+  <circle cx="180" cy="156" r="126" fill="none" stroke="#14b8a6" stroke-opacity="0.13" stroke-width="1"/>
+
+  <path d="M180 46 L258 76 V152 C258 206 224 246 180 266 C136 246 102 206 102 152 V76 Z"
+        fill="url(#shieldFill)" stroke="url(#shieldStroke)" stroke-width="3.5" filter="url(#softGlow)"/>
+  <path d="M180 70 L244 94 V150 C244 192 218 225 180 244 C142 225 116 192 116 150 V94 Z"
+        fill="none" stroke="#2dd4bf" stroke-opacity="0.3" stroke-width="1.5"/>
+
+  <path d="M142 152 C156 128 204 128 218 152 C204 176 156 176 142 152 Z"
+        fill="#041017" stroke="#5eead4" stroke-width="2.5"/>
+  <circle cx="180" cy="152" r="15" fill="#5eead4"/>
+  <circle cx="180" cy="152" r="6.5" fill="#02181c"/>
+  <circle cx="175" cy="146" r="3.5" fill="#f0fdfa" fill-opacity="0.92"/>
+
+  <g stroke="#5eead4" stroke-opacity="0.45" stroke-width="2" stroke-linecap="round">
+    <path d="M84 152 H94"/>
+    <path d="M266 152 H276"/>
+    <path d="M180 36 V26"/>
+    <path d="M180 276 V266"/>
+  </g>
+
+  <text x="310" y="78" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="600" letter-spacing="3.6" fill="#5eead4" fill-opacity="0.92">LV24 · LOCAL-FIRST SECURITY</text>
+  <text x="306" y="170" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="104" font-weight="800" letter-spacing="10" fill="url(#word)">VIGIL</text>
+  <text x="310" y="213" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="29" font-weight="400" fill="#dbeafe">Security audit on your own model</text>
+  <text x="310" y="253" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="500" letter-spacing="1.4" fill="#6ee7b7">163 rules · MCP · SARIF · no telemetry</text>
+
+  <path d="M900 92 V226" stroke="#1f3b45" stroke-width="1"/>
+
+  <g font-family="Segoe UI, Helvetica Neue, Arial, sans-serif">
+    <text x="948" y="168" font-size="44" font-weight="700" fill="#5eead4">163</text>
+    <text x="948" y="196" font-size="13" fill="#94a3b8">deterministic rules</text>
+
+    <text x="1090" y="168" font-size="44" font-weight="700" fill="#5eead4">11</text>
+    <text x="1090" y="196" font-size="13" fill="#94a3b8">MCP tools</text>
+
+    <text x="1188" y="168" font-size="44" font-weight="700" fill="#5eead4">0</text>
+    <text x="1188" y="196" font-size="13" fill="#94a3b8">telemetry</text>
+  </g>
+
+  <rect x="0" y="316" width="1280" height="4" fill="url(#accent)"/>
+</svg>

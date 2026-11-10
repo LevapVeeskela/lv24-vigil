@@ -1,14 +1,24 @@
+![Vigil — security audit on your own model](https://raw.githubusercontent.com/LevapVeeskela/lv24-vigil/main/.github/assets/banner.svg)
+
 # lv24-vigil
 
-**Vigil** is a security auditor for your code that runs on your own model.
-Deterministic rules catch known patterns, an LLM you choose triages the results,
-and the same binary works as a CLI or as an MCP server for Claude Code, Codex
-and OpenCode.
+[![npm](https://img.shields.io/npm/v/lv24-vigil?label=npm&color=cb3837&logo=npm)](https://www.npmjs.com/package/lv24-vigil)
+[![downloads](https://img.shields.io/npm/dm/lv24-vigil?color=cb3837)](https://www.npmjs.com/package/lv24-vigil)
+[![license](https://img.shields.io/badge/license-Apache--2.0-2ea44f)](https://github.com/LevapVeeskela/lv24-vigil/blob/main/LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](https://github.com/LevapVeeskela/lv24-vigil/blob/main/go.mod)
+[![MCP](https://img.shields.io/badge/MCP-stdio-6C5CE7)](https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/mcp.md)
 
-- **Source and docs:** <https://github.com/LevapVeeskela/lv24-vigil>
-- **License:** Apache-2.0
-- **No telemetry.** Only the configured LLM endpoint is contacted. There is no
-  cloud account and no call home.
+**Vigil is a security auditor for your code that runs on your own model.** It
+runs 163 deterministic rules over a repository, then optionally sends the minimum
+context to the model you already pay for to triage findings, review risky code,
+propose fixes and write a threat model. OpenAI, Anthropic, Gemini, OpenRouter,
+Groq, DeepSeek, Mistral, xAI, OpenCode Go, Ollama, LM Studio, a local CLI or any
+OpenAI-compatible endpoint.
+
+The same binary is a CLI and a stdio MCP server for OpenCode, Claude Code, Codex
+and Cursor. There is no Vigil account, no telemetry, no Docker for a normal scan
+and no source file written by default. Deterministic findings never depend on an
+LLM: a provider outage is a warning, not a failed scan.
 
 ## Install
 
@@ -17,52 +27,117 @@ npm i -g lv24-vigil
 vigil version
 ```
 
-npm installs only the binary for your platform (`@lv24/vigil-<os>-<cpu>`:
-Windows, macOS and Linux on x64 and arm64). Nothing is downloaded at install
-time and no install scripts run. Update with `npm i -g lv24-vigil@latest`.
-
-## Quick start
+Or run it without a global install:
 
 ```bash
-cd ~/src/my-app
-vigil scan .                       # deterministic rules + LLM triage
-vigil scan . --no-llm              # rules only, no model needed
-vigil scan . --format sarif --output vigil.sarif
-vigil review --base HEAD~1         # review only changed lines
-vigil review --diff changes.patch  # review a patch file
-vigil rules                        # list detection rules
-vigil init                         # write a starter .vigil.yaml
+npx -y lv24-vigil scan --no-llm
+npx -y lv24-vigil mcp
 ```
 
-Configure the model with environment variables (for example
-`VIGIL_PROVIDER`, `VIGIL_MODEL`, `VIGIL_API_KEY`, `VIGIL_BASE_URL`) or with
-provider/model in `.vigil.yaml`. Keys and `base_url` stay in the environment or
-the user config; a project file may not contain them. `OLLAMA_HOST` points Vigil
-at a local model. Secrets are masked in every output.
+**Package choice.** Install only `lv24-vigil`. The six platform packages
+(`@lv24/vigil-win32-x64`, `@lv24/vigil-darwin-arm64`, `@lv24/vigil-linux-x64`,
+…) are `optionalDependencies` selected by the launcher — never install them
+directly. Keep optional dependencies enabled: `--no-optional` and
+`--omit=optional` leave `vigil` without a binary. Nothing is downloaded at
+install time and no install scripts run. Update with
+`npm i -g lv24-vigil@latest`.
+
+The npm package requires Node.js 18+. Without Node.js, use the Go install or a
+standalone installer:
+<https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/install.md>.
+
+## 60-second quickstart
+
+```bash
+cd your-repo
+
+vigil scan --no-llm          # deterministic rules only: no key, no network
+vigil scan                   # add LLM triage (needs a provider key)
+vigil status                 # resolved provider, model, rules and last scan
+vigil rules                  # the authoritative rule catalog
+
+vigil scan --format sarif --fail-on high > vigil.sarif
+vigil review --base origin/main --format sarif --fail-on high
+vigil fix VGL-XXXXXXXXXX --apply   # validated diff, never commits
+```
+
+Exit codes: `0` clean, `1` error, `2` findings at or above `--fail-on`.
 
 ## MCP server
 
-Vigil speaks MCP over stdio:
+Claude Code, Claude Desktop and Cursor (`mcpServers` shape):
 
 ```json
 {
   "mcpServers": {
     "vigil": {
-      "command": "vigil",
-      "args": ["mcp"]
+      "command": "npx",
+      "args": ["-y", "lv24-vigil", "mcp"]
     }
   }
 }
 ```
 
-That `mcpServers` shape fits Claude Code/Desktop and Cursor. Codex uses
-`~/.codex/config.toml` and OpenCode uses an `mcp` block; see the main README for
-both. Then ask the agent to scan a repository, explain a finding or propose a
-fix. Deterministic findings are never blocked by an LLM outage.
+OpenCode (`opencode.json`):
+
+```json
+{
+  "mcp": {
+    "vigil": {
+      "type": "local",
+      "command": ["npx", "-y", "lv24-vigil", "mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Codex (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.vigil]
+command = "npx"
+args = ["-y", "lv24-vigil", "mcp"]
+```
+
+Claude Code one-liner: `claude mcp add vigil -- npx -y lv24-vigil mcp`.
+
+The server exposes 11 tools (`vigil_scan`, `vigil_review`, `vigil_explain`,
+`vigil_fix`, `vigil_threat_model`, `vigil_status`, `vigil_rules`,
+`vigil_baseline`, `vigil_report`, `vigil_verify`, `vigil_history`), four
+resources and three prompts. Only `vigil_fix` with `apply=true` changes source
+files. Then ask the agent: *"Scan this repository with Vigil and explain the top
+three findings."*
+
+## For AI agents
+
+```json
+{
+  "package": "lv24-vigil",
+  "install": "npm i -g lv24-vigil",
+  "binary": "vigil",
+  "mcp": { "command": "npx", "args": ["-y", "lv24-vigil", "mcp"] },
+  "deterministic_only": "vigil scan --no-llm",
+  "json_report": "vigil scan --format json",
+  "status_json": "vigil status --json",
+  "exit_codes": { "0": "clean", "1": "error", "2": "findings at or above --fail-on" },
+  "docs_index": "https://github.com/LevapVeeskela/lv24-vigil/blob/main/llms.txt"
+}
+```
+
+Use `lv24-vigil`, not the platform packages. If no model is configured,
+`--no-llm` still runs all 163 rules. Prefer `--format json` or MCP over parsing
+the human summary. Show a fix diff before applying it.
 
 ## Links
 
-- Repository: <https://github.com/LevapVeeskela/lv24-vigil>
-- Issues: <https://github.com/LevapVeeskela/lv24-vigil/issues>
-- Standalone installers (no Node.js required) live in
-  [`installers/`](https://github.com/LevapVeeskela/lv24-vigil/tree/main/installers).
+- **Source and full README:** <https://github.com/LevapVeeskela/lv24-vigil>
+- **Docs:** <https://github.com/LevapVeeskela/lv24-vigil/tree/main/docs>
+- **Agent index:** <https://github.com/LevapVeeskela/lv24-vigil/blob/main/llms.txt>
+- **Install options:** <https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/install.md>
+- **MCP recipes:** <https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/mcp.md>
+- **Providers:** <https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/providers.md>
+- **Issues:** <https://github.com/LevapVeeskela/lv24-vigil/issues>
+- **Changelog:** <https://github.com/LevapVeeskela/lv24-vigil/blob/main/CHANGELOG.md>
+
+Apache-2.0. No telemetry: only the model endpoint you configure is contacted.
