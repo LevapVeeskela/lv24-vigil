@@ -23,7 +23,7 @@
 | --- | --- | --- |
 | [Install](#install) · [See it work](#see-it-work) · [Quickstart](#60-second-quickstart) | [MCP setup](#mcp-setup) · [For AI agents](#for-ai-agents) · [Providers](#providers) · [Rules](#rules) | [CI & SARIF](#ci-sarif-and-precheck) · [Safety](#safety) · [Docs](#documentation) |
 
-> **Status: 0.5.x.** The deterministic engine, CLI and MCP server are usable
+> **Status: 0.6.x.** The deterministic engine, CLI and MCP server are usable
 > today. LLM output is advisory, rule coverage keeps growing, and Vigil is not a
 > replacement for a pentest. Treat every finding as a lead to verify, not a
 > verdict.
@@ -380,14 +380,14 @@ vigil rules
 
 | Family | Prefix | Rules | Looks for |
 | --- | --- | ---: | --- |
-| Secrets | `VGL-SEC` | 24 | Cloud keys, tokens, private keys, connection strings, `.env` leaks |
-| Injection | `VGL-INJ` | 37 | SQL, shell, eval, XSS, deserialization, SSTI, prototype pollution |
-| Crypto | `VGL-CRY` | 12 | Weak hashes/ciphers, ECB, static IVs, bad randomness, disabled TLS |
-| Auth | `VGL-AUTH` | 16 | JWT verification, cookie flags, CORS with credentials, CSRF, defaults |
-| Web | `VGL-WEB` | 17 | SSRF, path traversal, open redirect, headers, debug surfaces |
-| Config / IaC | `VGL-CFG` | 28 | Docker, Compose, Kubernetes, Terraform, nginx, committed env files |
-| CI | `VGL-CI` | 17 | Unpinned actions, `pull_request_target`, script injection, secret logs |
-| Dependencies | `VGL-DEP` | 12 | Lockfiles, wildcard ranges, git/HTTP installs, TLS bypass |
+| Secrets | `VGL-SEC` | 29 | Cloud keys, tokens, private keys, connection strings, `.env` leaks |
+| Injection | `VGL-INJ` | 47 | SQL, shell, eval, XSS, deserialization, SSTI, prototype pollution |
+| Crypto | `VGL-CRY` | 16 | Weak hashes/ciphers, ECB, static IVs, bad randomness, disabled TLS |
+| Auth | `VGL-AUTH` | 17 | JWT verification, cookie flags, CORS with credentials, CSRF, defaults |
+| Web | `VGL-WEB` | 18 | SSRF, path traversal, open redirect, headers, debug surfaces |
+| Config / IaC | `VGL-CFG` | 37 | Docker, Compose, Kubernetes, Terraform, nginx, committed env files |
+| CI | `VGL-CI` | 19 | Unpinned actions, `pull_request_target`, script injection, secret logs |
+| Dependencies | `VGL-DEP` | 15 | Lockfiles, wildcard ranges, git/HTTP installs, TLS bypass |
 
 Representative IDs: `VGL-SEC-002` (critical, AWS secret key), `VGL-INJ-019`
 (critical, Java deserialization), `VGL-CRY-011` (critical, JWT `none`),
