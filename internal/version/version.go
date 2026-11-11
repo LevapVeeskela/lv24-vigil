@@ -5,7 +5,7 @@ import "runtime"
 
 // Values are overridden with -ldflags "-X ...".
 var (
-	Version   = "0.5.3"
+	Version   = "0.5.4"
 	Commit    = "none"
 	Date      = "unknown"
 	BuildRepo = "github.com/LevapVeeskela/lv24-vigil"

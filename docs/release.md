@@ -122,10 +122,10 @@ refuses an older npm). Use the same or newer npm for the `npm trust` commands.
 ## Verify a release
 
 ```bash
-npm view lv24-vigil version          # 0.5.3
-npm view lv24-vigil dist-tags        # { latest: '0.5.3' }
-npm i -g lv24-vigil@0.5.3            # or @latest
-vigil version                        # vigil 0.5.3 (<commit>, <date>, go<version>)
+npm view lv24-vigil version          # 0.5.4
+npm view lv24-vigil dist-tags        # { latest: '0.5.4' }
+npm i -g lv24-vigil@0.5.4            # or @latest
+vigil version                        # vigil 0.5.4 (<commit>, <date>, go<version>)
 ```
 
 Platform packages, one line each:
@@ -154,7 +154,7 @@ Provenance:
 npm view lv24-vigil dist.attestations
 ```
 
-For `0.5.3` this returns a `https://slsa.dev/provenance/v1` attestation built
+For `0.5.4` this returns a `https://slsa.dev/provenance/v1` attestation built
 from `.github/workflows/npm-publish.yml` on a GitHub-hosted runner. The npm page
 shows the matching provenance badge.
 
@@ -211,11 +211,15 @@ vigil version                                                 # reports the tag 
   owner-gated. The six
   platform packages are **not** deprecated: their binaries are correct and a
   deprecation notice there would only add noise to `npm i` output.
-- **0.5.3 pins the action CLI to the action tag (2026-11-11).** The composite
-  action now resolves the npm version from `GITHUB_ACTION_REF` when the `version`
-  input is empty, so `uses: LevapVeeskela/lv24-vigil@v0.5.3` installs
-  `lv24-vigil@0.5.3` instead of silently following `latest`. An explicit
-  `version` input still overrides it; a branch ref falls back to `latest`.
+- **0.5.4 hardcodes the action CLI version (2026-11-11).** `GITHUB_ACTION_REF` is
+  empty in composite actions, so the 0.5.3 auto-ref logic fell back to `latest`
+  (the Marketplace smoke test caught it). 0.5.4 sets the action's `version`
+  default to `0.5.4` and installs it; an explicit `version` still overrides.
+- **0.5.3 pins the action CLI to the action tag (2026-11-11; superseded).** The
+  composite action tried to resolve the npm version from `GITHUB_ACTION_REF`
+  when the `version` input was empty. That variable is empty in composite
+  actions, so the smoke test installed `latest`; 0.5.4 replaces the approach with
+  an explicit default. An explicit `version` input still overrides it.
 - **0.5.2 packages the post-0.5.1 docs (2026-11-10).** `9e26aa6` (PyPI
   release-trigger clarification) and `7ca84a5` (do not pin 0.5.0) are
   docs-only. `v0.5.2` puts them in the tagged tree so a release pin carries the
@@ -325,16 +329,18 @@ reasoning and the procedure if a rewrite is ever required are in
 ## Current state
 
 `0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
-path. All seven npm packages and PyPI are live at `0.5.3`, and `latest` points
-at it. `v0.5.3` pins the composite action's CLI to the action tag and adds the
-GitHub Marketplace listing; `v0.5.2` contains the corrected CI templates and the
-post-0.5.1 docs. `v0.5.0` remains published and immutable, but its examples use
-`inputs.fail-on` and an unguarded GitLab pre-check, so do not copy them.
+path. All seven npm packages and PyPI are live at `0.5.4`, and `latest` points
+at it. `v0.5.4` hardcodes the action's npm CLI version so the Marketplace action
+is reproducible; `v0.5.3` contains the Marketplace listing and the first
+(auto-ref) attempt, which is superseded. `v0.5.2` contains the corrected CI
+templates and the post-0.5.1 docs. `v0.5.0` remains published and immutable, but
+its examples use `inputs.fail-on` and an unguarded GitLab pre-check, so do not
+copy them.
 
 The composite action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
 as **Vigil security scan** (Security + Code quality).
 
-**Do not pin `0.5.0`.** Use `0.5.3` or newer, or `@latest`. The `v0.5.0` tag is
+**Do not pin `0.5.0`.** Use `0.5.4` or newer, or `@latest`. The `v0.5.0` tag is
 immutable and still resolves, so pinning it silently keeps the stale templates;
 its GitHub release body carries the warning. The npm package version is marked
 with a deprecation notice (a metadata change, not a republish) once the npm 2FA

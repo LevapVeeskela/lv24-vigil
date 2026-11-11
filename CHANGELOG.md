@@ -4,6 +4,18 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.5.4 - 2026-11-11
+
+### Fixed
+
+- The composite action now installs the npm CLI version hardcoded to the action
+  release (`0.5.4`) instead of relying on `GITHUB_ACTION_REF`, which is empty in
+  composite actions. `uses: ...@v0.5.4` installs `lv24-vigil@0.5.4`; an explicit
+  `version` input still overrides it. The Marketplace smoke workflow asserts the
+  resolved version.
+- The 0.5.3 tag's auto-ref attempt is superseded; it fell back to `latest` in
+  the smoke test. No engine, rule, CLI or MCP behaviour changes.
+
 ## 0.5.3 - 2026-11-11
 
 ### Changed
