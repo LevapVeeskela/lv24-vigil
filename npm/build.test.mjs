@@ -71,7 +71,7 @@ test('generates main and platform packages from a fake dist', async (t) => {
   assert.equal(main.homepage, 'https://github.com/LevapVeeskela/lv24-vigil#readme');
   assert.equal(main.bugs.url, 'https://github.com/LevapVeeskela/lv24-vigil/issues');
   assert.ok(main.keywords.includes('mcp'));
-  assert.match(main.description, /198 deterministic rules/);
+  assert.match(main.description, /221 deterministic rules/);
   for (const keyword of [
     'security',
     'sast',

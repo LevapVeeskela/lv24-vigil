@@ -25,6 +25,8 @@ func ToolNames() []string {
 	return []string{
 		"vigil_scan",
 		"vigil_review",
+		"vigil_dependencies",
+		"vigil_hardening",
 		"vigil_explain",
 		"vigil_fix",
 		"vigil_threat_model",
@@ -49,6 +51,8 @@ func Register(srv *mcp.Server, d Deps) {
 
 	registerScan(srv, d)
 	registerReview(srv, d)
+	registerDependencies(srv, d)
+	registerHardening(srv, d)
 	registerExplain(srv, d)
 	registerFix(srv, d)
 	registerThreatModel(srv, d)

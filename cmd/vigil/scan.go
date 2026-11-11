@@ -29,6 +29,7 @@ type scanOptions struct {
 	minSeverity string
 	maxFindings int
 	noBaseline  bool
+	noOSV       bool
 	format      string
 	output      string
 	failOn      string
@@ -54,6 +55,7 @@ func registerScanFlags(fs *flag.FlagSet, o *scanOptions, review bool) {
 	fs.StringVar(&o.minSeverity, "min-severity", "", "low, medium, high or critical")
 	fs.IntVar(&o.maxFindings, "max-findings", 0, "cap the number of findings (0 = config default)")
 	fs.BoolVar(&o.noBaseline, "no-baseline", false, "ignore the suppression baseline")
+	fs.BoolVar(&o.noOSV, "no-osv", false, "skip the configured OSV dependency lookup for this scan")
 	fs.StringVar(&o.format, "format", "", "report format: md, json, sarif or html")
 	fs.StringVar(&o.output, "output", "", "write the report to a file (\"-\" for stdout)")
 	fs.StringVar(&o.failOn, "fail-on", "", "exit 2 when a finding at or above this severity exists")
@@ -66,6 +68,10 @@ func runScan(args []string, stdout, stderr io.Writer) error {
 }
 
 func runScanLike(name string, args []string, review bool, stdout, stderr io.Writer) error {
+	return runScanLikeMode(name, args, review, false, stdout, stderr)
+}
+
+func runScanLikeMode(name string, args []string, review, hardening bool, stdout, stderr io.Writer) error {
 	o := &scanOptions{}
 	if review {
 		o.base = "HEAD"
@@ -135,7 +141,11 @@ func runScanLike(name string, args []string, review bool, stdout, stderr io.Writ
 	}
 
 	if !o.quiet && format == "md" {
-		printSummary(stdout, name, res, color, outputPath)
+		if hardening {
+			printHardeningSummary(stdout, res, color)
+		} else {
+			printSummary(stdout, name, res, color, outputPath)
+		}
 	}
 
 	data, err := report.Render(format, res, report.Options{Color: color, ShowFix: a.Config.Output.ShowFix})
@@ -189,6 +199,7 @@ func (o *scanOptions) request(root string) (model.ScanRequest, error) {
 		DisableRules: append([]string(nil), o.disable...),
 		MaxFindings:  o.maxFindings,
 		NoBaseline:   o.noBaseline,
+		DisableOSV:   o.noOSV,
 	}
 	if o.noLLM {
 		disabled := false

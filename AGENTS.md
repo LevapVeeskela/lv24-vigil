@@ -1,6 +1,6 @@
 # AGENTS.md — working with Vigil
 
-Vigil is a local-first security auditor: 198 deterministic rules plus optional
+Vigil is a local-first security auditor: 221 deterministic rules plus optional
 LLM triage, fixes and a threat model. It is a CLI and a stdio MCP server. Read
 [`llms.txt`](llms.txt) for the compact machine index.
 
@@ -100,10 +100,16 @@ Cursor: use the `mcpServers` JSON shape in
    never commits or stages.
 4. Re-check with `vigil_verify`, and use `vigil_history` / `vigil_report` for
    stored scans.
+5. Use `vigil_hardening` for anti-RE posture gaps (mobile/desktop release
+   settings); [docs/anti-re-hardening.md](docs/anti-re-hardening.md) maps each
+   rule to the reverse-engineering capability it raises the cost against. Use
+   `vigil_dependencies` for known public dependency advisories.
+   The dependency tool makes an explicit OSV network request; the hardening
+   tool is deterministic and offline.
 
 ## Rules that matter
 
-- **No model? `--no-llm`.** All 198 rules still run; a missing model is a
+- **No model? `--no-llm`.** All 221 rules still run; a missing model is a
   warning, not a failed scan.
 - **Do not parse the human summary.** Use `--format json`, `vigil status
   --json`, or an MCP tool.
@@ -112,6 +118,12 @@ Cursor: use the `mcpServers` JSON shape in
 - **No telemetry.** `vigil precheck` is the only explicit upload and needs a
   staff JWT with `ops:security-scans`.
 - **Exit codes:** `0` clean, `1` error, `2` findings at or above `--fail-on`.
+- **Dependency advisories are known public OSV records only.** A clean result is
+  not proof of safety, and no tool here can detect a zero-day. Never describe
+  `vigil_dependencies` as zero-day coverage.
+- **Hardening gaps are not vulnerabilities.** `vigil_hardening` reports missing
+  release controls (obfuscation, debug signing, inspector flags, source maps);
+  do not turn a missing control into an exploitability or bypass claim.
 
 More: [README.md](README.md) · [docs/mcp.md](docs/mcp.md) ·
 [docs/cli.md](docs/cli.md) · [llms.txt](llms.txt).

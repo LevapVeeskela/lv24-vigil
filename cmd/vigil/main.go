@@ -57,6 +57,10 @@ func runWithIO(args []string, stdout, stderr io.Writer) error {
 		return runStatus(rest, stdout, stderr)
 	case "rules":
 		return runRules(rest, stdout, stderr)
+	case "hardening":
+		return runHardening(rest, stdout, stderr)
+	case "dependencies", "deps":
+		return runDependencies(rest, stdout, stderr)
 	case "baseline":
 		return runBaseline(rest, stdout, stderr)
 	case "report":
@@ -90,6 +94,8 @@ Usage:
   vigil init [--force]             write a starter .vigil.yaml
   vigil status [--json]            show provider, model and engine health
   vigil rules [flags]              list detection rules
+  vigil hardening [path]           review anti-RE hardening gaps (VGL-ARE)
+  vigil dependencies [path]        audit dependency advisories via OSV
   vigil baseline [list|add|remove|clear]
   vigil report [--scan ID]         render the last scan
   vigil precheck [flags]           upload a SARIF pre-check to LV24 security scans
@@ -115,6 +121,7 @@ Scan flags:
   --min-severity LEVEL           low|medium|high|critical (default from config)
   --max-findings N               cap the number of findings
   --no-baseline                  ignore the suppression baseline
+  --no-osv                       skip the configured OSV dependency lookup
   --format md|json|sarif|html    report format (default from config: md)
   --output FILE                  write the report to FILE ("-" = stdout)
   --fail-on LEVEL                exit 2 when a finding at or above LEVEL exists

@@ -18,6 +18,8 @@ vigil
 | `vigil init` | Write a starter `.vigil.yaml`. |
 | `vigil status` | Show provider, model, rules, store and last scan. Alias: `vigil doctor`. |
 | `vigil rules` | List and filter the detection rules. |
+| `vigil hardening [path]` | Run only the anti-RE hardening rules (`VGL-ARE`) and report gaps by platform. |
+| `vigil dependencies [path]` | Read supported lockfiles and query OSV.dev for known public advisories. |
 | `vigil baseline` | List, add, remove or clear the suppression baseline. |
 | `vigil report` | Render a stored scan. |
 | `vigil precheck` | Upload a SARIF report to the LV24 security control plane as a pre-check. |
@@ -68,6 +70,7 @@ These flags are shared by `vigil scan` and `vigil review`, except where noted.
 | `--min-severity LEVEL` | `info`, `low`, `medium`, `high`, `critical` | Hide findings below this level. Default from config. |
 | `--max-findings N` | integer | Cap the number of findings. `0` uses the config default. |
 | `--no-baseline` | - | Ignore the suppression baseline. |
+| `--no-osv` | - | Skip the configured OSV dependency lookup for this scan. |
 | `--format FMT` | `md`, `json`, `sarif`, `html` | Report format. Default from config (`md`). |
 | `--output FILE` | path or `-` | Write the report to a file. `-` means stdout. |
 | `--fail-on LEVEL` | `info`, `low`, `medium`, `high`, `critical` | Exit `2` when a finding at or above this level exists. |
@@ -242,6 +245,40 @@ vigil rules --json
 
 Filters combine with AND. `--language` keeps rules that declare that language.
 `--json` emits the rule metadata array.
+
+## Anti-RE hardening
+
+```bash
+vigil hardening .
+vigil hardening ./mobile --format json --fail-on high
+```
+
+Runs only the `VGL-ARE` rules: release obfuscation, debug signing, debuggable
+builds, backup and cleartext settings, plist transport exceptions, Flutter
+release obfuscation, Electron isolation, Node inspector flags and production
+source maps. It forces deterministic output and skips the configured OSV lookup.
+These are hardening gaps, not vulnerability or exploitability claims.
+
+## Dependency advisories
+
+```bash
+vigil dependencies .
+vigil dependencies . --include-dev=false --max-packages 500
+vigil dependencies . --format json --fail-on high
+vigil dependencies . --osv-base-url http://127.0.0.1:8080
+```
+
+Reads supported manifests and lockfiles, then queries the public OSV.dev
+database for the exact versions found. The tool reports known public advisories
+with severity and fixed versions. **No match does not mean safe**, and zero-day,
+private or unpublished advisories are not covered. The only network request is
+the OSV `querybatch` call; no package manager runs and nothing is written.
+
+Supported inventory: `package.json`, `package-lock.json`, `pnpm-lock.yaml`,
+`yarn.lock`, `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `uv.lock`,
+`go.mod`, `Cargo.lock`, `composer.lock`, `Gemfile.lock`, `pubspec.lock`,
+`pom.xml`, `gradle.lockfile` and `packages.lock.json`. Manifests that declare
+ranges without a lockfile are not resolved.
 
 ## Baseline
 

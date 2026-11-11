@@ -4,6 +4,36 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.7.0 - 2026-11-11
+
+### Added
+
+- **23 anti-RE hardening rules** (`VGL-ARE`): Android release minification and
+  debug signing, debuggable/backup/cleartext manifest settings, network security
+  config cleartext, iOS `get-task-allow` and ATS arbitrary loads, Flutter release
+  obfuscation, Electron `webSecurity`/Node isolation, Node inspector flags and
+  production source maps. A second wave covers the artifact surfaces a
+  reverse-engineering toolkit inspects: Rust debug symbols and DWARF, .NET debug
+  symbols and optimization, iOS testability and debug symbols, Electron fuses
+  and ASAR, JavaScript minification, Android WebView debugging and Hermes. These
+  are missing-control posture checks, not vulnerability or exploitability
+  claims; the mapping is documented in `docs/anti-re-hardening.md`.
+- **`vigil_hardening` MCP tool** and **`vigil hardening` CLI command** run only
+  the `VGL-ARE` rules, deterministically and offline.
+- **`vigil_dependencies` MCP tool** and **`vigil dependencies` CLI command**
+  inventory supported manifests/lockfiles and query OSV.dev for known public
+  advisories. Network is explicit; no package manager runs and nothing is
+  written.
+- **Wider OSV inventory**: pnpm and Yarn lockfiles, `Pipfile.lock`,
+  `poetry.lock`, `uv.lock`, `pubspec.lock`, `gradle.lockfile` and NuGet
+  `packages.lock.json`, plus `Pub` and `NuGet` ecosystems.
+- MCP prompts `anti_re_hardening` and `dependency_audit`; `--no-osv` scan flag.
+
+### Changed
+
+- Rule catalog is now **221** deterministic rules in nine families.
+- `vigil_hardening` never mixes configured OSV findings into a posture report.
+
 ## 0.6.0 - 2026-11-11
 
 ### Added

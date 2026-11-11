@@ -100,6 +100,7 @@ const (
 	CategoryDependency Category = "dependency"
 	CategoryWeb        Category = "web"
 	CategoryLogic      Category = "logic"
+	CategoryAntiRE     Category = "anti-re"
 )
 
 // Source says where a finding came from.
@@ -264,6 +265,10 @@ type ScanRequest struct {
 	Timeout      time.Duration `json:"-"`
 	BaselinePath string        `json:"baselinePath,omitempty"`
 	NoBaseline   bool          `json:"noBaseline,omitempty"`
+	// DisableOSV suppresses the configured OSV enrichment for callers that run
+	// a narrow deterministic posture check and must not mix advisory findings
+	// into it. It never enables OSV; it only turns a configured lookup off.
+	DisableOSV bool `json:"-"`
 }
 
 // ScanResult is the full output of one scan.

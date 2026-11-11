@@ -1,6 +1,6 @@
 # Vigil
 
-Vigil is a local-first security auditor for source repositories. It runs 198
+Vigil is a local-first security auditor for source repositories. It runs 221
 deterministic rules, then optionally uses the model configured by the user for
 triage, deep review, fix proposals and a STRIDE-style threat model. The same
 binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud.
@@ -8,7 +8,8 @@ binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud
 Repository: https://github.com/LevapVeeskela/lv24-vigil
 License: Apache-2.0
 Binary: vigil
-Current release line: 0.6.x
+Current release line: 0.7.x: 221 rules, the vigil_hardening tool and the
+vigil_dependencies tool.
 
 ## Canonical install
 
@@ -49,6 +50,8 @@ Install only `lv24-vigil`.
     vigil threat-model [path]               STRIDE markdown, needs a model
     vigil status --json                     provider, model, rules, store, last scan
     vigil rules [--json]                    authoritative rule catalog
+    vigil hardening [path]                  anti-RE hardening gaps (VGL-ARE), offline
+    vigil dependencies [path]               known OSV advisories for declared packages
     vigil baseline list|add|remove|clear
     vigil report --format md|json|sarif|html
     vigil precheck --sarif FILE --api URL --token JWT
@@ -144,9 +147,11 @@ Read-only unless noted.
 - vigil_report(scanId?, format?, path?) — render a stored scan; writes only with path.
 - vigil_verify(findingId) — re-check whether a finding is still present.
 - vigil_history(limit?) — recent scans from the local store.
+- vigil_hardening(path?, minSeverity?, maxFindings?, noBaseline?) — run only the VGL-ARE hardening rules.
+- vigil_dependencies(path?, includeDev?, maxPackages?, osvBaseUrl?) — known OSV advisories for declared packages (network).
 
 Resources: vigil://status, vigil://rules, vigil://scan/last, vigil://scan/<id>.
-Prompts: security_review, threat_model, fix_finding.
+Prompts: security_review, threat_model, fix_finding, anti_re_hardening, dependency_audit.
 
 ## Providers
 
@@ -173,12 +178,43 @@ OLLAMA_HOST points at a non-default Ollama.
 
 ## Rules
 
-198 deterministic rules in eight families:
-VGL-SEC 24 secrets, VGL-INJ 37 injection, VGL-CRY 12 crypto, VGL-AUTH 16 auth,
-VGL-WEB 17 web, VGL-CFG 28 config/IaC, VGL-CI 17 CI, VGL-DEP 12 dependencies.
+221 deterministic rules in nine families:
+VGL-SEC 29 secrets, VGL-INJ 47 injection, VGL-CRY 16 crypto, VGL-AUTH 17 auth,
+VGL-WEB 18 web, VGL-CFG 37 config/IaC, VGL-CI 19 CI, VGL-DEP 15 dependencies,
+VGL-ARE 23 anti-RE hardening.
 
 VGL-AI-001 is synthesized by the LLM deep review. VGL-OSV-<advisory> appears only
 when scan.osv is enabled. `vigil rules` is authoritative.
+
+## Anti-RE hardening
+
+`vigil_hardening` / `vigil hardening` runs only the VGL-ARE rules: Android
+release minification and signing, debuggable/backup/cleartext settings, iOS
+entitlements and ATS, Flutter release obfuscation, Electron isolation, Node
+inspector flags and production source maps, plus the artifact-level checks for
+Rust debug symbols and DWARF, .NET debug symbols and optimization, iOS
+testability and debug symbols, Electron fuses and ASAR, JavaScript minification,
+Android WebView debugging and Hermes.
+These are missing controls, not vulnerabilities. The command is deterministic,
+offline and ignores the configured OSV lookup.
+
+docs/anti-re-hardening.md maps each rule to the reverse-engineering capability
+it raises the cost against (REA tool inventory), and lists the gaps it does not
+cover: runtime root/jailbreak/Frida/Xposed detection, certificate pinning,
+firmware packing and encryption, application-specific anti-debug code and
+server-side controls.
+
+## Dependency advisories
+
+`vigil_dependencies` / `vigil dependencies` reads supported manifests and
+lockfiles, then queries OSV.dev for the exact versions found. Supported:
+package.json, package-lock.json, pnpm-lock.yaml, yarn.lock, requirements.txt,
+Pipfile.lock, poetry.lock, uv.lock, go.mod, Cargo.lock, composer.lock,
+Gemfile.lock, pubspec.lock, pom.xml, gradle.lockfile, packages.lock.json.
+
+Known public advisories only. No match does not mean safe. Zero-day, private
+and unpublished advisories are not covered. The tool sends only ecosystem,
+package name and version; it runs no package manager and writes nothing.
 
 ## Safety
 
@@ -204,6 +240,7 @@ when scan.osv is enabled. `vigil rules` is authoritative.
 - MCP: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/mcp.md
 - Providers: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/providers.md
 - Rules: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/rules.md
+- Anti-RE hardening mapping: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/anti-re-hardening.md
 - Security model: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/security-model.md
 - CI: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/ci.md
 - Architecture: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/architecture.md

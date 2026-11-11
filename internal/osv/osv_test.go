@@ -384,6 +384,176 @@ func TestScanDeduplicatesAdvisories(t *testing.T) {
 	}
 }
 
+func TestAuditReturnsPackagesFindingsAndErrors(t *testing.T) {
+	advisory := vulnerability{
+		ID:       "GHSA-audit-0001",
+		Summary:  "audit advisory",
+		Severity: []severityEntry{{Type: "CVSS_V3", Score: "7.5"}},
+		Affected: []affected{{
+			Package: packageRef{Name: "django", Ecosystem: ecosystemPyPI},
+			Ranges:  []affectedRange{{Events: []rangeEvent{{Introduced: "0"}, {Fixed: "3.2.4"}}}},
+		}},
+	}
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		var payload queryBatchRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		results := make([]queryResult, len(payload.Queries))
+		if len(results) > 0 {
+			results[0].Vulns = []vulnerability{advisory}
+		}
+		_ = json.NewEncoder(w).Encode(queryBatchResponse{Results: results})
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "django==3.2.0\nrequests==2.31.0\n")
+
+	res, err := Audit(context.Background(), dir, Options{BaseURL: srv.URL, IncludeDev: true})
+	if err != nil {
+		t.Fatalf("Audit: %v", err)
+	}
+	if res == nil {
+		t.Fatal("Audit returned a nil result")
+	}
+	if len(res.Packages) != 2 {
+		t.Fatalf("got %d packages, want 2", len(res.Packages))
+	}
+	if len(res.Findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(res.Findings))
+	}
+	if len(res.Errors) != 0 {
+		t.Fatalf("unexpected errors: %v", res.Errors)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("got %d requests, want 1", calls.Load())
+	}
+	if res.Findings[0].Location.Path != "requirements.txt" {
+		t.Errorf("finding path = %q, want requirements.txt", res.Findings[0].Location.Path)
+	}
+	if !strings.Contains(res.Findings[0].Remediation, "3.2.4") {
+		t.Errorf("remediation lost the fixed version: %q", res.Findings[0].Remediation)
+	}
+}
+
+func TestAuditPartialFindingsOnBatchFailure(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) > 1 {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		var payload queryBatchRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		results := make([]queryResult, len(payload.Queries))
+		for i := range results {
+			results[i].Vulns = []vulnerability{{ID: fmt.Sprintf("CVE-2024-%04d", i), Summary: "first batch"}}
+		}
+		_ = json.NewEncoder(w).Encode(queryBatchResponse{Results: results})
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	var b strings.Builder
+	for i := 0; i < 101; i++ {
+		fmt.Fprintf(&b, "pkg%03d==1.0.0\n", i)
+	}
+	writeFixture(t, dir, "requirements.txt", b.String())
+
+	res, err := Audit(context.Background(), dir, Options{BaseURL: srv.URL, IncludeDev: true})
+	if err != nil {
+		t.Fatalf("Audit must fail open on a query error, got %v", err)
+	}
+	if res == nil {
+		t.Fatal("Audit returned a nil result")
+	}
+	if len(res.Packages) != 101 {
+		t.Errorf("got %d packages, want the full inventory of 101", len(res.Packages))
+	}
+	if len(res.Findings) != 100 {
+		t.Fatalf("got %d findings, want the 100 collected before the failure", len(res.Findings))
+	}
+	if len(res.Errors) != 1 {
+		t.Fatalf("got %d errors, want 1", len(res.Errors))
+	}
+	if !strings.Contains(res.Errors[0], "500") {
+		t.Errorf("error should mention the status: %q", res.Errors[0])
+	}
+
+	// Scan keeps the historical error contract on top of the same audit.
+	calls.Store(0)
+	findings, scanErr := Scan(context.Background(), dir, Options{BaseURL: srv.URL, IncludeDev: true})
+	if scanErr == nil {
+		t.Fatal("Scan must return the underlying query error")
+	}
+	if len(findings) != len(res.Findings) {
+		t.Errorf("Scan findings = %d, Audit findings = %d; wrappers must agree", len(findings), len(res.Findings))
+	}
+}
+
+func TestAuditEmptyRepoMakesNoRequest(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write([]byte(`{"results": []}`))
+	}))
+	defer srv.Close()
+
+	res, err := Audit(context.Background(), t.TempDir(), Options{BaseURL: srv.URL})
+	if err != nil {
+		t.Fatalf("Audit: %v", err)
+	}
+	if res == nil {
+		t.Fatal("Audit returned a nil result")
+	}
+	if len(res.Packages) != 0 || len(res.Findings) != 0 || len(res.Errors) != 0 {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("expected no HTTP calls, got %d", calls.Load())
+	}
+}
+
+func TestAuditMissingRoot(t *testing.T) {
+	res, err := Audit(context.Background(), filepath.Join(t.TempDir(), "missing"), Options{})
+	if err == nil {
+		t.Fatal("expected an error for a missing root")
+	}
+	if res != nil {
+		t.Fatalf("expected a nil result, got %+v", res)
+	}
+}
+
+func TestAuditInvalidBaseURL(t *testing.T) {
+	res, err := Audit(context.Background(), t.TempDir(), Options{BaseURL: "ftp://example.test"})
+	if err == nil {
+		t.Fatal("expected an error for a non-http base URL")
+	}
+	if res != nil {
+		t.Fatalf("expected a nil result, got %+v", res)
+	}
+}
+
+func TestBoundedError(t *testing.T) {
+	if got := boundedError(nil); got != "" {
+		t.Fatalf("boundedError(nil) = %q, want empty", got)
+	}
+	long := boundedError(errors.New(strings.Repeat("x", maxAuditErrorChars+50)))
+	if r := []rune(long); len(r) != maxAuditErrorChars+1 {
+		t.Fatalf("bounded error has %d runes, want %d", len(r), maxAuditErrorChars+1)
+	}
+	if !strings.HasSuffix(long, "…") {
+		t.Fatalf("bounded error should end with an ellipsis: %q", long[len(long)-5:])
+	}
+}
+
 func TestOptionsDefaults(t *testing.T) {
 	o := Options{}.withDefaults()
 	if o.MaxPackages != DefaultMaxPackages {

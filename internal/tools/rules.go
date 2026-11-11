@@ -130,6 +130,7 @@ func categoryNames() []string {
 		string(model.CategoryDependency),
 		string(model.CategoryWeb),
 		string(model.CategoryLogic),
+		string(model.CategoryAntiRE),
 	}
 }
 

@@ -321,6 +321,8 @@ func TestHandshakeAndToolList(t *testing.T) {
 	want := map[string]bool{
 		"vigil_scan":         true,
 		"vigil_review":       true,
+		"vigil_dependencies": true,
+		"vigil_hardening":    true,
 		"vigil_explain":      true,
 		"vigil_fix":          true,
 		"vigil_threat_model": true,

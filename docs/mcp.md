@@ -96,6 +96,8 @@ or the `npx` form above. The transport is stdio; no URL or port is needed.
 | `vigil_threat_model` | Generate a STRIDE-style threat model from a bounded repository map. | none |
 | `vigil_status` | Report provider, model, engine and store status. | none |
 | `vigil_rules` | List the rule catalog with IDs, severities and categories. | none |
+| `vigil_hardening` | Run only the `VGL-ARE` anti-RE hardening rules and group gaps by platform. Maps each gap to the REA reverse-engineering surface it raises the cost against in [anti-re-hardening.md](anti-re-hardening.md). | scan history only |
+| `vigil_dependencies` | Read supported manifests and query OSV.dev for known public advisories. | network request to OSV |
 | `vigil_baseline` | List, add, remove or clear accepted findings in the baseline. | baseline file only |
 | `vigil_report` | Render a stored scan as Markdown, JSON, SARIF or HTML. | only when `path` is supplied |
 | `vigil_verify` | Re-check whether a finding is still present after a change. | none |
@@ -146,6 +148,8 @@ immediately, and as a resource after the server restarts.
 | `security_review` | `path` (optional) | Scan, triage and fix the top findings |
 | `threat_model` | `path` (optional) | Turn a threat model into a review plan |
 | `fix_finding` | `findingId` (required) | Explain, propose and confirm a fix |
+| `anti_re_hardening` | `path` (optional) | Review missing anti-RE protections and debug leaks without calling them vulnerabilities |
+| `dependency_audit` | `path` (optional) | Review known public dependency advisories and their fixed versions |
 
 Prompt names are stable. The client may expose them as slash commands or as
 templates.

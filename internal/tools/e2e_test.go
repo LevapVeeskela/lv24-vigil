@@ -94,8 +94,8 @@ func TestE2EHandshakeAndToolSurface(t *testing.T) {
 	}
 
 	wantNames := tools.ToolNames()
-	if len(wantNames) != 11 {
-		t.Fatalf("tools.ToolNames() has %d entries, want 11", len(wantNames))
+	if len(wantNames) != 13 {
+		t.Fatalf("tools.ToolNames() has %d entries, want 13", len(wantNames))
 	}
 	if len(list.Tools) != len(wantNames) {
 		t.Fatalf("tools/list returned %d tools, want %d", len(list.Tools), len(wantNames))

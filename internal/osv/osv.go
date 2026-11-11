@@ -106,16 +106,33 @@ func (o Options) withDefaults() Options {
 	return o
 }
 
-// Scan reads dependency manifests under root, asks the OSV.dev API about every
-// package it found and returns one finding per advisory.
+// AuditResult is the full output of one dependency audit.
+type AuditResult struct {
+	// Packages is the deduplicated inventory that was queried.
+	Packages []Package
+	// Findings holds one finding per advisory.
+	Findings []model.Finding
+	// Errors holds bounded, human-readable query failures. A partial result
+	// with a non-empty Errors slice is still useful.
+	Errors []string
+
+	// firstErr keeps the underlying query error so Scan can preserve its
+	// fail-open error contract without parsing the bounded string.
+	firstErr error
+}
+
+// Audit reads dependency manifests under root, asks the OSV.dev API about every
+// package it found and returns the collected inventory with one finding per
+// advisory.
 //
-// Scan is fail-open: when a request fails, the findings collected so far are
-// returned together with the error, so a flaky network never hides the
-// deterministic results that were already available.
+// Audit is fail-open: when a query fails, the findings collected so far are
+// returned and the failure is recorded as a bounded string in Errors, while the
+// returned error stays nil. Fatal setup problems (an unreadable root or an
+// invalid base URL) are returned as an error.
 //
-// Scan performs no writes and sends no telemetry. The only network traffic is
+// Audit performs no writes and sends no telemetry. The only network traffic is
 // the OSV querybatch endpoint at Options.BaseURL.
-func Scan(ctx context.Context, root string, opts Options) ([]model.Finding, error) {
+func Audit(ctx context.Context, root string, opts Options) (*AuditResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -126,12 +143,13 @@ func Scan(ctx context.Context, root string, opts Options) ([]model.Finding, erro
 		return nil, err
 	}
 
-	packages, err := collectPackages(ctx, root, opts.IncludeDev, opts.MaxPackages)
+	packages, err := CollectPackages(ctx, root, opts.IncludeDev, opts.MaxPackages)
 	if err != nil {
 		return nil, err
 	}
+	res := &AuditResult{Packages: packages}
 	if len(packages) == 0 {
-		return nil, nil
+		return res, nil
 	}
 
 	client := opts.HTTPClient
@@ -139,8 +157,6 @@ func Scan(ctx context.Context, root string, opts Options) ([]model.Finding, erro
 		client = &http.Client{Timeout: opts.Timeout}
 	}
 
-	var findings []model.Finding
-	var firstErr error
 	for start := 0; start < len(packages); start += queryBatchSize {
 		end := start + queryBatchSize
 		if end > len(packages) {
@@ -151,25 +167,61 @@ func Scan(ctx context.Context, root string, opts Options) ([]model.Finding, erro
 		results, queryErr := queryBatch(ctx, client, baseURL, opts.Timeout, batch)
 		// Convert whatever the API returned before recording the error: a
 		// truncated response still carries useful advisories.
-		for i, res := range results {
+		for i, result := range results {
 			if i >= len(batch) {
 				break
 			}
-			for _, vuln := range res.Vulns {
+			for _, vuln := range result.Vulns {
 				if finding, ok := findingFor(batch[i], vuln); ok {
-					findings = append(findings, finding)
+					res.Findings = append(res.Findings, finding)
 				}
 			}
 		}
 		if queryErr != nil {
-			firstErr = queryErr
+			res.firstErr = queryErr
+			res.Errors = append(res.Errors, boundedError(queryErr))
 			break
 		}
 	}
 
-	findings = dedupeFindings(findings)
-	model.SortFindings(findings)
-	return findings, firstErr
+	res.Findings = dedupeFindings(res.Findings)
+	model.SortFindings(res.Findings)
+	return res, nil
+}
+
+// Scan reads dependency manifests under root, asks the OSV.dev API about every
+// package it found and returns one finding per advisory.
+//
+// Scan is a thin wrapper over Audit and keeps its historical fail-open
+// contract: findings collected before a failed batch are returned together
+// with the underlying query error, so a flaky network never hides the
+// deterministic results that were already available.
+//
+// Scan performs no writes and sends no telemetry. The only network traffic is
+// the OSV querybatch endpoint at Options.BaseURL.
+func Scan(ctx context.Context, root string, opts Options) ([]model.Finding, error) {
+	res, err := Audit(ctx, root, opts)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, nil
+	}
+	return res.Findings, res.firstErr
+}
+
+// maxAuditErrorChars bounds the query error text stored in AuditResult.Errors.
+const maxAuditErrorChars = 300
+
+func boundedError(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := strings.Join(strings.Fields(err.Error()), " ")
+	if r := []rune(s); len(r) > maxAuditErrorChars {
+		return string(r[:maxAuditErrorChars]) + "…"
+	}
+	return s
 }
 
 // normalizeBaseURL validates the API root so a bad configuration fails fast

@@ -23,11 +23,13 @@ a complete list and will lag behind the code.
 | Config / IaC | `VGL-CFG` | 37 | Docker, Compose, Kubernetes, Terraform, nginx, env files |
 | CI | `VGL-CI` | 19 | Workflow permissions, untrusted checkouts and shell injection |
 | Dependencies | `VGL-DEP` | 15 | Lockfiles, version ranges, install sources and TLS |
+| Anti-RE | `VGL-ARE` | 23 | Missing mobile/desktop hardening: release obfuscation, debug signing, debuggable builds, backup/cleartext, plist exceptions, inspector flags, source maps, plus Rust/.NET/iOS debug symbols, iOS testability, Electron fuses/ASAR, JS minification, WebView debugging and Hermes. Mapping: [anti-re-hardening.md](anti-re-hardening.md) |
 
-The table counts the 198 deterministic rules in 0.6.x; `vigil rules` is always
+The table counts the 221 deterministic rules in 0.7.x; `vigil rules` is always
 current. `VGL-AI-001` is synthesized by the LLM deep review and is not part of
 the deterministic catalog, so it does not appear in `vigil rules`. OSV findings
-use `VGL-OSV-<advisory>` and only appear when `scan.osv` is enabled.
+use `VGL-OSV-<advisory>` and only appear when `scan.osv` is enabled or when the
+dedicated `vigil_dependencies` tool / `vigil dependencies` command is used.
 
 ## Representative rules
 
@@ -42,6 +44,14 @@ use `VGL-OSV-<advisory>` and only appear when `scan.osv` is enabled.
 | `VGL-CFG-040` | Critical | IAM policy grants full administrative access |
 | `VGL-CI-018` | Critical | Privileged workflow checks out untrusted PR code |
 | `VGL-DEP-015` | High | Go module checksum verification disabled |
+| `VGL-ARE-001` | Medium | Android release build disables code shrinking |
+| `VGL-ARE-003` | High | Android manifest marks the app debuggable |
+| `VGL-ARE-010` | High | iOS entitlements allow debugger attachment |
+| `VGL-ARE-030` | High | Electron renderer disables web security |
+| `VGL-ARE-051` | Medium | .NET Release build keeps debug symbols or disables optimization |
+| `VGL-ARE-052` | High | iOS Release build enables testability |
+| `VGL-ARE-057` | High | Electron fuse enables Node CLI inspect or RunAsNode |
+| `VGL-ARE-059` | Medium | JavaScript production build disables minification |
 | `VGL-SEC-002` | Critical | AWS secret access key hardcoded in source |
 | `VGL-SEC-003` | Critical | GitHub token hardcoded in source |
 | `VGL-SEC-011` | Critical | Private key block committed to the repository |

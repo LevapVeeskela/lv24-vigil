@@ -10,7 +10,7 @@
 [![MCP](https://img.shields.io/badge/MCP-stdio-6C5CE7)](https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/mcp.md)
 
 **Vigil is a security auditor for your code that runs on your own model.** It
-runs 198 deterministic rules over a repository, then optionally sends the minimum
+runs 221 deterministic rules over a repository, then optionally sends the minimum
 context to the model you already pay for to triage findings, review risky code,
 propose fixes and write a threat model. OpenAI, Anthropic, Gemini, OpenRouter,
 Groq, DeepSeek, Mistral, xAI, OpenCode Go, Ollama, LM Studio, a local CLI or any
@@ -118,10 +118,10 @@ args = ["-y", "lv24-vigil", "mcp"]
 
 Claude Code one-liner: `claude mcp add vigil -- npx -y lv24-vigil mcp`.
 
-The server exposes 11 tools (`vigil_scan`, `vigil_review`, `vigil_explain`,
+The server exposes 13 tools (`vigil_scan`, `vigil_review`, `vigil_explain`,
 `vigil_fix`, `vigil_threat_model`, `vigil_status`, `vigil_rules`,
-`vigil_baseline`, `vigil_report`, `vigil_verify`, `vigil_history`), four
-resources and three prompts. Only `vigil_fix` with `apply=true` changes source
+`vigil_hardening`, `vigil_dependencies`, `vigil_baseline`, `vigil_report`,
+`vigil_verify`, `vigil_history`), four resources and five prompts. Only `vigil_fix` with `apply=true` changes source
 files. Then ask the agent: *"Scan this repository with Vigil and explain the top
 three findings."*
 
@@ -142,7 +142,7 @@ three findings."*
 ```
 
 Use `lv24-vigil`, not the platform packages. If no model is configured,
-`--no-llm` still runs all 198 rules. Prefer `--format json` or MCP over parsing
+`--no-llm` still runs all 221 rules. Prefer `--format json` or MCP over parsing
 the human summary. Show a fix diff before applying it.
 
 ## Links

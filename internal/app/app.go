@@ -157,7 +157,7 @@ func (a *App) Options(req model.ScanRequest) scanner.Options {
 		FollowLinks:  a.Config.Scan.FollowLinks,
 		BaselinePath: baseline,
 		NoBaseline:   req.NoBaseline,
-		OSV:          a.Config.Scan.OSV,
+		OSV:          a.Config.Scan.OSV && !req.DisableOSV,
 	}
 }
 

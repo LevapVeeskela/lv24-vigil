@@ -13,7 +13,7 @@
 
 **Документация:** [English](README.md) · Русский · [docs/](docs/) · [llms.txt](llms.txt)
 
-> **Ваш код. Ваша модель. Ваши находки.** Vigil прогоняет 198 детерминированных
+> **Ваш код. Ваша модель. Ваши находки.** Vigil прогоняет 221 детерминированных
 > правила по репозиторию, а затем — только если вы попросите — отправляет
 > минимальный контекст в модель, за которую вы уже платите: триаж находок,
 > разбор рискованного кода, предложения исправлений и модель угроз. Один
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | [Установка](#установка) · [Посмотрите, как это работает](#посмотрите-как-это-работает) · [Быстрый старт](#быстрый-старт-за-60-секунд) | [Настройка MCP](#настройка-mcp) · [Для ИИ-агентов](#для-ии-агентов) · [Провайдеры](#провайдеры) · [Правила](#правила) | [CI и SARIF](#ci-sarif-и-precheck) · [Безопасность](#безопасность) · [Документация](#документация) |
 
-> **Статус: 0.6.x.** Детерминированный движок, CLI и MCP-сервер уже можно
+> **Статус: 0.7.x.** Детерминированный движок, CLI и MCP-сервер уже можно
 > использовать. Вывод модели носит рекомендательный характер, покрытие правил
 > растёт, и Vigil не заменяет пентест. Любая находка — это повод проверить, а не
 > готовый приговор.
@@ -63,7 +63,7 @@ vigil fix VGL-XXXXXXXXXX --apply  # записать в рабочее дере�
 - **Ваша модель, ваши ключи.** OpenAI, Anthropic, Gemini, OpenRouter, Groq,
   DeepSeek, Mistral, xAI, OpenCode Go, Ollama, LM Studio, локальный CLI или любой
   OpenAI-совместимый endpoint. Без прокси, аккаунта Vigil и телеметрии.
-- **Сначала детерминизм.** Все 198 правила отрабатывают до вызова модели. Сбой
+- **Сначала детерминизм.** Все 221 правила отрабатывают до вызова модели. Сбой
   провайдера не спрячет захардкоженный секрет, shell-инъекцию или отключённую
   проверку JWT.
 - **Встраивается в агента, которым вы уже пользуетесь.** Один stdio MCP-сервер
@@ -82,16 +82,17 @@ vigil fix VGL-XXXXXXXXXX --apply  # записать в рабочее дере�
 
 | | Возможность | Что делает |
 | --- | --- | --- |
-| 🔍 | **198 детерминированных правила** | Секреты, инъекции, криптография, auth, web, config/IaC, CI и зависимости — без модели |
+| 🔍 | **221 детерминированных правила** | Секреты, инъекции, криптография, auth, web, config/IaC, CI, зависимости и anti-RE hardening — без модели |
 | 🧠 | **LLM-триаж** | Ранжирует и фильтрует находки вашей моделью; детерминированная severity остаётся видимой |
 | 🧪 | **Глубокий разбор** | Читает ограниченные окна рискованных файлов и добавляет находки `VGL-AI-001` |
 | 🛠 | **Diff для фикса** | Готовит проверенный unified diff; `--apply` пишет только рабочее дерево |
 | 🗺 | **Модель угроз** | Генерирует STRIDE-модель в Markdown |
-| 🔌 | **MCP-сервер** | 11 инструментов, 4 ресурса и 3 промпта по stdio |
+| 🔌 | **MCP-сервер** | 13 инструментов, 4 ресурса и 5 промптов по stdio |
 | 📊 | **Отчёты** | Markdown, JSON, SARIF 2.1.0 и самодостаточный HTML |
 | 🧾 | **Baseline** | Подавляет принятые находки, чтобы гейт падал только на новых |
 | 🧰 | **Провайдер `command`** | Переиспользует уже авторизованный локальный CLI без хранения API-ключа |
-| 📦 | **OSV, опционально** | Запрашивает `api.osv.dev` по зависимостям; по умолчанию выключено |
+| 🛡 | **Проверка зависимостей** | Читает lockfile и запрашивает `api.osv.dev` по известным публичным advisory (сеть opt-in); `vigil_dependencies` |
+| 🔒 | **Anti-RE hardening** | Ищет отсутствующую защиту релиза и поверхности, которые читает reverse-engineering-инструмент (REA): symbols/DWARF, Electron fuses, JS minify, WebView, Hermes, iOS testability, а также debug-подпись, debuggable, backup/cleartext, inspector и production source maps |
 | 🚦 | **CI-гейт** | `--fail-on`, код выхода `2`, загрузка SARIF и `vigil precheck` |
 
 ## Установка
@@ -127,7 +128,7 @@ Publishing (OIDC) с аттестацией происхождения.
 
 Не пиньте `0.5.0`: тег и npm-пакет неизменяемы и всё ещё ставятся, но примеры
 CI на этом теге устарели (`inputs.fail-on`, непроверенный GitLab pre-check).
-Бинарники в порядке, шаблоны — нет. Используйте `0.6.0` или новее, либо
+Бинарники в порядке, шаблоны — нет. Используйте `0.7.0` или новее, либо
 `@latest`.
 
 Требования: Node.js 18+ для npm, Go 1.27+ для `go install`; готовым бинарникам и
@@ -263,12 +264,12 @@ args = ["-y", "lv24-vigil", "mcp"]
 Запускайте клиент из репозитория, который хотите сканировать;
 `vigil mcp --root DIR` задаёт другой корень проекта.
 
-Сервер отдаёт 11 инструментов — `vigil_scan`, `vigil_review`, `vigil_explain`,
-`vigil_fix`, `vigil_threat_model`, `vigil_status`, `vigil_rules`,
+Сервер отдаёт 13 инструментов — `vigil_scan`, `vigil_review`, `vigil_explain`,
+`vigil_fix`, `vigil_threat_model`, `vigil_status`, `vigil_rules`, `vigil_hardening`, `vigil_dependencies`,
 `vigil_baseline`, `vigil_report`, `vigil_verify`, `vigil_history` — а также
 ресурсы `vigil://status`, `vigil://rules`, `vigil://scan/last`,
 `vigil://scan/<id>` и промпты `security_review`, `threat_model`,
-`fix_finding`. Детерминированные инструменты работают без модели; `vigil_fix`
+`fix_finding`, `anti_re_hardening`, `dependency_audit`. Детерминированные инструменты работают без модели; `vigil_fix`
 и `vigil_threat_model` требуют её и явно об этом сообщают. Только `vigil_fix`
 с `apply=true` меняет исходники.
 
@@ -313,7 +314,7 @@ args = ["-y", "lv24-vigil", "mcp"]
 1. **Ставьте только `lv24-vigil`.** Никогда не устанавливайте
    `@lv24/vigil-<os>-<cpu>` напрямую: это optional dependency, который выбирает
    лаунчер.
-2. **Нет модели? Используйте `--no-llm`.** Все 198 детерминированных правила
+2. **Нет модели? Используйте `--no-llm`.** Все 221 детерминированных правила
    всё равно отработают и дадут находки. Отсутствие модели — предупреждение, а
    не проваленный скан.
 3. **Не парсите человеческую сводку.** Используйте `--format json`,
@@ -380,7 +381,7 @@ command_output: opencode-json
 
 ## Правила
 
-198 детерминированных правила в восьми семействах. Они чистые: читают файл,
+221 детерминированных правила в девяти семействах. Они чистые: читают файл,
 ничего не пишут, не исполняют сканируемый код и не делают сетевых вызовов.
 Авторитетный каталог — CLI:
 
@@ -398,12 +399,14 @@ vigil rules
 | Конфигурация / IaC | `VGL-CFG` | 37 | Docker, Compose, Kubernetes, Terraform, nginx, закоммиченные env-файлы |
 | CI | `VGL-CI` | 19 | Незапиненные actions, `pull_request_target`, инъекции в скрипты, секреты в логах |
 | Зависимости | `VGL-DEP` | 15 | Lockfile, wildcard-версии, git/HTTP-установки, отключённый TLS |
+| Anti-RE | `VGL-ARE` | 23 | Отсутствующая защита mobile/desktop: обфускация релиза, debug-подпись, debuggable, backup/cleartext, plist-исключения, inspector, source maps, а также Rust symbols/DWARF, .NET, iOS testability и symbols, Electron fuses/ASAR, JS minify, WebView и Hermes. Маппинг: [docs/anti-re-hardening.md](docs/anti-re-hardening.md) |
 
 Примеры ID: `VGL-SEC-002` (critical, AWS secret key), `VGL-INJ-019` (critical,
 десериализация Java), `VGL-CRY-011` (critical, JWT `none`), `VGL-AUTH-002`
 (critical, отключена проверка JWT), `VGL-WEB-001` (high, SSRF), `VGL-CFG-009`
 (high, Docker socket), `VGL-CI-002` (critical, `pull_request_target` checkout),
-`VGL-DEP-006` (high, отключён TLS в npm).
+`VGL-DEP-006` (high, отключён TLS в npm), `VGL-ARE-003` (high, debuggable
+Android manifest), `VGL-ARE-010` (high, iOS `get-task-allow`).
 
 Находки только от модели помечаются `VGL-AI-001` и имеют источник LLM. Находки
 OSV используют `VGL-OSV-<advisory>` и появляются только при `scan.osv: true`.
@@ -475,7 +478,7 @@ vigil hook uninstall
 
 ### GitHub Actions (PR, `main`, вручную)
 
-Действие также опубликовано в [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Используйте `uses: LevapVeeskela/lv24-vigil@v0.6.0`; добавьте `version: 0.6.0`, если CLI должен совпадать с тегом действия.
+Действие также опубликовано в [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Используйте `uses: LevapVeeskela/lv24-vigil@v0.7.0`; добавьте `version: 0.7.0`, если CLI должен совпадать с тегом действия.
 
 Скопируйте [`examples/github-workflow.yml`](examples/github-workflow.yml) в
 `.github/workflows/vigil.yml`:

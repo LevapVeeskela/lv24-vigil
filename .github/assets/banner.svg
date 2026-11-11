@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-label="Vigil — security audit on your own model. 163 deterministic rules, MCP server, SARIF, no telemetry.">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-label="Vigil — security audit on your own model. 221 deterministic rules, MCP server, SARIF, no telemetry.">
   <title>Vigil — security audit on your own model</title>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -73,15 +73,15 @@
   <text x="310" y="78" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="600" letter-spacing="3.6" fill="#5eead4" fill-opacity="0.92">LV24 · LOCAL-FIRST SECURITY</text>
   <text x="306" y="170" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="104" font-weight="800" letter-spacing="10" fill="url(#word)">VIGIL</text>
   <text x="310" y="213" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="29" font-weight="400" fill="#dbeafe">Security audit on your own model</text>
-  <text x="310" y="253" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="500" letter-spacing="1.4" fill="#6ee7b7">163 rules · MCP · SARIF · no telemetry</text>
+  <text x="310" y="253" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="500" letter-spacing="1.4" fill="#6ee7b7">221 rules · MCP · SARIF · no telemetry</text>
 
   <path d="M900 92 V226" stroke="#1f3b45" stroke-width="1"/>
 
   <g font-family="Segoe UI, Helvetica Neue, Arial, sans-serif">
-    <text x="948" y="168" font-size="44" font-weight="700" fill="#5eead4">163</text>
+    <text x="948" y="168" font-size="44" font-weight="700" fill="#5eead4">221</text>
     <text x="948" y="196" font-size="13" fill="#94a3b8">deterministic rules</text>
 
-    <text x="1090" y="168" font-size="44" font-weight="700" fill="#5eead4">11</text>
+    <text x="1090" y="168" font-size="44" font-weight="700" fill="#5eead4">13</text>
     <text x="1090" y="196" font-size="13" fill="#94a3b8">MCP tools</text>
 
     <text x="1188" y="168" font-size="44" font-weight="700" fill="#5eead4">0</text>
