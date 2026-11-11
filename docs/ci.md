@@ -175,6 +175,11 @@ vigil:
 18+ on the runner; GitHub-hosted runners already have it, and self-hosted
 runners should call `actions/setup-node` first.
 
+The action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
+as **Vigil security scan** (Security + Code quality). Pin `version: 0.5.2` when
+the CLI must match the action tag; the default `latest` follows the newest npm
+release.
+
 ```yaml
 - uses: actions/checkout@v7
 

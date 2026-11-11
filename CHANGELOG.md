@@ -11,6 +11,8 @@ stable.
 - Documentation-only release: the PyPI release-trigger clarification and the
   `0.5.0` stale-template warning are now part of the tagged tree. No runtime,
   rule, CLI or MCP behaviour changes.
+- The composite action is listed on the GitHub Marketplace as `Vigil security
+  scan` (Security + Code quality).
 
 ## 0.5.1 - 2026-11-10
 

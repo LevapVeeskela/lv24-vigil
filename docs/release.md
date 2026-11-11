@@ -326,6 +326,9 @@ at it. `v0.5.2` contains the corrected CI templates plus the post-0.5.1 docs
 and immutable, but its examples use `inputs.fail-on` and an unguarded GitLab
 pre-check, so do not copy them.
 
+The composite action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
+as **Vigil security scan** (Security + Code quality).
+
 **Do not pin `0.5.0`.** Use `0.5.2` or newer, or `@latest`. The `v0.5.0` tag is
 immutable and still resolves, so pinning it silently keeps the stale templates;
 its GitHub release body carries the warning. The npm package version is marked
