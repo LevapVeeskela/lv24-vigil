@@ -33,15 +33,15 @@ use `VGL-OSV-<advisory>` and only appear when `scan.osv` is enabled.
 
 | ID | Severity | Title |
 |---|---|---|
-| `VGL-SEC-025` | critical | Telegram bot token hardcoded in source |
-| `VGL-INJ-038` | high | SQL query built from dynamic input in Go |
-| `VGL-INJ-040` | critical | JNDI lookup receives dynamic or request-controlled name |
-| `VGL-CRY-013` | critical | TLS verification disabled (Java trust-all TrustManager) |
-| `VGL-AUTH-017` | high | OAuth `redirect_uri` taken from request data |
-| `VGL-CFG-036` | high | Docker CLI runs a container privileged |
-| `VGL-CFG-040` | critical | IAM policy grants full administrative access |
-| `VGL-CI-018` | critical | Privileged workflow checks out untrusted PR code |
-| `VGL-DEP-015` | high | Go module checksum verification disabled |
+| `VGL-SEC-025` | Critical | Telegram bot token hardcoded in source |
+| `VGL-INJ-038` | High | SQL query built from dynamic input in Go |
+| `VGL-INJ-040` | Critical | JNDI lookup receives dynamic or request-controlled name |
+| `VGL-CRY-013` | Critical | TLS verification disabled (Java trust-all TrustManager) |
+| `VGL-AUTH-017` | High | OAuth `redirect_uri` taken from request data |
+| `VGL-CFG-036` | High | Docker CLI runs a container privileged |
+| `VGL-CFG-040` | Critical | IAM policy grants full administrative access |
+| `VGL-CI-018` | Critical | Privileged workflow checks out untrusted PR code |
+| `VGL-DEP-015` | High | Go module checksum verification disabled |
 | `VGL-SEC-002` | Critical | AWS secret access key hardcoded in source |
 | `VGL-SEC-003` | Critical | GitHub token hardcoded in source |
 | `VGL-SEC-011` | Critical | Private key block committed to the repository |
