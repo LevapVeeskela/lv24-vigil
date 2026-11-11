@@ -8,13 +8,13 @@ author: "LV24"
 # exits 2 because findings were found:
 #
 #   - id: vigil
-#     uses: LevapVeeskela/lv24-vigil@v0.7.0
+#     uses: LevapVeeskela/lv24-vigil@v0.7.1
 #     with:
 #       path: .
 #       fail-on: high
 #       no-llm: true
 #       format: sarif
-#       version: 0.7.0
+#       version: 0.7.1
 #   - uses: github/codeql-action/upload-sarif@v4
 #     if: always()
 #     with:
@@ -46,9 +46,9 @@ inputs:
     required: false
     default: "sarif"
   version:
-    description: "npm version or dist-tag of lv24-vigil to install. Defaults to this action's release version (0.7.0)."
+    description: "npm version or dist-tag of lv24-vigil to install. Defaults to this action's release version (0.7.1)."
     required: false
-    default: "0.7.0"
+    default: "0.7.1"
 
 outputs:
   sarif:
@@ -73,7 +73,7 @@ runs:
         VIGIL_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
-        version="${VIGIL_VERSION:-0.7.0}"
+        version="${VIGIL_VERSION:-0.7.1}"
         npm i -g "lv24-vigil@${version}"
         printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 

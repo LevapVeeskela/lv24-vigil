@@ -4,6 +4,18 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.7.1 - 2026-11-11
+
+### Fixed
+
+- `VGL-ARE-006` no longer flags a `network_security_config.xml` under
+  `src/debug` (or another debug variant); debug-only configs are not shipped in
+  the release APK.
+- `VGL-ARE-053` no longer flags `COPY_PHASE_STRIP = NO` by itself. Modern Xcode
+  projects use that default while `STRIP_INSTALLED_PRODUCT = YES` still strips
+  the shipped binary. The rule now reports only `DEBUG_INFORMATION_FORMAT =
+  dwarf` and `STRIP_INSTALLED_PRODUCT = NO`.
+
 ## 0.7.0 - 2026-11-11
 
 ### Added

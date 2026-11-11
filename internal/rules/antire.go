@@ -57,11 +57,9 @@ var (
 	antireDotNetOptimizeRe     = regexp.MustCompile(`(?i)<Optimize>\s*false\s*</Optimize>`)
 
 	// iOS / Xcode release configurations.
-	antireTestabilityRe    = regexp.MustCompile(`(?i)\bENABLE_TESTABILITY\s*=\s*YES\s*(?:;|$)`)
-	antireDwarfRe          = regexp.MustCompile(`(?i)\bDEBUG_INFORMATION_FORMAT\s*=\s*dwarf\s*(?:;|$)`)
-	antireStripProductRe   = regexp.MustCompile(`(?i)\bSTRIP_INSTALLED_PRODUCT\s*=\s*NO\s*(?:;|$)`)
-	antireCopyPhaseStripRe = regexp.MustCompile(`(?i)\bCOPY_PHASE_STRIP\s*=\s*NO\s*(?:;|$)`)
-	antireDeployPostprocRe = regexp.MustCompile(`(?i)\bDEPLOYMENT_POSTPROCESSING\s*=\s*NO\s*(?:;|$)`)
+	antireTestabilityRe  = regexp.MustCompile(`(?i)\bENABLE_TESTABILITY\s*=\s*YES\s*(?:;|$)`)
+	antireDwarfRe        = regexp.MustCompile(`(?i)\bDEBUG_INFORMATION_FORMAT\s*=\s*dwarf\s*(?:;|$)`)
+	antireStripProductRe = regexp.MustCompile(`(?i)\bSTRIP_INSTALLED_PRODUCT\s*=\s*NO\s*(?:;|$)`)
 
 	// Android WebView and React Native build switches.
 	antireWebViewDebugRe = regexp.MustCompile(`(?i)\bsetWebContentsDebuggingEnabled\s*\(\s*true\s*\)`)
@@ -112,8 +110,8 @@ const (
 	antireFixTestability = "Set ENABLE_TESTABILITY = NO in the Release build configuration; testability " +
 		"exposes internal symbols at runtime and is only needed for Debug/Test builds."
 	antireFixIOSDebugSymbols = "For Release set DEBUG_INFORMATION_FORMAT = dwarf-with-dsym (upload the " +
-		"dSYM to the crash service), STRIP_INSTALLED_PRODUCT = YES, COPY_PHASE_STRIP = YES and " +
-		"DEPLOYMENT_POSTPROCESSING = YES."
+		"dSYM to the crash service) and STRIP_INSTALLED_PRODUCT = YES; do not disable " +
+		"installed-product stripping in the Release configuration."
 	antireFixWebViewDebug = "Remove setWebContentsDebuggingEnabled(true) from production sources, or gate " +
 		"it behind a debug-only check so release builds cannot attach Chrome DevTools to the WebView."
 	antireFixHermes = "Keep hermesEnabled=true for release builds: Hermes bytecode is harder to read " +
@@ -328,7 +326,7 @@ func AntiRERules() []Rule {
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-053",
 			Title:       "iOS Release build keeps debug symbols or skips stripping",
-			Description: "DEBUG_INFORMATION_FORMAT = dwarf, STRIP_INSTALLED_PRODUCT = NO, COPY_PHASE_STRIP = NO or DEPLOYMENT_POSTPROCESSING = NO leaves DWARF data and symbol names inside the shipped app binary.",
+			Description: "DEBUG_INFORMATION_FORMAT = dwarf (instead of dwarf-with-dsym) or STRIP_INSTALLED_PRODUCT = NO leaves DWARF data and symbol names inside the shipped app binary. COPY_PHASE_STRIP = NO is the modern Xcode default and is not flagged by itself.",
 			Severity:    model.SeverityMedium,
 			Category:    model.CategoryAntiRE,
 			CWE:         []string{"CWE-540"},
@@ -910,6 +908,11 @@ func antireNetworkConfigRule(f *File) []model.Finding {
 	if !antireNetworkSecurityConfig(f) {
 		return nil
 	}
+	// A config under src/debug (or another debug variant) is not shipped in
+	// the release APK; flagging it would be a debug-only false positive.
+	if antireTestPath(f) || antireDevPath(f.Path) {
+		return nil
+	}
 	inDebugOverrides := false
 	var out []model.Finding
 	for i, line := range f.Lines {
@@ -1393,9 +1396,7 @@ func antireIOSDebugSymbolsRule(f *File) []model.Finding {
 			continue
 		}
 		hit := antireDwarfRe.MatchString(line) ||
-			antireStripProductRe.MatchString(line) ||
-			antireCopyPhaseStripRe.MatchString(line) ||
-			antireDeployPostprocRe.MatchString(line)
+			antireStripProductRe.MatchString(line)
 		if !hit {
 			continue
 		}

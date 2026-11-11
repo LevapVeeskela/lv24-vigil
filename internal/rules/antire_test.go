@@ -456,6 +456,14 @@ func TestAntiRE006NetworkSecurityConfig(t *testing.T) {
 			want: []int{2},
 		},
 		{
+			name:     "debug variant config is not shipped",
+			path:     "app/src/debug/res/xml/network_security_config.xml",
+			language: "xml",
+			content: `<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>`,
+		},
+		{
 			name:     "multi line domain config permits cleartext",
 			path:     "app/src/main/res/xml/network_security_config.xml",
 			language: "xml",
@@ -1360,7 +1368,7 @@ func TestAntiRE053IOSDebugSymbols(t *testing.T) {
 			};
 			name = Release;
 		};`,
-			want: []int{4, 5, 6, 7},
+			want: []int{4, 5},
 		},
 		{
 			name:     "release with dsym and stripping is safe",
@@ -1372,6 +1380,19 @@ func TestAntiRE053IOSDebugSymbols(t *testing.T) {
 				STRIP_INSTALLED_PRODUCT = YES;
 				COPY_PHASE_STRIP = YES;
 				DEPLOYMENT_POSTPROCESSING = YES;
+			};
+		};`,
+		},
+		{
+			name:     "modern Xcode defaults with installed-product stripping are safe",
+			path:     "ios/Runner.xcodeproj/project.pbxproj",
+			language: "other",
+			content: `		97C146EE /* Release */ = {
+			buildSettings = {
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				STRIP_INSTALLED_PRODUCT = YES;
+				COPY_PHASE_STRIP = NO;
+				DEPLOYMENT_POSTPROCESSING = NO;
 			};
 		};`,
 		},
