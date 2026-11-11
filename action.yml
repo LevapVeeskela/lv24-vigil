@@ -8,12 +8,13 @@ author: "LV24"
 # exits 2 because findings were found:
 #
 #   - id: vigil
-#     uses: LevapVeeskela/lv24-vigil@v0.5.2
+#     uses: LevapVeeskela/lv24-vigil@v0.5.3
 #     with:
 #       path: .
 #       fail-on: high
 #       no-llm: true
 #       format: sarif
+#       version: 0.5.3
 #   - uses: github/codeql-action/upload-sarif@v4
 #     if: always()
 #     with:
@@ -45,9 +46,9 @@ inputs:
     required: false
     default: "sarif"
   version:
-    description: "npm version or dist-tag of lv24-vigil to install, for example 0.5.2 or latest."
+    description: "npm version or dist-tag of lv24-vigil to install. Leave empty to use the action tag (or latest on a branch)."
     required: false
-    default: "latest"
+    default: ""
 
 outputs:
   sarif:
@@ -72,7 +73,14 @@ runs:
         VIGIL_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
-        version="${VIGIL_VERSION:-latest}"
+        version="${VIGIL_VERSION:-}"
+        if [ -z "$version" ]; then
+          ref="${GITHUB_ACTION_REF:-}"
+          case "$ref" in
+            v[0-9]*.[0-9]*.[0-9]*) version="${ref#v}" ;;
+            *) version="latest" ;;
+          esac
+        fi
         npm i -g "lv24-vigil@${version}"
         printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
@@ -84,6 +92,7 @@ runs:
         VIGIL_NO_LLM: ${{ inputs['no-llm'] }}
         VIGIL_FORMAT: ${{ inputs.format }}
         VIGIL_VERSION: ${{ inputs.version }}
+        VIGIL_RESOLVED_VERSION: ${{ steps.install.outputs.version }}
       run: |
         set -uo pipefail
 
@@ -110,7 +119,7 @@ runs:
           bin=(vigil)
         else
           echo "vigil: global command not found; using npx" >&2
-          bin=(npx --yes "lv24-vigil@${VIGIL_VERSION:-latest}")
+          bin=(npx --yes "lv24-vigil@${VIGIL_RESOLVED_VERSION:-${VIGIL_VERSION:-latest}}")
         fi
 
         set +e

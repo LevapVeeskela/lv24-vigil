@@ -4,6 +4,16 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.5.3 - 2026-11-11
+
+### Changed
+
+- The composite action now installs the npm CLI version matching the action tag
+  (`GITHUB_ACTION_REF`) by default; an explicit `version` input still overrides
+  it. `uses: ...@v0.5.3` is reproducible instead of silently following `latest`.
+- The npm README carries the GitHub Marketplace badge. No engine, rule, CLI or
+  MCP behaviour changes.
+
 ## 0.5.2 - 2026-11-10
 
 ### Changed
