@@ -186,7 +186,9 @@ func (a *App) Scan(ctx context.Context, req model.ScanRequest) (*model.ScanResul
 		if oerr != nil {
 			res.Errors = append(res.Errors, "osv: "+oerr.Error())
 		}
-		res.Findings = append(res.Findings, osvFindings...)
+		// Advisories go through the same baseline, severity and cap as rule
+		// findings, so they can be accepted and filtered like any other.
+		scanner.MergeFindings(res, osvFindings, opts)
 	}
 
 	if useLLM {

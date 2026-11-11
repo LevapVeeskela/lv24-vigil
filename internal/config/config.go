@@ -301,42 +301,47 @@ func mergeFile(cfg *Config, path string, allowSecret bool) error {
 	}
 	if !allowSecret {
 		if fc.APIKey != nil && strings.TrimSpace(*fc.APIKey) != "" {
-			return fmt.Errorf("config %s: api_key must live in the user config or the environment, not in a project file", path)
+			return projectOnlyErr(path, "api_key")
 		}
 		// A project file is committed by whoever owns the repository. It must
 		// not be able to redirect model traffic (and the user's key) to an
 		// arbitrary endpoint or write outside the project tree.
 		if fc.BaseURL != nil && strings.TrimSpace(*fc.BaseURL) != "" {
-			return fmt.Errorf("config %s: base_url must live in the user config or the environment, not in a project file", path)
+			return projectOnlyErr(path, "base_url")
 		}
 		// The command provider executes a local process. A committed file must
 		// never be able to choose that process, its environment or how its
 		// output is interpreted: cloning a repository must not run code.
 		if fc.Command != nil {
-			return fmt.Errorf("config %s: command must live in the user config or the environment, not in a project file", path)
+			return projectOnlyErr(path, "command")
 		}
 		if fc.CommandEnv != nil {
-			return fmt.Errorf("config %s: command_env must live in the user config or the environment, not in a project file", path)
+			return projectOnlyErr(path, "command_env")
 		}
 		if fc.CommandPromptMode != nil {
-			return fmt.Errorf("config %s: command_prompt_mode must live in the user config or the environment, not in a project file", path)
+			return projectOnlyErr(path, "command_prompt_mode")
 		}
 		if fc.CommandOutput != nil {
-			return fmt.Errorf("config %s: command_output must live in the user config or the environment, not in a project file", path)
+			return projectOnlyErr(path, "command_output")
 		}
 		if fc.Output != nil && fc.Output.Path != nil {
 			if err := validateProjectPath("output.path", *fc.Output.Path); err != nil {
-				return fmt.Errorf("config %s: %w", path, err)
+				return &ProjectKeyError{File: path, Key: "output.path", Reason: err.Error()}
 			}
 		}
 		if fc.Scan != nil {
 			if fc.Scan.Baseline != nil {
 				if err := validateProjectPath("scan.baseline", *fc.Scan.Baseline); err != nil {
-					return fmt.Errorf("config %s: %w", path, err)
+					return &ProjectKeyError{File: path, Key: "scan.baseline", Reason: err.Error()}
 				}
 			}
 			if fc.Scan.FollowLinks != nil && *fc.Scan.FollowLinks {
-				return fmt.Errorf("config %s: scan.follow_symlinks may only be enabled in the user config", path)
+				return &ProjectKeyError{File: path, Key: "scan.follow_symlinks", Reason: "scan.follow_symlinks may only be enabled in the user config"}
+			}
+			// Like base_url: a committed file must not redirect the package
+			// inventory (and the advisory records Vigil trusts) to its own host.
+			if fc.Scan.OSVBaseURL != nil && strings.TrimSpace(*fc.Scan.OSVBaseURL) != "" {
+				return &ProjectKeyError{File: path, Key: "scan.osv_base_url", Reason: "scan.osv_base_url must live in the user config or the environment (VIGIL_OSV_BASE_URL), not in a project file"}
 			}
 		}
 	}
@@ -446,6 +451,25 @@ func mergeFile(cfg *Config, path string, allowSecret bool) error {
 
 // validateProjectPath rejects absolute, traversal and .git paths in a project
 // file. The value is only validated; callers keep the original spelling.
+// ProjectKeyError reports a key that a committed project config file may not
+// set (or may not set to that value). Callers such as `vigil doctor` use Key
+// to explain where the setting belongs; the message never includes the value.
+type ProjectKeyError struct {
+	File   string
+	Key    string
+	Reason string
+}
+
+func (e *ProjectKeyError) Error() string {
+	return fmt.Sprintf("config %s: %s", e.File, e.Reason)
+}
+
+// projectOnlyErr is the error for a key that must live in the user config or
+// the environment.
+func projectOnlyErr(path, key string) error {
+	return &ProjectKeyError{File: path, Key: key, Reason: key + " must live in the user config or the environment, not in a project file"}
+}
+
 func validateProjectPath(key, value string) error {
 	v := strings.TrimSpace(value)
 	if v == "" || v == "-" {

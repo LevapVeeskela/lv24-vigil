@@ -28,7 +28,7 @@ func registerFix(srv *mcp.Server, d Deps) {
 			"scanId":    mcp.Prop("string", "Scan to look in. Defaults to the most recent scan."),
 			"apply":     mcp.PropBool("Apply the proposed diff to the working tree. Defaults to false (dry run)."),
 		}, "findingId"),
-		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "openWorldHint": false},
+		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "openWorldHint": true},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
 			return handleFix(ctx, d, raw)
 		},

@@ -89,11 +89,11 @@ or the `npx` form above. The transport is stdio; no URL or port is needed.
 
 | Tool | Purpose | Side effects |
 |---|---|---|
-| `vigil_scan` | Scan the repository or a directory. Runs deterministic rules first, then optional LLM analysis. | scan history only |
-| `vigil_review` | Review only changed lines, or a supplied unified diff. | scan history only |
-| `vigil_explain` | Explain one finding: what the code does, why it matters, how an attacker could use it, and a fix direction. | none |
-| `vigil_fix` | Propose a minimal unified diff. With `apply=true`, write the validated diff to the working tree. | writes only with `apply=true`; never commits |
-| `vigil_threat_model` | Generate a STRIDE-style threat model from a bounded repository map. | none |
+| `vigil_scan` | Scan the repository or a directory. Runs deterministic rules first, then optional LLM analysis. | scan history; network to the configured model, and to OSV when `scan.osv` is on |
+| `vigil_review` | Review only changed lines, or a supplied unified diff. | scan history; network to the configured model, and to OSV when `scan.osv` is on |
+| `vigil_explain` | Explain one finding: what the code does, why it matters, how an attacker could use it, and a fix direction. | network to the configured model |
+| `vigil_fix` | Propose a minimal unified diff. With `apply=true`, write the validated diff to the working tree. | network to the configured model; writes only with `apply=true`; never commits |
+| `vigil_threat_model` | Generate a STRIDE-style threat model from a bounded repository map. | network to the configured model |
 | `vigil_status` | Report provider, model, engine and store status. | none |
 | `vigil_rules` | List the rule catalog with IDs, severities and categories. | none |
 | `vigil_hardening` | Run only the `VGL-ARE` anti-RE hardening rules and group gaps by platform. Maps each gap to the REA reverse-engineering surface it raises the cost against in [anti-re-hardening.md](anti-re-hardening.md). | scan history only |
@@ -102,6 +102,11 @@ or the `npx` form above. The transport is stdio; no URL or port is needed.
 | `vigil_report` | Render a stored scan as Markdown, JSON, SARIF or HTML. | only when `path` is supplied |
 | `vigil_verify` | Re-check whether a finding is still present after a change. | none |
 | `vigil_history` | List recent scans from the local store. | none |
+
+Tools that can leave the machine (a configured model or OSV) declare
+`openWorldHint: true`: `vigil_scan`, `vigil_review`, `vigil_explain`,
+`vigil_fix`, `vigil_threat_model` and `vigil_dependencies`. `vigil_hardening`
+and `vigil_verify` are always offline.
 
 The deterministic result is returned even when no model is configured. If the
 model fails, the tool returns the findings it has and a warning, not an empty

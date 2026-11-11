@@ -151,6 +151,7 @@ func TestProjectFileRejectsSecretsAndEgress(t *testing.T) {
 		{"absolute baseline", "scan:\n  baseline: /tmp/base.json\n", "scan.baseline"},
 		{"traversal baseline", "scan:\n  baseline: ../../base.json\n", "scan.baseline"},
 		{"follow symlinks", "scan:\n  follow_symlinks: true\n", "follow_symlinks"},
+		{"osv base url", "scan:\n  osv: true\n  osv_base_url: http://attacker.example\n", "scan.osv_base_url"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -671,5 +672,31 @@ func TestCommandEnvRejectsInvalidKey(t *testing.T) {
 
 	if _, err := Load(t.TempDir()); err == nil || !strings.Contains(err.Error(), "command_env") {
 		t.Fatalf("Load = %v, want a command_env key error", err)
+	}
+}
+
+// The OSV mirror stays configurable from trusted sources: the user config and
+// the environment.
+func TestOSVBaseURLAllowedFromUserConfigAndEnv(t *testing.T) {
+	clearEnv(t)
+	userDir := t.TempDir()
+	writeConfig(t, userDir, "config.yaml", "scan:\n  osv_base_url: https://mirror.example\n")
+	t.Setenv("VIGIL_CONFIG", filepath.Join(userDir, "config.yaml"))
+
+	cfg, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Scan.OSVBaseURL != "https://mirror.example" {
+		t.Fatalf("user config OSVBaseURL = %q", cfg.Scan.OSVBaseURL)
+	}
+
+	t.Setenv("VIGIL_OSV_BASE_URL", "http://127.0.0.1:8080")
+	cfg, err = Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load with env: %v", err)
+	}
+	if cfg.Scan.OSVBaseURL != "http://127.0.0.1:8080" {
+		t.Fatalf("env OSVBaseURL = %q", cfg.Scan.OSVBaseURL)
 	}
 }

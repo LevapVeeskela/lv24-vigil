@@ -100,16 +100,26 @@ var skipManifestDirs = map[string]bool{
 // The walk is bounded by maxManifestFiles and maxManifestDepth, each file by
 // maxManifestBytes and the intermediate list by maxCollectedPackages.
 func CollectPackages(ctx context.Context, root string, includeDev bool, max int) ([]Package, error) {
+	pkgs, _, err := collectPackages(ctx, root, includeDev, max)
+	return pkgs, err
+}
+
+// collectPackages is CollectPackages plus coverage warnings: manifests that
+// were skipped (oversized or unparseable), walk limits that were hit and an
+// inventory truncated by max. A skipped manifest must never look like a
+// clean result, so callers surface these next to query errors.
+func collectPackages(ctx context.Context, root string, includeDev bool, max int) ([]Package, []string, error) {
+	var warnings []string
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
-		return nil, fmt.Errorf("osv: resolve scan root: %w", err)
+		return nil, nil, fmt.Errorf("osv: resolve scan root: %w", err)
 	}
 	info, err := os.Stat(absRoot)
 	if err != nil {
-		return nil, fmt.Errorf("osv: scan root %s: %w", absRoot, err)
+		return nil, nil, fmt.Errorf("osv: scan root %s: %w", absRoot, err)
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("osv: scan root %s is not a directory", absRoot)
+		return nil, nil, fmt.Errorf("osv: scan root %s is not a directory", absRoot)
 	}
 	if resolved, err := filepath.EvalSymlinks(absRoot); err == nil {
 		absRoot = resolved
@@ -152,19 +162,21 @@ func CollectPackages(ctx context.Context, root string, includeDev bool, max int)
 			return nil
 		}
 		if fi, err := d.Info(); err != nil || fi.Size() > maxManifestBytes {
+			warnings = append(warnings, fmt.Sprintf("osv: skipped %s: larger than %d bytes or unreadable", rel, maxManifestBytes))
 			return nil
 		}
 		if len(files) >= maxManifestFiles {
+			warnings = append(warnings, fmt.Sprintf("osv: stopped after %d manifests; the rest of the tree was not read", maxManifestFiles))
 			return filepath.SkipAll
 		}
 		files = append(files, manifestFile{abs: p, rel: rel, kind: kind})
 		return nil
 	})
 	if walkErr != nil {
-		return nil, fmt.Errorf("osv: walk %s: %w", absRoot, walkErr)
+		return nil, nil, fmt.Errorf("osv: walk %s: %w", absRoot, walkErr)
 	}
 	if len(files) == 0 {
-		return nil, nil
+		return nil, warnings, nil
 	}
 
 	// Parse lockfiles first so a manifest is only used when its directory has
@@ -177,6 +189,7 @@ func CollectPackages(ctx context.Context, root string, includeDev bool, max int)
 		}
 		parsed, err := parseManifestFile(f)
 		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("osv: skipped %s: %s", f.rel, boundedError(err)))
 			continue
 		}
 		if suppressesPackageJSON(f.kind) {
@@ -196,6 +209,7 @@ func CollectPackages(ctx context.Context, root string, includeDev bool, max int)
 		}
 		parsed, err := parseManifestFile(f)
 		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("osv: skipped %s: %s", f.rel, boundedError(err)))
 			continue
 		}
 		packages = append(packages, parsed...)
@@ -215,7 +229,10 @@ func CollectPackages(ctx context.Context, root string, includeDev bool, max int)
 		}
 		packages = kept
 	}
-	return capPackages(packages, max), nil
+	if max > 0 && len(packages) > max {
+		warnings = append(warnings, fmt.Sprintf("osv: found %d packages but only the first %d (sorted by ecosystem and name) were queried; raise the package limit for full coverage", len(packages), max))
+	}
+	return capPackages(packages, max), warnings, nil
 }
 
 // isLockfileKind reports whether a manifest pins the full dependency graph.

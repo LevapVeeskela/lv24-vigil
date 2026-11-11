@@ -1,0 +1,65 @@
+# Vigil configuration for Vigil's own repository (dogfood).
+# Safe to commit: no keys, endpoints or commands.
+#
+# Keep this list in sync with the --exclude flags in
+# .github/workflows/vigil.yml, so a local `vigil scan .` and the CI gate see
+# the same tree. A project `exclude` replaces the built-in list, so the
+# defaults are repeated first.
+
+scan:
+  exclude:
+    # Built-in defaults.
+    - .git/**
+    - node_modules/**
+    - vendor/**
+    - dist/**
+    - build/**
+    - target/**
+    - .venv/**
+    - venv/**
+    - __pycache__/**
+    - .next/**
+    - .nuxt/**
+    - coverage/**
+    - .idea/**
+    - .vscode/**
+    - "*.min.js"
+    - "*.min.css"
+    - "*.map"
+    - "*.lock"
+    - package-lock.json
+    - pnpm-lock.yaml
+    - yarn.lock
+    - go.sum
+    - Cargo.lock
+    - "*.png"
+    - "*.jpg"
+    - "*.jpeg"
+    - "*.gif"
+    - "*.webp"
+    - "*.ico"
+    - "*.svg"
+    - "*.pdf"
+    - "*.zip"
+    - "*.gz"
+    - "*.tar"
+    - "*.tgz"
+    - "*.7z"
+    - "*.exe"
+    - "*.dll"
+    - "*.so"
+    - "*.dylib"
+    - "*.wasm"
+    - "*.woff"
+    - "*.woff2"
+    - "*.ttf"
+    - .vigil/**
+
+    # Rule definitions are made of the very patterns, titles and remediation
+    # text the rules detect (regex literals, "verify=False", "SYS_ADMIN"), so
+    # they match themselves. Helper scripts, prose and examples are not
+    # product code.
+    - internal/rules/**
+    - scripts/**
+    - docs/**
+    - examples/**

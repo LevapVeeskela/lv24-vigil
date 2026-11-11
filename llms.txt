@@ -8,7 +8,7 @@ binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud
 Repository: https://github.com/LevapVeeskela/lv24-vigil
 License: Apache-2.0
 Binary: vigil
-Current release line: 0.7.x: 221 rules, the vigil_hardening tool and the
+Current release line: 0.8.x: 221 rules, the vigil_hardening tool and the
 vigil_dependencies tool.
 
 ## Canonical install
@@ -148,7 +148,7 @@ Read-only unless noted.
 - vigil_verify(findingId) — re-check whether a finding is still present.
 - vigil_history(limit?) — recent scans from the local store.
 - vigil_hardening(path?, minSeverity?, maxFindings?, noBaseline?) — run only the VGL-ARE hardening rules.
-- vigil_dependencies(path?, includeDev?, maxPackages?, osvBaseUrl?) — known OSV advisories for declared packages (network).
+- vigil_dependencies(path?, includeDev?, maxPackages?, osvBaseUrl?) — known OSV advisories for declared packages (network; osvBaseUrl must be https or loopback http).
 
 Resources: vigil://status, vigil://rules, vigil://scan/last, vigil://scan/<id>.
 Prompts: security_review, threat_model, fix_finding, anti_re_hardening, dependency_audit.
@@ -214,7 +214,10 @@ Gemfile.lock, pubspec.lock, pom.xml, gradle.lockfile, packages.lock.json.
 
 Known public advisories only. No match does not mean safe. Zero-day, private
 and unpublished advisories are not covered. The tool sends only ecosystem,
-package name and version; it runs no package manager and writes nothing.
+package name and version, then the IDs of matched advisories to fetch their
+details; it runs no package manager and writes nothing. Skipped manifests, a
+truncated package list and failed lookups are reported as warnings: any warning
+means coverage is incomplete.
 
 ## Safety
 

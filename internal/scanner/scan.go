@@ -401,6 +401,37 @@ func dedupeFindings(in []model.Finding) []model.Finding {
 	return out
 }
 
+// MergeFindings adds findings produced outside the rule engine (OSV
+// advisories) to res after the rule-level gates: disabled rules and the
+// baseline. Without it such findings could not be accepted into the baseline.
+// The caller re-applies the minimum severity, sort, cap and stats once all
+// findings are in.
+func MergeFindings(res *model.ScanResult, extra []model.Finding, opts Options) {
+	if res == nil || len(extra) == 0 {
+		return
+	}
+	disabled := make(map[string]bool, len(opts.DisableRules))
+	for _, id := range opts.DisableRules {
+		disabled[strings.ToUpper(strings.TrimSpace(id))] = true
+	}
+	filtered := make([]model.Finding, 0, len(extra))
+	for _, f := range extra {
+		if !disabled[strings.ToUpper(f.RuleID)] {
+			filtered = append(filtered, f)
+		}
+	}
+
+	kept, suppressed, errs := applyBaseline(filtered, opts)
+	for _, e := range errs {
+		if !containsString(res.Errors, e) {
+			res.Errors = append(res.Errors, e)
+		}
+	}
+	res.Findings = append(res.Findings, kept...)
+	res.Suppressed = append(res.Suppressed, suppressed...)
+	model.SortFindings(res.Suppressed)
+}
+
 func filterBySeverity(in []model.Finding, min model.Severity) []model.Finding {
 	out := make([]model.Finding, 0, len(in))
 	for _, f := range in {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -278,6 +279,8 @@ func (s *Server) listResources() any {
 	for _, r := range s.resources {
 		out = append(out, r.resource)
 	}
+	// Map iteration order is random; clients and caches expect a stable list.
+	sort.Slice(out, func(i, j int) bool { return out[i].URI < out[j].URI })
 	return ResourcesListResult{Resources: out}
 }
 
@@ -309,6 +312,7 @@ func (s *Server) listPrompts() any {
 		p.Handler = nil
 		out = append(out, p)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return PromptsListResult{Prompts: out}
 }
 

@@ -456,3 +456,29 @@ func TestE2EConcurrentRealToolCalls(t *testing.T) {
 		t.Fatalf("ping after concurrent calls: %v", ping.Error)
 	}
 }
+
+// Regression: vigil_scan, vigil_review, vigil_explain, vigil_fix and
+// vigil_threat_model can reach a configured model (and scan/review the OSV
+// API), yet declared openWorldHint=false. Only tools that never leave the
+// machine may claim a closed world.
+func TestE2EOpenWorldHints(t *testing.T) {
+	h := newHarness(t)
+	resp := h.client.call("tools/list", nil)
+	if resp.Error != nil {
+		t.Fatalf("tools/list: %v", resp.Error)
+	}
+	var list mcp.ToolsListResult
+	if err := json.Unmarshal(resp.Result, &list); err != nil {
+		t.Fatal(err)
+	}
+	open := map[string]bool{
+		"vigil_scan": true, "vigil_review": true, "vigil_explain": true, "vigil_fix": true,
+		"vigil_threat_model": true, "vigil_dependencies": true,
+	}
+	for _, tool := range list.Tools {
+		got, _ := tool.Annotations["openWorldHint"].(bool)
+		if got != open[tool.Name] {
+			t.Errorf("%s openWorldHint = %v, want %v", tool.Name, got, open[tool.Name])
+		}
+	}
+}

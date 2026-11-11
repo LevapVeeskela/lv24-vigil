@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/levapveeskela/lv24-vigil/internal/app"
 	"github.com/levapveeskela/lv24-vigil/internal/model"
 	"github.com/levapveeskela/lv24-vigil/internal/osv"
 )
@@ -109,5 +110,18 @@ func TestHardeningSummaryGroupsByPlatform(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("summary missing %q:\n%s", want, text)
 		}
+	}
+}
+
+// Regression: with a model configured, the deterministic hardening summary
+// named that model as if it had been used.
+func TestHardeningSummaryNeverNamesAConfiguredModel(t *testing.T) {
+	d := Deps{App: &app.App{LLM: true, Model: &model.ModelInfo{Provider: "command", Model: "some-model"}}}
+	res := &model.ScanResult{Root: "/repo", Model: d.App.Model}
+
+	text := hardeningSummary(d, res, []string{"VGL-ARE-001"})
+
+	if strings.Contains(text, "some-model") || !strings.Contains(text, "Model: not used") {
+		t.Fatalf("summary must say the model is not used:\n%s", text)
 	}
 }

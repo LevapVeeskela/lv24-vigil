@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/levapveeskela/lv24-vigil/internal/model"
+	"github.com/levapveeskela/lv24-vigil/internal/scanner"
 )
 
 const testAWSKey = "AKIAZ7Q2LMN4RSTUVWXY"
@@ -224,7 +225,10 @@ func TestScanOSVIntegration(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := "scan:\n  osv: true\n  osv_base_url: " + server.URL + "\n"
+	// A project file may opt into OSV, but the endpoint override must come
+	// from a trusted source (the environment here), never the project file.
+	t.Setenv("VIGIL_OSV_BASE_URL", server.URL)
+	cfg := "scan:\n  osv: true\n"
 	if err := os.WriteFile(filepath.Join(repo, ".vigil.yaml"), []byte(cfg), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -255,5 +259,83 @@ func TestScanOSVIntegration(t *testing.T) {
 	}
 	if !strings.Contains(found.Title, "left-pad@1.0.0") {
 		t.Errorf("title = %q", found.Title)
+	}
+}
+
+// Regression: OSV advisories were appended after the scanner's filters, so
+// they ignored the baseline, the minimum severity and the stats.
+func TestScanOSVFindingsHonourBaselineSeverityAndStats(t *testing.T) {
+	hermeticEnv(t)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "requirements.txt"), []byte("requests==2.0.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": []any{map[string]any{"vulns": []any{
+			map[string]any{"id": "GHSA-base-line", "summary": "s", "database_specific": map[string]any{"severity": "HIGH"}},
+		}}}})
+	}))
+	defer server.Close()
+	t.Setenv("VIGIL_OSV_BASE_URL", server.URL)
+	if err := os.WriteFile(filepath.Join(repo, ".vigil.yaml"), []byte("scan:\n  osv: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, err := New(repo, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	disabled := false
+
+	// Stats count the advisory.
+	res, err := a.Scan(context.Background(), model.ScanRequest{UseLLM: &disabled})
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	var osvFinding *model.Finding
+	for i := range res.Findings {
+		if strings.HasPrefix(res.Findings[i].RuleID, "VGL-OSV-") {
+			osvFinding = &res.Findings[i]
+		}
+	}
+	if osvFinding == nil {
+		t.Fatalf("no OSV finding: %+v", res.Findings)
+	}
+	if res.Stats.BySeverity[model.SeverityHigh] == 0 {
+		t.Errorf("stats ignore the OSV finding: %+v", res.Stats.BySeverity)
+	}
+
+	// Minimum severity filters it.
+	res, err = a.Scan(context.Background(), model.ScanRequest{UseLLM: &disabled, MinSeverity: model.SeverityCritical})
+	if err != nil {
+		t.Fatalf("Scan critical: %v", err)
+	}
+	for _, f := range res.Findings {
+		if strings.HasPrefix(f.RuleID, "VGL-OSV-") {
+			t.Fatalf("min severity critical kept %s", f.RuleID)
+		}
+	}
+
+	// The baseline suppresses it.
+	b := scanner.NewBaseline()
+	b.Add(*osvFinding, "accepted risk")
+	if err := scanner.SaveBaseline(filepath.Join(repo, scanner.DefaultBaselineFile), b); err != nil {
+		t.Fatal(err)
+	}
+	res, err = a.Scan(context.Background(), model.ScanRequest{UseLLM: &disabled})
+	if err != nil {
+		t.Fatalf("Scan baseline: %v", err)
+	}
+	for _, f := range res.Findings {
+		if strings.HasPrefix(f.RuleID, "VGL-OSV-") {
+			t.Fatalf("baselined advisory is still active: %s", f.RuleID)
+		}
+	}
+	suppressed := false
+	for _, f := range res.Suppressed {
+		suppressed = suppressed || strings.HasPrefix(f.RuleID, "VGL-OSV-")
+	}
+	if !suppressed {
+		t.Fatalf("baselined advisory missing from suppressed: %+v", res.Suppressed)
 	}
 }

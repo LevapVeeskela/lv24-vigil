@@ -22,7 +22,8 @@ var dependencyLimitations = []string{
 	"No matching advisory does not establish that a package is safe.",
 	"Only exact versions from supported manifests and lockfiles are queried; runtime-resolved, vendored or dynamically installed packages may differ.",
 	"Advisory applicability to a forked, backported or vendor-patched build is not established.",
-	"No package manager runs, no files are written and no telemetry is sent. The only network request is the OSV querybatch call.",
+	"No package manager runs, no files are written and no telemetry is sent. The only network requests go to the OSV API: querybatch, then one detail lookup per advisory found.",
+	"Skipped manifests, a truncated package list and failed lookups are listed as warnings; any warning means coverage is incomplete.",
 }
 
 type dependencyAuditReport struct {

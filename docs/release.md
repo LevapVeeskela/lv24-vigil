@@ -122,10 +122,10 @@ refuses an older npm). Use the same or newer npm for the `npm trust` commands.
 ## Verify a release
 
 ```bash
-npm view lv24-vigil version          # 0.7.1
-npm view lv24-vigil dist-tags        # { latest: '0.7.1' }
-npm i -g lv24-vigil@0.7.1            # or @latest
-vigil version                        # vigil 0.7.1 (<commit>, <date>, go<version>)
+npm view lv24-vigil version          # 0.8.0
+npm view lv24-vigil dist-tags        # { latest: '0.8.0' }
+npm i -g lv24-vigil@0.8.0            # or @latest
+vigil version                        # vigil 0.8.0 (<commit>, <date>, go<version>)
 ```
 
 Platform packages, one line each:
@@ -154,7 +154,7 @@ Provenance:
 npm view lv24-vigil dist.attestations
 ```
 
-For `0.7.1` this returns a `https://slsa.dev/provenance/v1` attestation built
+For `0.8.0` this returns a `https://slsa.dev/provenance/v1` attestation built
 from `.github/workflows/npm-publish.yml` on a GitHub-hosted runner. The npm page
 shows the matching provenance badge.
 
@@ -200,6 +200,16 @@ vigil version                                                 # reports the tag 
 
 ### Decision log
 
+- **0.8.0 fixes dependency severities and locks the OSV endpoint
+  (2026-11-11).** OSV `querybatch` returns advisory IDs only, so every
+  advisory in 0.7.x was `medium` and `--fail-on high` never fired on a
+  dependency; 0.8.0 fetches each full record and follows result pages.
+  Breaking for project files: `scan.osv_base_url` is rejected in a committed
+  `.vigil.yaml` (user config or `VIGIL_OSV_BASE_URL` only), hence the minor
+  bump. Also: OSV findings honour the baseline, `vigil doctor` explains config
+  errors, `vigil hardening --rules` is limited to `VGL-ARE`, anti-RE false
+  positives/negatives fixed and `openWorldHint` corrected on network-capable
+  tools. No rule IDs changed; still 221 rules.
 - **0.7.1 fixes two anti-RE false positives (2026-11-11).** `VGL-ARE-006`
   skips debug-variant network security configs; `VGL-ARE-053` no longer
   flags `COPY_PHASE_STRIP = NO` and reports only
@@ -346,9 +356,13 @@ reasoning and the procedure if a rewrite is ever required are in
 ## Current state
 
 `0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
-path. All seven npm packages and PyPI are live at `0.7.1`, and `latest` points
-at it. `v0.7.1` fixes two anti-RE false positives: debug-variant network
-security configs and the modern Xcode `COPY_PHASE_STRIP = NO` default.
+path. All seven npm packages and PyPI are live at `0.8.0`, and `latest` points
+at it. `v0.8.0` makes dependency severities real (0.7.x reported every OSV
+advisory as `medium`), follows OSV result pages, rejects `scan.osv_base_url` in
+project files and lets `vigil doctor` explain config errors. **Upgrade from
+0.7.x** if you use `vigil dependencies` or `scan.osv`. `v0.7.1` fixes two
+anti-RE false positives: debug-variant network security configs and the
+modern Xcode `COPY_PHASE_STRIP = NO` default.
 `v0.7.0` added 23 anti-RE hardening rules (221 total), the
 `vigil_hardening` and `vigil_dependencies` tools and wider OSV inventory; the
 action CLI defaults to its release. `v0.6.0` added 35 deterministic rules;
@@ -360,7 +374,7 @@ attempt. `v0.5.2` contains the corrected CI templates and the post-0.5.1 docs.
 The composite action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
 as **Vigil security scan** (Security + Code quality).
 
-**Do not pin `0.5.0`.** Use `0.7.1` or newer, or `@latest`. The `v0.5.0` tag is
+**Do not pin `0.5.0`.** Use `0.8.0` or newer, or `@latest`. The `v0.5.0` tag is
 immutable and still resolves, so pinning it silently keeps the stale templates;
 its GitHub release body carries the warning. The npm package version is marked
 with a deprecation notice (a metadata change, not a republish) once the npm 2FA

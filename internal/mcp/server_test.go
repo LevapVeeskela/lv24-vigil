@@ -568,3 +568,38 @@ func TestObjectSchemaShape(t *testing.T) {
 		t.Errorf("properties = %+v", schema.Properties)
 	}
 }
+
+// Regression: prompts/list and resources/list iterated Go maps, so their order
+// changed between calls. Lists must be stable for clients and caches.
+func TestPromptsAndResourcesListAreSorted(t *testing.T) {
+	srv := NewServer("vigil", "test", "Vigil")
+	names := []string{"zeta", "alpha", "mike", "delta", "kilo", "bravo", "x-ray", "echo"}
+	for _, n := range names {
+		srv.AddPrompt(Prompt{Name: n, Handler: func(context.Context, map[string]string) (*GetPromptResult, error) {
+			return &GetPromptResult{}, nil
+		}})
+		srv.AddResource(Resource{URI: "vigil://" + n, Name: n}, func(context.Context, string) ([]ResourceContents, error) {
+			return nil, nil
+		})
+	}
+	c := startTestServer(t, srv)
+
+	for i := 0; i < 5; i++ {
+		var prompts PromptsListResult
+		if err := json.Unmarshal(c.call(10+i, "prompts/list", nil).Result, &prompts); err != nil {
+			t.Fatal(err)
+		}
+		var resources ResourcesListResult
+		if err := json.Unmarshal(c.call(20+i, "resources/list", nil).Result, &resources); err != nil {
+			t.Fatal(err)
+		}
+		for j := 1; j < len(names); j++ {
+			if prompts.Prompts[j-1].Name > prompts.Prompts[j].Name {
+				t.Fatalf("prompts not sorted: %+v", prompts.Prompts)
+			}
+			if resources.Resources[j-1].URI > resources.Resources[j].URI {
+				t.Fatalf("resources not sorted: %+v", resources.Resources)
+			}
+		}
+	}
+}

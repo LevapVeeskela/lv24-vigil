@@ -107,6 +107,11 @@ func runScanLikeMode(name string, args []string, review, hardening bool, stdout,
 	if err != nil {
 		return err
 	}
+	if hardening {
+		if req.OnlyRules, err = hardeningRules(req.OnlyRules); err != nil {
+			return err
+		}
+	}
 	format, err := canonicalFormat(firstNonEmpty(o.format, a.Config.Output.Format))
 	if err != nil {
 		return err
@@ -341,12 +346,19 @@ func printScanUsage(w io.Writer, name string, review bool) {
 	if review {
 		changed = ""
 	}
+	intro := "Scans a repository or directory with deterministic rules and, when a model is\nconfigured, LLM triage."
+	if name == "hardening" {
+		intro = "Runs only the anti-RE hardening rules (VGL-ARE-*), deterministically and offline:\n" +
+			"no model, no OSV lookup. --rules may narrow the set to VGL-ARE IDs only;\n" +
+			"--deep and --threat-model have no effect. Findings are hardening gaps, not\n" +
+			"vulnerabilities."
+	}
 	fmt.Fprintf(w, `Usage: vigil %s [path] [flags]
 
-Scans a repository or directory with deterministic rules and, when a model is
-configured, LLM triage.
+%s
 
-Flags:
+Flags:`, name, intro)
+	fmt.Fprintf(w, `
   --path DIR             scan root (default .)
 %s  --base REF             git ref to diff against (default HEAD)
   --diff FILE            scan added lines from a unified diff ("-" = stdin)
@@ -366,5 +378,5 @@ Flags:
   --fail-on LEVEL        exit 2 when a finding at or above LEVEL exists
   --quiet                skip the human summary
   --color MODE           auto, always or never
-`, name, changed)
+`, changed)
 }

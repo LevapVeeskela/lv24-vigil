@@ -1849,3 +1849,219 @@ export default defineConfig({
 		},
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Skeptical-review regressions (post 0.7.1). Each case failed before its fix.
+// ---------------------------------------------------------------------------
+
+func TestAntiREReviewRegressionsGradleAndManifestExamples(t *testing.T) {
+	// The Flutter example-app template signs release with the debug key; a
+	// plugin's example/ app is not shipped.
+	antireTestCases(t, "VGL-ARE-002", []antireCase{
+		{
+			name:     "plugin example app is skipped",
+			path:     "packages/camera/example/android/app/build.gradle",
+			language: "other",
+			content: `plugins { id "com.android.application" }
+android {
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+        }
+    }
+}`,
+		},
+	})
+	antireTestCases(t, "VGL-ARE-003", []antireCase{
+		{
+			name:     "androidTest manifest is skipped",
+			path:     "app/src/androidTest/AndroidManifest.xml",
+			language: "xml",
+			content:  `<application android:debuggable="true" />`,
+		},
+		{
+			name:     "example app manifest is skipped",
+			path:     "packages/camera/example/android/app/src/main/AndroidManifest.xml",
+			language: "xml",
+			content:  `<application android:debuggable="true" />`,
+		},
+		{
+			name:     "main manifest still fires",
+			path:     "android/app/src/main/AndroidManifest.xml",
+			language: "xml",
+			content:  `<application android:debuggable="true" />`,
+			want:     []int{1},
+		},
+	})
+}
+
+func TestAntiREReviewRegressionsFlutterWeb(t *testing.T) {
+	antireTestCases(t, "VGL-ARE-020", []antireCase{
+		{
+			name:     "web release build cannot be obfuscated",
+			path:     "scripts/build.sh",
+			language: "shell",
+			content:  `flutter build web --release`,
+		},
+		{
+			name:     "apk in the same script still fires",
+			path:     "scripts/build.sh",
+			language: "shell",
+			content:  "flutter build web --release\nflutter build apk --release",
+			want:     []int{2},
+		},
+	})
+}
+
+func TestAntiREReviewRegressionsPbxConfigNames(t *testing.T) {
+	const pbx = `		97C146EE1CF9000F007C117D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_TESTABILITY = NO;
+			};
+			name = Release;
+		};
+		97C146EF1CF9000F007C117D /* Debug-dev */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_TESTABILITY = YES;
+			};
+			name = "Debug-dev";
+		};
+		249021D3217E4FDB00AE95B9 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_TESTABILITY = YES;
+			};
+			name = Profile;
+		};
+		249021D4217E4FDB00AE95B9 /* Release-prod */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_TESTABILITY = YES;
+			};
+			name = "Release-prod";
+		};`
+	antireTestCases(t, "VGL-ARE-052", []antireCase{
+		{
+			name:     "only the Release-prod configuration is release",
+			path:     "ios/Runner.xcodeproj/project.pbxproj",
+			language: "other",
+			content:  pbx,
+			want:     []int{25},
+		},
+	})
+}
+
+func TestAntiREReviewRegressionsWebViewGuard(t *testing.T) {
+	antireTestCases(t, "VGL-ARE-054", []antireCase{
+		{
+			name:     "enclosing BuildConfig.DEBUG block is a guard",
+			path:     "app/src/main/java/com/acme/MainActivity.java",
+			language: "java",
+			content: `if (BuildConfig.DEBUG) {
+    WebView.setWebContentsDebuggingEnabled(true);
+}`,
+		},
+		{
+			name:     "negated check is not a guard",
+			path:     "app/src/main/java/com/acme/MainActivity.java",
+			language: "java",
+			content: `if (!BuildConfig.DEBUG) {
+    WebView.setWebContentsDebuggingEnabled(true);
+}`,
+			want: []int{2},
+		},
+		{
+			name:     "else branch is not a guard",
+			path:     "app/src/main/java/com/acme/MainActivity.java",
+			language: "java",
+			content: `if (BuildConfig.DEBUG) {
+    Log.d("x", "y");
+} else {
+    WebView.setWebContentsDebuggingEnabled(true);
+}`,
+			want: []int{4},
+		},
+	})
+}
+
+func TestAntiREReviewRegressionsFuseComputedKeys(t *testing.T) {
+	antireTestCases(t, "VGL-ARE-057", []antireCase{
+		{
+			name:     "documented computed-key form",
+			path:     "forge.config.js",
+			language: "javascript",
+			content: `new FusesPlugin({
+  version: FuseVersion.V1,
+  [FuseV1Options.RunAsNode]: true,
+  [FuseV1Options.EnableNodeCliInspectArguments]: false,
+})`,
+			want: []int{3},
+		},
+	})
+	antireTestCases(t, "VGL-ARE-058", []antireCase{
+		{
+			name:     "documented computed-key form",
+			path:     "forge.config.js",
+			language: "javascript",
+			content: `new FusesPlugin({
+  version: FuseVersion.V1,
+  [FuseV1Options.OnlyLoadAppFromAsar]: false,
+})`,
+			want: []int{3},
+		},
+	})
+}
+
+// Regression: the fuse rules matched any file mentioning Electron, including
+// documentation that quotes a fuse setting.
+func TestAntiREReviewRegressionsFuseDocsSkipped(t *testing.T) {
+	doc := "Electron fuses: `RunAsNode: true`, `OnlyLoadAppFromAsar: false`, `[FuseV1Options.RunAsNode]: true`."
+	for _, id := range []string{"VGL-ARE-057", "VGL-ARE-058"} {
+		antireTestCases(t, id, []antireCase{
+			{name: "changelog", path: "CHANGELOG.md", language: "markdown", content: doc},
+			{name: "docs page", path: "docs/electron-fuses.md", language: "markdown", content: doc},
+		})
+	}
+}
+
+// Regression: dev/debug/test/example were matched as substrings, so ordinary
+// directories such as devportal/, devtools/, debugger/ or latest/ silently
+// dropped findings.
+func TestAntiREReviewRegressionsDevPathWords(t *testing.T) {
+	nsc := `<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>`
+	antireTestCases(t, "VGL-ARE-006", []antireCase{
+		{name: "devportal app is production", path: "devportal/app/src/main/res/xml/network_security_config.xml", language: "xml", content: nsc, want: []int{2}},
+		{name: "debugger app is production", path: "debugger/app/src/main/res/xml/network_security_config.xml", language: "xml", content: nsc, want: []int{2}},
+		{name: "dev flavor is skipped", path: "app/src/dev/res/xml/network_security_config.xml", language: "xml", content: nsc},
+		{name: "camelCase debug variant is skipped", path: "app/src/stagingDebug/res/xml/network_security_config.xml", language: "xml", content: nsc},
+	})
+	antireTestCases(t, "VGL-ARE-041", []antireCase{
+		{name: "devtools package ships", path: "packages/devtools/vite.config.ts", language: "typescript", content: `export default { build: { sourcemap: true } }`, want: []int{1}},
+		{name: "latest app ships", path: "apps/latest/vite.config.ts", language: "typescript", content: `export default { build: { sourcemap: true } }`, want: []int{1}},
+		{name: "dev config is skipped", path: "frontend/vite.config.dev.ts", language: "typescript", content: `export default { build: { sourcemap: true } }`},
+		{name: "e2e config is skipped", path: "e2e/vite.config.ts", language: "typescript", content: `export default { build: { sourcemap: true } }`},
+	})
+	antireTestCases(t, "VGL-ARE-056", []antireCase{
+		{name: "devtools electron app ships", path: "apps/devtools/electron-builder.yml", language: "yaml", content: "asar: false", want: []int{1}},
+	})
+}
+
+// Regression: Hermes disabled through the Podfile or the pre-0.71 Gradle
+// template was not reported.
+func TestAntiREReviewRegressionsHermesForms(t *testing.T) {
+	antireTestCases(t, "VGL-ARE-055", []antireCase{
+		{name: "podfile hash rocket", path: "ios/Podfile", language: "ruby", content: "use_react_native!(\n  :path => config[:reactNativePath],\n  :hermes_enabled => false\n)", want: []int{3}},
+		{name: "podfile ruby 1.9 hash", path: "ios/Podfile", language: "ruby", content: "use_react_native!(hermes_enabled: false)", want: []int{1}},
+		{name: "podfile USE_HERMES env", path: "ios/Podfile", language: "ruby", content: "ENV['USE_HERMES'] = '0'", want: []int{1}},
+		{name: "podfile hermes on is safe", path: "ios/Podfile", language: "ruby", content: ":hermes_enabled => true\nENV['USE_HERMES'] = '1'"},
+		{name: "podfile flag variable is not a literal", path: "ios/Podfile", language: "ruby", content: ":hermes_enabled => flags[:hermes_enabled]"},
+		{name: "podfile comment", path: "ios/Podfile", language: "ruby", content: "# :hermes_enabled => false"},
+		{name: "old gradle template", path: "android/app/build.gradle", language: "other", content: "project.ext.react = [\n    enableHermes: false,  // clean and rebuild if changing\n]", want: []int{2}},
+		{name: "gradle default read is not a setting", path: "android/app/build.gradle", language: "other", content: `def enableHermes = project.ext.react.get("enableHermes", false);`},
+		{name: "example app podfile is skipped", path: "packages/x/example/ios/Podfile", language: "ruby", content: ":hermes_enabled => false"},
+	})
+}

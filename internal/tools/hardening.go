@@ -162,7 +162,9 @@ func hardeningSummary(d Deps, res *model.ScanResult, ids []string) string {
 		fmt.Fprintf(&b, "Baseline: %d finding(s) suppressed (set noBaseline=true to include them)\n", len(res.Suppressed))
 	}
 	fmt.Fprintf(&b, "Files: %d scanned, %d skipped in %d ms\n", res.Stats.FilesScanned, res.Stats.FilesSkipped, res.Stats.DurationMS)
-	fmt.Fprintf(&b, "Model: %s\n", modelLine(d, res.Model))
+	// The scan forces UseLLM=false, so a configured model is never consulted;
+	// naming it here would suggest model output that does not exist.
+	b.WriteString("Model: not used (deterministic anti-RE rules)\n")
 	fmt.Fprintf(&b, "Warnings: %s\n", warningLine(res.Errors))
 	b.WriteString("\nThese are hardening gaps in the project's release configuration, not vulnerabilities. ")
 	b.WriteString("A missing control says what is absent, not that the app is exploitable, backdoored or bypassable.\n")

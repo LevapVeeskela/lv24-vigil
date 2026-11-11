@@ -11,6 +11,15 @@ vigil scan --no-llm
 `vigil status` shows the resolved provider, model and the source of each setting.
 `--no-llm` separates a rule problem from a provider problem.
 
+### "… must live in the user config or the environment, not in a project file"
+
+A committed `.vigil.yaml` sets a key that only a trusted source may set
+(`api_key`, `base_url`, `command*`, `scan.osv_base_url`, `scan.follow_symlinks`).
+Run `vigil doctor`: it names the file and key and the replacement (user config
+path or environment variable such as `VIGIL_OSV_BASE_URL`). Remove the key from
+the project file and set it there; in CI use a workflow `env:` / `variables:`
+entry, and a secret for keys.
+
 ## Provider and model errors
 
 ### "no LLM provider configured"

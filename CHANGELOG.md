@@ -4,6 +4,86 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.8.0 - 2026-11-11
+
+Upgrade from 0.7.x if you use `vigil dependencies` or `scan.osv`: 0.7.x
+reported every OSV advisory as `medium`. The minor bump is for the breaking
+project-config change below.
+
+### Security
+
+- **Breaking for project files:** `scan.osv_base_url` is rejected in a
+  committed `.vigil.yaml` / `.vigil.yml` / `vigil.yaml`, like `base_url`. A
+  scanned repository could otherwise send the package inventory to its own host
+  and feed back forged advisory records. Set a mirror in the user config or with
+  `VIGIL_OSV_BASE_URL` (in CI, as a workflow `env`), or pass `--osv-base-url`.
+- The MCP `vigil_dependencies` argument `osvBaseUrl` accepts `https`, or plain
+  `http` only on a loopback host (`127.0.0.1`, `::1`, `localhost`), and refuses
+  credentials in the URL without echoing them.
+
+### Changed
+
+- `vigil status` / `vigil doctor` no longer stop at a configuration that does
+  not load. They print a reduced report with a `configError` object (`file`,
+  `key`, `message`, `fix`) that says where a rejected key belongs (user config
+  path or environment variable, plus the CI `env:` / `variables:` form), without
+  printing the configured value or editing any file. The exit code stays `1`;
+  `--json` now emits valid JSON in this case, and `configError` is `null` when
+  the configuration is fine.
+
+### Fixed
+
+- **Dependency severities were always `medium`.** OSV `querybatch` returns
+  advisory IDs only, so every real finding fell back to the default severity
+  with no fixed version or description, and `--fail-on high` could never fire
+  on a dependency advisory. Vigil now fetches each advisory's full record
+  (`GET /v1/vulns/{id}`, bounded to 500 records, 8 concurrent requests) and
+  warns when a record cannot be fetched.
+- A `querybatch` response with a different result count than queries is now
+  discarded for that batch instead of attributing advisories by position to
+  possibly the wrong packages.
+- Dependency coverage gaps are reported as warnings instead of being silently
+  dropped: oversized or unparseable manifests, an inventory truncated by the
+  package limit and packages left unqueried after a failed batch.
+- OSV result pages are followed (`next_page_token`, up to 10 pages per package
+  and 200 page requests per audit) instead of reading only the first page; a
+  limit that is hit is reported.
+- OSV findings in `vigil scan` (with `scan.osv`) now go through the baseline and
+  `disable_rules`, so an accepted advisory can be suppressed like any finding.
+- `vigil_scan`, `vigil_review`, `vigil_explain`, `vigil_fix` and
+  `vigil_threat_model` declare `openWorldHint: true`: they can reach a
+  configured model (and OSV for scan/review).
+- Anti-RE debug/dev/test/example path checks match whole words instead of
+  substrings: `devportal/`, `devtools/`, `debugger/` or `latest/` no longer
+  hide findings, while `src/dev`, `RunnerDebug`, `vite.config.dev.ts` and
+  `e2e/` are still treated as non-release (`e2e/` was previously reported).
+- `VGL-ARE-055` also reports Hermes disabled in the Podfile
+  (`:hermes_enabled => false`, `hermes_enabled: false`, `ENV['USE_HERMES'] =
+  '0'`) and in the pre-0.71 Gradle template (`enableHermes: false`).
+- The repository ships a `.vigil.yaml` with the same excludes as the CI
+  self-scan, so a local `vigil scan .` matches the gate.
+- `vigil hardening --rules` can only narrow the anti-RE set; a non-`VGL-ARE`
+  ID is rejected instead of silently running other rule families. `vigil
+  hardening --help` now describes the command instead of the generic scan.
+- `vigil_hardening` no longer names a configured model in its summary; the
+  hardening scan never uses one.
+- `VGL-ARE-001`–`005` skip example and test apps (for example a Flutter
+  plugin's `example/` app, whose template signs release with the debug key)
+  and `androidTest` manifests, like the other anti-RE rules.
+- `VGL-ARE-020` no longer flags `flutter build web --release`; Flutter does not
+  support `--obfuscate` for web.
+- `VGL-ARE-052`/`053` scope `project.pbxproj` settings by every build
+  configuration header, so `Profile`, `Staging` or `Debug-dev` blocks after a
+  `Release` block are not reported, and `Release-prod` style configurations are.
+- `VGL-ARE-054` treats an enclosing `if (BuildConfig.DEBUG) {` block as a debug
+  guard (negated checks and `else` branches still fire).
+- `VGL-ARE-057`/`058` match the documented `[FuseV1Options.RunAsNode]: true`
+  computed-key form used by `@electron/fuses` and the Forge FusesPlugin, and
+  only read JS/TS/JSON/YAML files, so Markdown docs that quote a fuse setting
+  are no longer reported.
+- MCP `prompts/list` and `resources/list` return a stable, name-sorted order
+  instead of Go map order.
+
 ## 0.7.1 - 2026-11-11
 
 ### Fixed

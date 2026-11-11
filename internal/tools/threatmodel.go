@@ -22,7 +22,7 @@ func registerThreatModel(srv *mcp.Server, d Deps) {
 		InputSchema: mcp.ObjectSchema(map[string]any{
 			"path": mcp.Prop("string", "Directory to model. Must match the server's project root; defaults to it."),
 		}),
-		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": true},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
 			return handleThreatModel(ctx, d, raw)
 		},

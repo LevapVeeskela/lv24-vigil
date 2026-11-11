@@ -16,22 +16,55 @@ import (
 // the configured OSV lookup so advisory findings never mix into a posture
 // report.
 func runHardening(args []string, stdout, stderr io.Writer) error {
-	ids := make([]string, 0, 16)
-	for _, meta := range rules.Default().Metas() {
-		if meta.Category == model.CategoryAntiRE {
-			ids = append(ids, meta.ID)
-		}
-	}
-	if len(ids) == 0 {
+	if len(antiREIDs()) == 0 {
 		return errors.New("hardening: no anti-RE rules are registered in this build")
 	}
 	prefixed := []string{
-		"--rules", strings.Join(ids, ","),
 		"--no-llm",
 		"--no-osv",
 	}
 	prefixed = append(prefixed, args...)
 	return runScanLikeMode("hardening", prefixed, false, true, stdout, stderr)
+}
+
+// antiREIDs returns the IDs of every registered anti-RE rule.
+func antiREIDs() []string {
+	ids := make([]string, 0, 32)
+	for _, meta := range rules.Default().Metas() {
+		if meta.Category == model.CategoryAntiRE {
+			ids = append(ids, meta.ID)
+		}
+	}
+	return ids
+}
+
+// hardeningRules scopes a hardening run to the anti-RE family. Without
+// --rules every VGL-ARE rule runs; with --rules the selection may only narrow
+// that set, so the command can never report a non-hardening finding.
+func hardeningRules(requested []string) ([]string, error) {
+	all := antiREIDs()
+	if len(requested) == 0 {
+		return all, nil
+	}
+	known := make(map[string]bool, len(all))
+	for _, id := range all {
+		known[id] = true
+	}
+	out := make([]string, 0, len(requested))
+	for _, raw := range requested {
+		id := strings.ToUpper(strings.TrimSpace(raw))
+		if id == "" {
+			continue
+		}
+		if !known[id] {
+			return nil, fmt.Errorf("hardening: --rules accepts only anti-RE rule IDs (VGL-ARE-*), got %q", raw)
+		}
+		out = append(out, id)
+	}
+	if len(out) == 0 {
+		return all, nil
+	}
+	return out, nil
 }
 
 // hardeningPlatformOrder is the display order used by the CLI summary. It

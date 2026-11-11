@@ -31,7 +31,7 @@ func registerReview(srv *mcp.Server, d Deps) {
 			"changedOnly": mcp.PropBool("Review only changed files. Defaults to true; ignored when diff is supplied."),
 			"useLlm":      mcp.PropBool("Use the configured model for triage. Omit to use the server default."),
 		}),
-		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": true},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
 			return handleReview(ctx, d, raw)
 		},

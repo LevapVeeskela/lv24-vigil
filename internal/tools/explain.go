@@ -26,7 +26,7 @@ func registerExplain(srv *mcp.Server, d Deps) {
 			"findingId": mcp.Prop("string", "Finding ID (VGL-...), fingerprint (fp_...) or a unique prefix."),
 			"scanId":    mcp.Prop("string", "Scan to look in. Defaults to the most recent scan."),
 		}, "findingId"),
-		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": true},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
 			return handleExplain(ctx, d, raw)
 		},

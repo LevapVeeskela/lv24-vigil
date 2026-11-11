@@ -186,6 +186,8 @@ func TestE2EDependenciesRejectsBadArguments(t *testing.T) {
 		{"missing path", map[string]any{"path": "no-such-directory-xyz"}, "invalid arguments"},
 		{"negative maxPackages", map[string]any{"maxPackages": -1}, "maxPackages"},
 		{"bad osv url", map[string]any{"osvBaseUrl": "ftp://example.test"}, "absolute http(s) URL"},
+		{"remote plain http osv url", map[string]any{"osvBaseUrl": "http://attacker.example"}, "loopback"},
+		{"credentials in osv url", map[string]any{"osvBaseUrl": "https://user:s3cret@mirror.example"}, "credentials"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

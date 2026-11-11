@@ -3,7 +3,10 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strings"
 
@@ -45,7 +48,7 @@ func registerDependencies(srv *mcp.Server, d Deps) {
 			"path":        mcp.Prop("string", "Directory or repository to audit. Defaults to the server's project root."),
 			"includeDev":  mcp.PropBool("Also query dev dependencies. Defaults to true."),
 			"maxPackages": mcp.PropInt("Maximum distinct packages to query (default 200, capped at 1000)."),
-			"osvBaseUrl":  mcp.Prop("string", "Override the OSV API root. Defaults to https://api.osv.dev; only http(s) URLs are accepted."),
+			"osvBaseUrl":  mcp.Prop("string", "Override the OSV API root. Defaults to https://api.osv.dev; must be https, or http on a loopback host (127.0.0.1, ::1, localhost). Credentials in the URL are refused."),
 		}),
 		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": true},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
@@ -80,6 +83,9 @@ func handleDependencies(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.
 	}
 	opts.IncludeDev = includeDev
 	if base := strings.TrimSpace(args.OSVBaseURL); base != "" {
+		if err := checkAgentOSVBaseURL(base); err != nil {
+			return mcp.TextError("invalid arguments: %v", err), nil
+		}
 		opts.BaseURL = base
 	}
 
@@ -119,6 +125,40 @@ func resolveAuditRoot(d Deps, p string) (string, error) {
 		return "", fmt.Errorf("path %q is not a directory", root)
 	}
 	return root, nil
+}
+
+// checkAgentOSVBaseURL limits where an MCP caller may send the package
+// inventory. The argument can come from an agent steered by untrusted content,
+// so plain http is accepted only on a loopback host (a local mirror or test
+// server), and credentials in the URL are refused without echoing them.
+// Other schemes fall through to the osv package's own validation.
+func checkAgentOSVBaseURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return errors.New("osvBaseUrl is not a valid URL")
+	}
+	if u.User != nil {
+		return errors.New("osvBaseUrl must not contain credentials")
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return nil
+	case "http":
+		if isLoopbackHost(u.Hostname()) {
+			return nil
+		}
+		return errors.New("osvBaseUrl must use https; plain http is accepted only for a loopback host (127.0.0.1, ::1, localhost)")
+	default:
+		return nil
+	}
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // dependenciesMaxPackages applies the documented default and cap. A negative

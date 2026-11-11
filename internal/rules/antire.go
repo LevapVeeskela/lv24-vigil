@@ -64,11 +64,22 @@ var (
 	// Android WebView and React Native build switches.
 	antireWebViewDebugRe = regexp.MustCompile(`(?i)\bsetWebContentsDebuggingEnabled\s*\(\s*true\s*\)`)
 	antireHermesOffRe    = regexp.MustCompile(`(?i)\bhermesEnabled\s*[:=]\s*false\b`)
+	// CocoaPods: use_react_native!(:hermes_enabled => false) or the Ruby 1.9
+	// hash form, and ENV['USE_HERMES'] = '0'. Older Android templates:
+	// project.ext.react = [enableHermes: false].
+	antireHermesPodOffRe    = regexp.MustCompile(`(?i)(?::hermes_enabled\s*=>|\bhermes_enabled\s*:)\s*false\b`)
+	antireHermesPodEnvOffRe = regexp.MustCompile(`(?i)\bENV\[\s*['"]USE_HERMES['"]\s*\]\s*=\s*['"]?(?:0|false)['"]?`)
+	antireHermesGradleOffRe = regexp.MustCompile(`\benableHermes\s*:\s*false\b`)
 
 	// Electron packaging and fuses.
-	antireAsarOffRe     = regexp.MustCompile(`(?i)\basar["']?\s*:\s*false\b|\basar["']?\s*:\s*\{\s*["']?enabled["']?\s*:\s*false\b`)
-	antireFuseNodeOnRe  = regexp.MustCompile(`(?i)\b(?:RunAsNode|EnableNodeCliInspectArguments|EnableNodeOptionsEnvironmentVariable)\s*:\s*true\b`)
-	antireFuseAsarOffRe = regexp.MustCompile(`(?i)\b(?:EnableEmbeddedAsarIntegrityValidation|EmbeddedAsarIntegrityValidation|OnlyLoadAppFromAsar)\s*:\s*false\b`)
+	antireAsarOffRe = regexp.MustCompile(`(?i)\basar["']?\s*:\s*false\b|\basar["']?\s*:\s*\{\s*["']?enabled["']?\s*:\s*false\b`)
+	// The optional "]" accepts the computed-key form that @electron/fuses and
+	// the Forge FusesPlugin document: [FuseV1Options.RunAsNode]: true.
+	antireFuseNodeOnRe  = regexp.MustCompile(`(?i)\b(?:RunAsNode|EnableNodeCliInspectArguments|EnableNodeOptionsEnvironmentVariable)\]?\s*:\s*true\b`)
+	antireFuseAsarOffRe = regexp.MustCompile(`(?i)\b(?:EnableEmbeddedAsarIntegrityValidation|EmbeddedAsarIntegrityValidation|OnlyLoadAppFromAsar)\]?\s*:\s*false\b`)
+
+	// Xcode object header: "97C146EE1CF9000F007C117D /* Release */ = {".
+	antirePbxHeaderRe = regexp.MustCompile(`/\*\s*([^*]+?)\s*\*/\s*=\s*\{`)
 
 	// JavaScript production minification.
 	antireJSMinifyOffRe   = regexp.MustCompile(`(?i)\bminify["']?\s*:\s*false\b`)
@@ -348,7 +359,7 @@ func AntiRERules() []Rule {
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-055",
 			Title:       "React Native release disables the Hermes engine",
-			Description: "hermesEnabled=false ships the plain JavaScript bundle instead of Hermes bytecode, which is far easier to read and patch after unpacking the application.",
+			Description: "Disabling Hermes (hermesEnabled=false, enableHermes: false, or :hermes_enabled => false / USE_HERMES=0 in the Podfile) ships the plain JavaScript bundle instead of Hermes bytecode, which is far easier to read and patch after unpacking the application.",
 			Severity:    model.SeverityMedium,
 			Category:    model.CategoryAntiRE,
 			CWE:         []string{"CWE-693"},
@@ -427,17 +438,59 @@ func antireTestPath(f *File) bool {
 
 // antireDevPath reports whether a path belongs to a debug or development
 // variant (RunnerDebug.entitlements, config/dev/..., src/debug/...).
+//
+// It matches whole words, not substrings: "devportal/", "devtools/",
+// "debugger/" or "devices/" are ordinary directories, and treating them as
+// debug variants silently dropped real findings. Words are split on path and
+// name separators and on camelCase boundaries, so RunnerDebug.entitlements,
+// config/dev/ and vite.config.dev.ts still count.
 func antireDevPath(path string) bool {
-	p := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
-	for _, seg := range strings.Split(p, "/") {
-		if strings.Contains(seg, "debug") || strings.Contains(seg, "development") {
-			return true
-		}
-		if strings.Contains(seg, "dev") && !strings.Contains(seg, "device") {
-			return true
+	return antirePathHasWord(path, "debug", "dev", "devel", "develop", "development")
+}
+
+// antireNonProdPath reports whether a build config path names a development,
+// test or example variant (vite.config.dev.ts, e2e/webpack.config.js).
+func antireNonProdPath(path string) bool {
+	return antireDevPath(path) || antirePathHasWord(path, "test", "tests", "example", "examples", "e2e")
+}
+
+// antirePathHasWord reports whether any word of path equals one of words
+// (case-insensitive).
+func antirePathHasWord(path string, words ...string) bool {
+	for _, token := range antirePathWords(path) {
+		for _, w := range words {
+			if token == w {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// antirePathWords splits a path into lower-case words on separators
+// (/ \ - _ . space) and on lower-to-upper camelCase boundaries.
+func antirePathWords(path string) []string {
+	var out []string
+	var cur []rune
+	flush := func() {
+		if len(cur) > 0 {
+			out = append(out, strings.ToLower(string(cur)))
+			cur = cur[:0]
+		}
+	}
+	runes := []rune(path)
+	for i, r := range runes {
+		switch {
+		case r == '/' || r == '\\' || r == '-' || r == '_' || r == '.' || r == ' ':
+			flush()
+			continue
+		case i > 0 && r >= 'A' && r <= 'Z' && runes[i-1] >= 'a' && runes[i-1] <= 'z':
+			flush()
+		}
+		cur = append(cur, r)
+	}
+	flush()
+	return out
 }
 
 // antireBraceDelta counts net braces on a line, ignoring strings and comments.
@@ -632,6 +685,11 @@ func antireFlutterNeedsObfuscation(cmd string) bool {
 		if fields := strings.Fields(rest); len(fields) > 0 {
 			target = fields[0]
 		}
+		// Flutter does not support --obfuscate for web builds (dart2js
+		// minifies instead), so a web release build is not a gap.
+		if target == "web" {
+			continue
+		}
 		if strings.Contains(rest, "--release") || target == "apk" || target == "appbundle" || target == "ipa" {
 			return true
 		}
@@ -789,6 +847,11 @@ func antireGradleApp(f *File) bool {
 	if base != "build.gradle" && base != "build.gradle.kts" {
 		return false
 	}
+	// Example and test apps (for example a Flutter plugin's example/ app, whose
+	// template signs release with the debug key) are not shipped.
+	if antireTestPath(f) {
+		return false
+	}
 	return strings.Contains(string(f.Content), "com.android.application")
 }
 
@@ -797,7 +860,8 @@ func antireManifest(f *File) bool {
 	if pbBaseLower(f.Path) != "androidmanifest.xml" {
 		return false
 	}
-	return !antireDebugVariantPath(pbPathLower(f))
+	p := pbPathLower(f)
+	return !antireDebugVariantPath(p) && !antireAndroidTestPath(p) && !antireTestPath(f)
 }
 
 // antireDebugVariantPath reports whether the manifest belongs to a debug
@@ -1114,9 +1178,7 @@ func antireProductionSourceMapRule(f *File) []model.Finding {
 	if !antireSourceMapConfig(f) {
 		return nil
 	}
-	p := pbPathLower(f)
-	if antireTestPath(f) || strings.Contains(p, "dev") ||
-		strings.Contains(p, "test") || strings.Contains(p, "example") {
+	if antireTestPath(f) || antireNonProdPath(f.Path) {
 		return nil
 	}
 	var out []model.Finding
@@ -1205,18 +1267,16 @@ func antireReleaseConfigName(base string) bool {
 }
 
 // antirePbxReleaseLines maps each 1-based line of a project.pbxproj to whether
-// it belongs to a Release build configuration, using the nearest preceding
-// /* Debug */ or /* Release */ marker.
+// it belongs to a release build configuration. Every object header
+// ("<id> /* Name */ = {") starts a new scope, so a Profile, Staging or
+// Debug-dev configuration that follows a Release block is not attributed to
+// it, and a Release-prod configuration counts as release.
 func antirePbxReleaseLines(f *File) []bool {
 	out := make([]bool, len(f.Lines))
 	release := false
 	for i, line := range f.Lines {
-		low := strings.ToLower(line)
-		switch {
-		case strings.Contains(low, "/* debug */"):
-			release = false
-		case strings.Contains(low, "/* release */"):
-			release = true
+		if m := antirePbxHeaderRe.FindStringSubmatch(line); m != nil {
+			release = antireReleaseConfigName(strings.ToLower(m[1]))
 		}
 		out[i] = release
 	}
@@ -1309,11 +1369,28 @@ func antireElectronBuilderFile(f *File) bool {
 // configuration, by name or by content.
 func antireElectronFuseFile(f *File) bool {
 	base := pbBaseLower(f.Path)
+	// Fuses are set in build scripts and packaging config. Documentation
+	// (README, CHANGELOG) that quotes a fuse setting is not a build surface.
+	if !antireFuseConfigExt(base) {
+		return false
+	}
 	if strings.Contains(base, "electron") || strings.Contains(base, "fuse") {
 		return true
 	}
 	content := strings.ToLower(string(f.Content))
 	return strings.Contains(content, "electron") || strings.Contains(content, "fuses")
+}
+
+// antireFuseConfigExt reports whether a file name has an extension that can
+// carry Electron fuse settings: JavaScript/TypeScript build scripts and
+// electron-builder JSON/YAML configuration.
+func antireFuseConfigExt(base string) bool {
+	for _, ext := range []string{".js", ".cjs", ".mjs", ".ts", ".cts", ".mts", ".json", ".yml", ".yaml"} {
+		if strings.HasSuffix(base, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 // antireJSBuildConfigFile reports whether the file is a production JavaScript
@@ -1418,9 +1495,10 @@ func antireWebViewDebugRule(f *File) []model.Finding {
 		if antireComment(f, line) || !antireWebViewDebugRe.MatchString(line) {
 			continue
 		}
-		// A guard on the same line (if (BuildConfig.DEBUG) ...) only enables
-		// debugging in debug builds, which is the intended pattern.
-		if strings.Contains(line, "BuildConfig.DEBUG") {
+		// A debug guard (if (BuildConfig.DEBUG) ...) on the same line or on
+		// the enclosing if a few lines above only enables debugging in debug
+		// builds, which is the documented pattern.
+		if antireDebugGuarded(f, i) {
 			continue
 		}
 		out = append(out, antireFinding(f, i+1, model.SeverityHigh, antireFixWebViewDebug))
@@ -1428,9 +1506,47 @@ func antireWebViewDebugRule(f *File) []model.Finding {
 	return out
 }
 
+// antireDebugGuarded reports whether the 0-based line idx sits behind a debug
+// build check: on the same line, or in an if statement at most three lines
+// above it. A negated check (!BuildConfig.DEBUG) is not a guard, and a closing
+// brace in between (an else branch, a finished block) ends the search.
+func antireDebugGuarded(f *File, idx int) bool {
+	for i := idx; i >= 0 && idx-i <= 3; i-- {
+		line := f.Lines[i]
+		if !strings.Contains(line, "BuildConfig.DEBUG") && !strings.Contains(line, "FLAG_DEBUGGABLE") {
+			if i < idx && strings.Contains(line, "}") {
+				return false
+			}
+			continue
+		}
+		if strings.Contains(line, "!BuildConfig.DEBUG") {
+			return false
+		}
+		return i == idx || strings.Contains(line, "if")
+	}
+	return false
+}
+
+// antireAnyMatch reports whether any pattern matches line.
+func antireAnyMatch(patterns []*regexp.Regexp, line string) bool {
+	for _, re := range patterns {
+		if re.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
 func antireHermesDisabledRule(f *File) []model.Finding {
-	base := pbBaseLower(f.Path)
-	if base != "gradle.properties" && base != "react-native.config.js" {
+	var patterns []*regexp.Regexp
+	switch pbBaseLower(f.Path) {
+	case "gradle.properties", "react-native.config.js":
+		patterns = []*regexp.Regexp{antireHermesOffRe}
+	case "podfile":
+		patterns = []*regexp.Regexp{antireHermesPodOffRe, antireHermesPodEnvOffRe}
+	case "build.gradle", "build.gradle.kts":
+		patterns = []*regexp.Regexp{antireHermesGradleOffRe}
+	default:
 		return nil
 	}
 	if antireTestPath(f) {
@@ -1438,7 +1554,7 @@ func antireHermesDisabledRule(f *File) []model.Finding {
 	}
 	var out []model.Finding
 	for i, line := range f.Lines {
-		if antireComment(f, line) || !antireHermesOffRe.MatchString(line) {
+		if antireComment(f, line) || !antireAnyMatch(patterns, line) {
 			continue
 		}
 		out = append(out, antireFinding(f, i+1, model.SeverityMedium, antireFixHermes))
@@ -1499,9 +1615,7 @@ func antireJSMinifyRule(f *File) []model.Finding {
 	if !antireJSBuildConfigFile(f) {
 		return nil
 	}
-	p := pbPathLower(f)
-	if antireTestPath(f) || strings.Contains(p, "dev") ||
-		strings.Contains(p, "test") || strings.Contains(p, "example") {
+	if antireTestPath(f) || antireNonProdPath(f.Path) {
 		return nil
 	}
 	var out []model.Finding

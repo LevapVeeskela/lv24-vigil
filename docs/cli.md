@@ -271,8 +271,16 @@ vigil dependencies . --osv-base-url http://127.0.0.1:8080
 Reads supported manifests and lockfiles, then queries the public OSV.dev
 database for the exact versions found. The tool reports known public advisories
 with severity and fixed versions. **No match does not mean safe**, and zero-day,
-private or unpublished advisories are not covered. The only network request is
-the OSV `querybatch` call; no package manager runs and nothing is written.
+private or unpublished advisories are not covered. The only network requests go
+to the OSV API: `POST /v1/querybatch`, then `GET /v1/vulns/{id}` for each
+advisory found (querybatch returns IDs only; the detail record carries severity
+and fixed versions). No package manager runs and nothing is written.
+
+Coverage gaps are reported as warnings, never hidden: a manifest that is too
+large (over 2 MiB) or cannot be parsed, an inventory truncated by
+`--max-packages` (packages are taken in ecosystem/name order), a failed batch
+and an advisory whose details could not be fetched (its severity then defaults
+to medium and may be understated). Any warning means the result is incomplete.
 
 Supported inventory: `package.json`, `package-lock.json`, `pnpm-lock.yaml`,
 `yarn.lock`, `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `uv.lock`,
@@ -332,6 +340,16 @@ vigil status --json
 Shows the version, root, provider, model, base URL, whether the API key is set
 (value hidden), LLM status, rule count, store directory, baseline path, config
 files, last scan and warnings. `--json` emits a stable object for scripts.
+`vigil doctor` is an alias.
+
+When the configuration does not load, the command still prints a report
+instead of only an error line: build facts, rule count, the user config path and
+a `configError` object (`file`, `key`, `message`, `fix`). The fix says where a
+rejected key belongs — for example `scan.osv_base_url` in a project file moves
+to the user config or `VIGIL_OSV_BASE_URL` (a GitHub Actions `env:` or GitLab CI
+`variables:` entry). The configured value is never printed, and nothing is
+edited for you. The exit code stays `1`; `configError` is `null` when the
+configuration is fine.
 
 ## Threat model
 
@@ -404,7 +422,7 @@ project settings:
 | `scan.follow_symlinks` | `false` | Follow symlinks during the walk (user config only) |
 | `scan.baseline` | `.vigil-baseline.json` | Suppression file; must stay inside the project root |
 | `scan.osv` | `false` | Opt-in OSV dependency advisory lookup (network). Off by default |
-| `scan.osv_base_url` | `https://api.osv.dev` | OSV API endpoint override (self-hosted mirror or tests) |
+| `scan.osv_base_url` | `https://api.osv.dev` | OSV API endpoint override (self-hosted mirror or tests). User config or `VIGIL_OSV_BASE_URL` only; a project file is rejected |
 | `output.format` | `md` | Default report format |
 | `output.path` | empty | Default report path |
 | `output.color` | `auto` | `auto`, `always` or `never` |

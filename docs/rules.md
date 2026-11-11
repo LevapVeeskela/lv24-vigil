@@ -25,7 +25,7 @@ a complete list and will lag behind the code.
 | Dependencies | `VGL-DEP` | 15 | Lockfiles, version ranges, install sources and TLS |
 | Anti-RE | `VGL-ARE` | 23 | Missing mobile/desktop hardening: release obfuscation, debug signing, debuggable builds, backup/cleartext, plist exceptions, inspector flags, source maps, plus Rust/.NET/iOS debug symbols, iOS testability, Electron fuses/ASAR, JS minification, WebView debugging and Hermes. Mapping: [anti-re-hardening.md](anti-re-hardening.md) |
 
-The table counts the 221 deterministic rules in 0.7.x; `vigil rules` is always
+The table counts the 221 deterministic rules in 0.8.x; `vigil rules` is always
 current. `VGL-AI-001` is synthesized by the LLM deep review and is not part of
 the deterministic catalog, so it does not appear in `vigil rules`. OSV findings
 use `VGL-OSV-<advisory>` and only appear when `scan.osv` is enabled or when the

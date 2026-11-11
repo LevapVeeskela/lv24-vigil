@@ -5,7 +5,8 @@
 // repository, asks the public OSV API about the exact package versions it found
 // and turns every advisory into a model.Finding. It never writes to the scanned
 // tree, never executes package-manager code and never sends telemetry. The only
-// network traffic is the documented OSV querybatch endpoint.
+// network traffic is the documented OSV API: querybatch, then one
+// GET /v1/vulns/{id} per advisory, because querybatch returns IDs only.
 package osv
 
 import (
@@ -131,7 +132,7 @@ type AuditResult struct {
 // invalid base URL) are returned as an error.
 //
 // Audit performs no writes and sends no telemetry. The only network traffic is
-// the OSV querybatch endpoint at Options.BaseURL.
+// the OSV querybatch and vulns endpoints at Options.BaseURL.
 func Audit(ctx context.Context, root string, opts Options) (*AuditResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -143,11 +144,11 @@ func Audit(ctx context.Context, root string, opts Options) (*AuditResult, error)
 		return nil, err
 	}
 
-	packages, err := CollectPackages(ctx, root, opts.IncludeDev, opts.MaxPackages)
+	packages, warnings, err := collectPackages(ctx, root, opts.IncludeDev, opts.MaxPackages)
 	if err != nil {
 		return nil, err
 	}
-	res := &AuditResult{Packages: packages}
+	res := &AuditResult{Packages: packages, Errors: warnings}
 	if len(packages) == 0 {
 		return res, nil
 	}
@@ -157,6 +158,8 @@ func Audit(ctx context.Context, root string, opts Options) (*AuditResult, error)
 		client = &http.Client{Timeout: opts.Timeout}
 	}
 
+	var matches []packageVuln
+	var pending []pageRequest
 	for start := 0; start < len(packages); start += queryBatchSize {
 		end := start + queryBatchSize
 		if end > len(packages) {
@@ -164,23 +167,40 @@ func Audit(ctx context.Context, root string, opts Options) (*AuditResult, error)
 		}
 		batch := packages[start:end]
 
-		results, queryErr := queryBatch(ctx, client, baseURL, opts.Timeout, batch)
-		// Convert whatever the API returned before recording the error: a
-		// truncated response still carries useful advisories.
+		results, queryErr := queryBatch(ctx, client, baseURL, opts.Timeout, batch, nil)
+		// queryBatch only returns results that are aligned with batch, so a
+		// failed request may still carry advisories for this batch.
 		for i, result := range results {
-			if i >= len(batch) {
-				break
+			if token := strings.TrimSpace(result.NextPageToken); token != "" {
+				pending = append(pending, pageRequest{pkg: batch[i], token: token})
 			}
 			for _, vuln := range result.Vulns {
-				if finding, ok := findingFor(batch[i], vuln); ok {
-					res.Findings = append(res.Findings, finding)
-				}
+				matches = append(matches, packageVuln{pkg: batch[i], vuln: vuln})
 			}
 		}
 		if queryErr != nil {
 			res.firstErr = queryErr
 			res.Errors = append(res.Errors, boundedError(queryErr))
+			if rest := len(packages) - end; rest > 0 {
+				res.Errors = append(res.Errors, fmt.Sprintf("osv: %d of %d packages were not queried after the failure", rest, len(packages)))
+			}
 			break
+		}
+	}
+	// A package with many advisories is paginated: follow its page token so
+	// the later pages are not silently dropped.
+	more, pageErrs := fetchMorePages(ctx, client, baseURL, opts.Timeout, pending)
+	matches = append(matches, more...)
+	res.Errors = append(res.Errors, pageErrs...)
+
+	// querybatch returns only advisory IDs; fetch the full records so
+	// severity, fixed versions and descriptions are real, not defaults.
+	if hydrateErr := hydrateVulns(ctx, client, baseURL, opts.Timeout, matches); hydrateErr != "" {
+		res.Errors = append(res.Errors, hydrateErr)
+	}
+	for _, m := range matches {
+		if finding, ok := findingFor(m.pkg, m.vuln); ok {
+			res.Findings = append(res.Findings, finding)
 		}
 	}
 
@@ -198,7 +218,7 @@ func Audit(ctx context.Context, root string, opts Options) (*AuditResult, error)
 // deterministic results that were already available.
 //
 // Scan performs no writes and sends no telemetry. The only network traffic is
-// the OSV querybatch endpoint at Options.BaseURL.
+// the OSV querybatch and vulns endpoints at Options.BaseURL.
 func Scan(ctx context.Context, root string, opts Options) ([]model.Finding, error) {
 	res, err := Audit(ctx, root, opts)
 	if err != nil {
@@ -245,13 +265,17 @@ func normalizeBaseURL(raw string) (string, error) {
 // queryBatch sends one querybatch request and returns the results in the same
 // order as pkgs. A result-count mismatch is reported as an error together with
 // the results that were present.
-func queryBatch(ctx context.Context, client *http.Client, baseURL string, timeout time.Duration, pkgs []Package) ([]queryResult, error) {
+func queryBatch(ctx context.Context, client *http.Client, baseURL string, timeout time.Duration, pkgs []Package, tokens []string) ([]queryResult, error) {
 	body := queryBatchRequest{Queries: make([]query, 0, len(pkgs))}
-	for _, p := range pkgs {
-		body.Queries = append(body.Queries, query{
+	for i, p := range pkgs {
+		q := query{
 			Package: packageRef{Name: p.Name, Ecosystem: p.Ecosystem},
 			Version: p.Version,
-		})
+		}
+		if i < len(tokens) {
+			q.PageToken = tokens[i]
+		}
+		body.Queries = append(body.Queries, q)
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -295,9 +319,226 @@ func queryBatch(ctx context.Context, client *http.Client, baseURL string, timeou
 		return nil, fmt.Errorf("osv: decode response: %w", err)
 	}
 	if len(out.Results) != len(pkgs) {
-		return out.Results, fmt.Errorf("osv: querybatch returned %d results for %d queries", len(out.Results), len(pkgs))
+		// Results are matched to queries by position only. With a different
+		// count the alignment is unknown, so no advisory may be attributed to
+		// any package of this batch.
+		return nil, fmt.Errorf("osv: querybatch returned %d results for %d queries", len(out.Results), len(pkgs))
 	}
 	return out.Results, nil
+}
+
+// pageRequest is a package whose querybatch result has another page.
+type pageRequest struct {
+	pkg   Package
+	token string
+}
+
+const (
+	// maxPagesPerPackage bounds how many follow-up pages one package may use.
+	maxPagesPerPackage = 10
+	// maxPageRequests bounds the follow-up page requests of one audit.
+	maxPageRequests = 200
+)
+
+// fetchMorePages follows next_page_token for each pending package, one
+// package per request, within maxPagesPerPackage and maxPageRequests. It
+// returns the extra advisories and bounded warnings: a page that could not be
+// read, or packages left with unread pages, mean coverage is incomplete.
+func fetchMorePages(ctx context.Context, client *http.Client, baseURL string, timeout time.Duration, pending []pageRequest) ([]packageVuln, []string) {
+	var out []packageVuln
+	var warnings []string
+	requests := 0
+	unread := 0
+	for idx, pr := range pending {
+		token := pr.token
+		for page := 0; token != "" && page < maxPagesPerPackage && requests < maxPageRequests; page++ {
+			requests++
+			results, err := queryBatch(ctx, client, baseURL, timeout, []Package{pr.pkg}, []string{token})
+			if err != nil {
+				warnings = append(warnings, boundedError(err))
+				unread += len(pending) - idx
+				return out, append(warnings, fmt.Sprintf("osv: %d package(s) have advisory pages that were not read", unread))
+			}
+			token = ""
+			for _, r := range results {
+				for _, v := range r.Vulns {
+					out = append(out, packageVuln{pkg: pr.pkg, vuln: v})
+				}
+				token = strings.TrimSpace(r.NextPageToken)
+			}
+		}
+		if token != "" {
+			unread++
+		}
+	}
+	if unread > 0 {
+		warnings = append(warnings, fmt.Sprintf("osv: %d package(s) have advisory pages that were not read (page limit reached)", unread))
+	}
+	return out, warnings
+}
+
+// packageVuln is one advisory matched to the package it was queried for.
+type packageVuln struct {
+	pkg  Package
+	vuln vulnerability
+}
+
+const (
+	// maxHydratedVulns bounds the per-advisory detail requests of one audit.
+	maxHydratedVulns = 500
+	// hydrateWorkers is the number of concurrent detail requests.
+	hydrateWorkers = 8
+)
+
+// sparse reports whether the record is the ID-only shape that querybatch
+// returns. A record that already carries details is used as-is.
+func (v vulnerability) sparse() bool {
+	return v.Summary == "" && v.Details == "" && len(v.Severity) == 0 &&
+		len(v.Affected) == 0 && v.DatabaseSpecific.Severity == ""
+}
+
+// hydrateVulns replaces ID-only records in matches with the full advisory
+// from GET /v1/vulns/{id}. It is fail-open: a record that cannot be fetched
+// keeps its sparse form (and therefore the default severity), and the returned
+// string says how many were affected. An empty string means every sparse
+// record was hydrated.
+func hydrateVulns(ctx context.Context, client *http.Client, baseURL string, timeout time.Duration, matches []packageVuln) string {
+	var ids []string
+	seen := map[string]bool{}
+	for _, m := range matches {
+		id := strings.TrimSpace(m.vuln.ID)
+		if id == "" || seen[id] || !m.vuln.sparse() {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return ""
+	}
+	skipped := 0
+	if len(ids) > maxHydratedVulns {
+		skipped = len(ids) - maxHydratedVulns
+		ids = ids[:maxHydratedVulns]
+	}
+
+	type fetched struct {
+		id   string
+		vuln vulnerability
+		err  error
+	}
+	jobs := make(chan string)
+	// Buffered to len(ids) so workers never block on a reader that returned
+	// early after cancellation.
+	results := make(chan fetched, len(ids))
+	workers := hydrateWorkers
+	if len(ids) < workers {
+		workers = len(ids)
+	}
+	for w := 0; w < workers; w++ {
+		go func() {
+			for id := range jobs {
+				v, err := fetchVuln(ctx, client, baseURL, timeout, id)
+				results <- fetched{id: id, vuln: v, err: err}
+			}
+		}()
+	}
+	go func() {
+		defer close(jobs)
+		for _, id := range ids {
+			select {
+			case jobs <- id:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	full := make(map[string]vulnerability, len(ids))
+	failed := 0
+	var firstErr error
+	for range ids {
+		var r fetched
+		select {
+		case r = <-results:
+		case <-ctx.Done():
+			failed = len(ids) - len(full)
+			if firstErr == nil {
+				firstErr = ctx.Err()
+			}
+			return hydrateSummary(failed, skipped, firstErr)
+		}
+		if r.err != nil {
+			failed++
+			if firstErr == nil {
+				firstErr = r.err
+			}
+			continue
+		}
+		full[r.id] = r.vuln
+	}
+	for i := range matches {
+		if v, ok := full[strings.TrimSpace(matches[i].vuln.ID)]; ok {
+			matches[i].vuln = v
+		}
+	}
+	return hydrateSummary(failed, skipped, firstErr)
+}
+
+func hydrateSummary(failed, skipped int, firstErr error) string {
+	if failed == 0 && skipped == 0 {
+		return ""
+	}
+	msg := fmt.Sprintf("osv: details for %d advisory record(s) could not be fetched; their severity defaults to medium and may be understated", failed+skipped)
+	if skipped > 0 {
+		msg += fmt.Sprintf(" (%d over the %d-record limit)", skipped, maxHydratedVulns)
+	}
+	if firstErr != nil {
+		msg += ": " + boundedError(firstErr)
+	}
+	return msg
+}
+
+// fetchVuln reads one full advisory record. The ID is path-escaped and must
+// match the requested ID, so a confused or hostile response cannot attach a
+// different advisory.
+func fetchVuln(ctx context.Context, client *http.Client, baseURL string, timeout time.Duration, id string) (vulnerability, error) {
+	reqCtx := ctx
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		reqCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, baseURL+"/v1/vulns/"+url.PathEscape(id), nil)
+	if err != nil {
+		return vulnerability{}, fmt.Errorf("osv: build request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", userAgent())
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return vulnerability{}, fmt.Errorf("osv: vulns/%s: %w", id, err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	if err != nil {
+		return vulnerability{}, fmt.Errorf("osv: vulns/%s: read response: %w", id, err)
+	}
+	if len(data) > maxResponseBytes {
+		return vulnerability{}, fmt.Errorf("osv: vulns/%s: response exceeds %d bytes", id, maxResponseBytes)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return vulnerability{}, fmt.Errorf("osv: vulns/%s: unexpected status %d: %s", id, resp.StatusCode, summarizeBody(data))
+	}
+	var v vulnerability
+	if err := json.Unmarshal(data, &v); err != nil {
+		return vulnerability{}, fmt.Errorf("osv: vulns/%s: decode response: %w", id, err)
+	}
+	if !strings.EqualFold(strings.TrimSpace(v.ID), id) {
+		return vulnerability{}, fmt.Errorf("osv: vulns/%s: response is for a different advisory", id)
+	}
+	return v, nil
 }
 
 func userAgent() string {
@@ -581,8 +822,9 @@ type queryBatchRequest struct {
 }
 
 type query struct {
-	Package packageRef `json:"package"`
-	Version string     `json:"version,omitempty"`
+	Package   packageRef `json:"package"`
+	Version   string     `json:"version,omitempty"`
+	PageToken string     `json:"page_token,omitempty"`
 }
 
 type packageRef struct {
@@ -595,7 +837,8 @@ type queryBatchResponse struct {
 }
 
 type queryResult struct {
-	Vulns []vulnerability `json:"vulns"`
+	Vulns         []vulnerability `json:"vulns"`
+	NextPageToken string          `json:"next_page_token,omitempty"`
 }
 
 // vulnerability mirrors the OSV schema fields the engine consumes.

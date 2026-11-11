@@ -25,6 +25,11 @@ calls. Git operations are local. The scan store is local.
 
 When `scan.osv: true`, the scan also queries `api.osv.dev` (or the
 `scan.osv_base_url` mirror) with dependency coordinates parsed from manifests.
+The mirror can be set only in the user config or `VIGIL_OSV_BASE_URL`: a
+committed project file is rejected, like `base_url`, so a scanned repository
+cannot send its inventory to, or take advisory records from, its own host. The
+MCP `osvBaseUrl` argument accepts `https`, or plain `http` only on a loopback
+host, and refuses credentials in the URL.
 It sends package names, versions and ecosystems, never source code. OSV is off
 by default.
 

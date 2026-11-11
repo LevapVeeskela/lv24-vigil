@@ -52,7 +52,7 @@ func registerScan(srv *mcp.Server, d Deps) {
 			"maxFindings":  mcp.PropInt("Maximum findings to return (default 50, capped at 500)."),
 			"noBaseline":   mcp.PropBool("Ignore the baseline and report suppressed findings as active."),
 		}),
-		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": true},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
 			return handleScan(ctx, d, raw)
 		},
