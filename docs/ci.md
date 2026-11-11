@@ -8,7 +8,7 @@ locally and in CI:
 vigil scan . --no-llm --format sarif --output vigil.sarif --fail-on high
 ```
 
-`--no-llm` runs all 163 rules with no model, no key and no network. `--fail-on`
+`--no-llm` runs all 198 rules with no model, no key and no network. `--fail-on`
 changes the exit code, not the report: the SARIF file is written before the
 process exits `2`, so an upload step with `if: always()` still runs.
 
@@ -176,7 +176,7 @@ vigil:
 runners should call `actions/setup-node` first.
 
 The action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
-as **Vigil security scan** (Security + Code quality). Pin `version: 0.5.4` when
+as **Vigil security scan** (Security + Code quality). Pin `version: 0.6.0` when
 the CLI must match the action tag; the default `latest` follows the newest npm
 release.
 
@@ -184,13 +184,13 @@ release.
 - uses: actions/checkout@v7
 
 - id: vigil
-  uses: LevapVeeskela/lv24-vigil@v0.5.4
+  uses: LevapVeeskela/lv24-vigil@v0.6.0
   with:
     path: .
     fail-on: high
     no-llm: true
     format: sarif
-    version: 0.5.4
+    version: 0.6.0
 
 - if: always()
   uses: github/codeql-action/upload-sarif@v4

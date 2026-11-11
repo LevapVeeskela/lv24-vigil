@@ -37,7 +37,22 @@ var (
 	// unambiguous; a bare `debug: true` is only meaningful in a config file.
 	pbDebugModeRe = regexp.MustCompile(`(?i)\bapp\.run\s*\([^)]*debug\s*=\s*True|^\s*DEBUG\s*=\s*(?:True|true|1)\b|^\s*FLASK_DEBUG\s*=\s*1\b|\bapp\.debug\s*[:=]\s*true\b`)
 	pbDebugFlagRe = regexp.MustCompile(`(?i)\bdebug\s*[:=]\s*true\b`)
+
+	// VGL-WEB-020: Spring Boot actuator exposure.
+	pbSpringExposureIncludeRe  = regexp.MustCompile(`(?i)^\s*management\.endpoints\.web\.exposure\.include\s*[:=]\s*(.+?)\s*$`)
+	pbSpringSecurityDisabledRe = regexp.MustCompile(`(?i)^\s*management\.security\.enabled\s*[:=]\s*["']?false["']?\s*$`)
+	pbSpringShutdownEnabledRe  = regexp.MustCompile(`(?i)^\s*management\.endpoint\.shutdown\.enabled\s*[:=]\s*["']?true["']?\s*$`)
+	pbSpringYAMLIncludeRe      = regexp.MustCompile(`(?i)^\s*include\s*:\s*(.+?)\s*$`)
+	pbSpringYAMLBoolRe         = regexp.MustCompile(`(?i)^\s*enabled\s*:\s*["']?(true|false)["']?\s*$`)
 )
+
+// pbSpringDangerousEndpoints are the actuator endpoints that leak credentials,
+// configuration or a shutdown switch.
+var pbSpringDangerousEndpoints = []string{
+	"env", "heapdump", "jolokia", "threaddump", "configprops", "beans",
+	"logfile", "shutdown", "mappings", "sessions", "httptrace",
+	"auditevents", "quartz",
+}
 
 // WebRules returns the web application security rules.
 func WebRules() []Rule {
@@ -173,6 +188,18 @@ func WebRules() []Rule {
 			OWASP:       []string{"A05:2021"},
 			Tags:        []string{"debug", "web"},
 		}, pbDebugModeRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-WEB-020",
+			Title:       "Spring Boot actuator endpoints exposed without auth",
+			Description: "Exposing every actuator endpoint (include=*) publishes /actuator/env, /actuator/heapdump and /actuator/configprops, which leak credentials and configuration. Expose only health and info unless Spring Security restricts these endpoints.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryWeb,
+			Languages:   []string{"yaml", "properties"},
+			CWE:         []string{"CWE-489", "CWE-306", "CWE-200"},
+			OWASP:       []string{"A01:2021", "A05:2021"},
+			Tags:        []string{"spring", "actuator", "config"},
+		}, pbSpringActuatorExposureRule),
 	}
 }
 
@@ -567,4 +594,210 @@ func pbConfigShapedPath(p string) bool {
 		}
 	}
 	return base == ".env" || strings.HasPrefix(base, ".env.")
+}
+
+// ---------------------------------------------------------------------------
+// VGL-WEB-020 — Spring Boot actuator endpoints exposed
+// ---------------------------------------------------------------------------
+
+func pbSpringActuatorExposureRule(f *File) []model.Finding {
+	path := strings.ToLower(strings.ReplaceAll(f.Path, "\\", "/"))
+	if pbDocsPath(path) || !pbSpringConfigPath(path) {
+		return nil
+	}
+	content := strings.ToLower(string(f.Content))
+	hasManagement := strings.Contains(content, "management:")
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbComment(f, line) {
+			continue
+		}
+		var hit bool
+		switch {
+		case pbSpringExposureIncludeRe.MatchString(line):
+			m := pbSpringExposureIncludeRe.FindStringSubmatch(line)
+			hit = pbSpringExposureDangerous(m[1])
+		case pbSpringYAMLIncludeRe.MatchString(line):
+			if hasManagement {
+				m := pbSpringYAMLIncludeRe.FindStringSubmatch(line)
+				hit = pbSpringExposureDangerous(m[1]) && pbSpringExposureBlock(f, i)
+			}
+		case pbSpringSecurityDisabledRe.MatchString(line), pbSpringShutdownEnabledRe.MatchString(line):
+			hit = true
+		case pbSpringYAMLBoolRe.MatchString(line):
+			m := pbSpringYAMLBoolRe.FindStringSubmatch(line)
+			hit = pbSpringYAMLManagementSwitch(f, i, strings.ToLower(m[1]))
+		}
+		if !hit {
+			continue
+		}
+		fd := pbFinding(f, i+1, line)
+		fd.Severity = pbSpringSeverity(f, path)
+		fd.Confidence = model.ConfidenceHigh
+		out = append(out, fd)
+	}
+	return out
+}
+
+// pbSpringConfigPath reports whether path is a Spring Boot configuration file.
+func pbSpringConfigPath(p string) bool {
+	base := p
+	if i := strings.LastIndex(base, "/"); i >= 0 {
+		base = base[i+1:]
+	}
+	ext := ""
+	if i := strings.LastIndex(base, "."); i >= 0 {
+		ext = base[i:]
+	}
+	switch ext {
+	case ".properties", ".yml", ".yaml":
+	default:
+		return false
+	}
+	if strings.HasPrefix(base, "application") || strings.HasPrefix(base, "bootstrap") {
+		return true
+	}
+	return strings.Contains(p, "src/main/resources/")
+}
+
+// pbSpringExposureBlock reports whether a YAML `include:` line is nested under
+// the actuator exposure block (include -> exposure -> ... -> management).
+func pbSpringExposureBlock(f *File, idx int) bool {
+	chain := pbYAMLKeyChain(f, idx)
+	if len(chain) == 0 {
+		return false
+	}
+	parent := chain[0]
+	if parent != "exposure" && !strings.HasSuffix(parent, ".exposure") {
+		return false
+	}
+	return pbChainIndex(chain, "management") > 0 || strings.HasPrefix(parent, "management.")
+}
+
+// pbSpringExposureDangerous reports whether an exposure include value enables
+// every endpoint or a credential/configuration-leaking one.
+func pbSpringExposureDangerous(raw string) bool {
+	v := pbSpringTrimValue(raw)
+	if v == "" {
+		return false
+	}
+	if v == "*" {
+		return true
+	}
+	tokens := strings.FieldsFunc(strings.ToLower(v), func(r rune) bool {
+		return r == ',' || r == ';' || r == ' ' || r == '\t' ||
+			r == '[' || r == ']' || r == '"' || r == '\''
+	})
+	for _, token := range tokens {
+		for _, endpoint := range pbSpringDangerousEndpoints {
+			if token == endpoint {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func pbSpringTrimValue(raw string) string {
+	v := strings.TrimSpace(raw)
+	if i := strings.Index(v, " #"); i >= 0 {
+		v = strings.TrimSpace(v[:i])
+	}
+	v = strings.TrimSuffix(v, ";")
+	v = strings.TrimSpace(v)
+	return strings.Trim(v, `"'`)
+}
+
+// pbSpringYAMLManagementSwitch reports whether a YAML `enabled:` value turns
+// off management security or turns on the shutdown endpoint.
+func pbSpringYAMLManagementSwitch(f *File, idx int, value string) bool {
+	chain := pbYAMLKeyChain(f, idx)
+	switch value {
+	case "true":
+		return pbChainIndex(chain, "shutdown") == 0 &&
+			pbChainIndex(chain, "endpoint") == 1 &&
+			pbChainIndex(chain, "management") == 2
+	case "false":
+		return pbChainIndex(chain, "security") == 0 &&
+			pbChainIndex(chain, "management") == 1
+	default:
+		return false
+	}
+}
+
+// pbYAMLKeyChain returns the keys of the enclosing YAML blocks, nearest first.
+// It is a bounded indentation scan, not a YAML parser: rules use it to confirm
+// that a leaf key really sits under the expected parent.
+func pbYAMLKeyChain(f *File, idx int) []string {
+	indent := pbYAMLIndent(f.Lines[idx])
+	var chain []string
+	for j := idx - 1; j >= 0 && len(chain) < 6; j-- {
+		line := f.Lines[j]
+		if strings.TrimSpace(line) == "" || pbComment(f, line) {
+			continue
+		}
+		ind := pbYAMLIndent(line)
+		if ind >= indent {
+			continue
+		}
+		key, ok := pbYAMLKey(line)
+		if !ok {
+			continue
+		}
+		chain = append(chain, key)
+		indent = ind
+	}
+	return chain
+}
+
+func pbYAMLIndent(line string) int {
+	n := 0
+	for n < len(line) && line[n] == ' ' {
+		n++
+	}
+	return n
+}
+
+// pbYAMLKey returns the lower-cased mapping key of a YAML line.
+func pbYAMLKey(line string) (string, bool) {
+	t := strings.TrimSpace(line)
+	t = strings.TrimPrefix(t, "- ")
+	i := strings.Index(t, ":")
+	if i <= 0 {
+		return "", false
+	}
+	key := t[:i]
+	for _, r := range key {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' {
+			continue
+		}
+		return "", false
+	}
+	return strings.ToLower(key), true
+}
+
+func pbChainIndex(chain []string, key string) int {
+	for i, k := range chain {
+		if k == key {
+			return i
+		}
+	}
+	return -1
+}
+
+// pbSpringSeverity caps Spring findings in local/dev/test profiles, where the
+// exposure is not reachable from production.
+func pbSpringSeverity(f *File, path string) model.Severity {
+	sev := pbSev(f, model.SeverityHigh)
+	base := path
+	if i := strings.LastIndex(base, "/"); i >= 0 {
+		base = base[i+1:]
+	}
+	for _, marker := range []string{"-test", "-local", "-dev"} {
+		if strings.Contains(base, marker) {
+			return capSeverity(sev, model.SeverityMedium)
+		}
+	}
+	return sev
 }

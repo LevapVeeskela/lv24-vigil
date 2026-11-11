@@ -88,8 +88,8 @@ func secRulesByID(t *testing.T) map[string]Rule {
 
 func TestSecretsRuleMetadata(t *testing.T) {
 	rules := SecretsRules()
-	if len(rules) != 24 {
-		t.Fatalf("SecretsRules() = %d rules, want 24", len(rules))
+	if len(rules) != 29 {
+		t.Fatalf("SecretsRules() = %d rules, want 29", len(rules))
 	}
 	idRe := regexp.MustCompile(`^VGL-SEC-\d{3}$`)
 	seen := make(map[string]bool, len(rules))

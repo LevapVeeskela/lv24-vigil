@@ -22,6 +22,14 @@ var (
 	pbGitLabJobRe        = regexp.MustCompile(`^([A-Za-z0-9_.-]+):\s*(?:#.*)?$`)
 	pbGitLabAllowFailRe  = regexp.MustCompile(`(?i)^\s*allow_failure:\s*true\b`)
 	pbJenkinsInjectionRe = regexp.MustCompile(`(?i)\b(?:sh|bat)\s*(?:\(\s*)?(?:script\s*:\s*)?["'].*\$\{?(?:params\.|env\.|BUILD_|JOB_)`)
+
+	// VGL-CI-018: workflow_run checkouts and the checkout opt-in for fork PRs.
+	pbOnKeyRe               = regexp.MustCompile(`(?i)^["']?on["']?\s*:\s*(.*)$`)
+	pbWorkflowRunRefRe      = regexp.MustCompile(`(?i)github\.event\.workflow_run\.(?:head_repository|pull_requests\[0\]\.head\.(?:sha|ref))`)
+	pbUnsafePRCheckoutKeyRe = regexp.MustCompile(`(?i)^allow-unsafe-pr-checkout\s*:`)
+
+	// VGL-CI-019: values expanded before the github-script JavaScript engine.
+	pbGitHubScriptInjectionRe = regexp.MustCompile(`(?i)\$\{\{[^}]*\bgithub\.(?:event\.(?:pull_request|issue|comment|discussion|review)\.(?:title|body|head\.ref|head\.label|user\.login)|head_ref|event\.workflow_run\.head_branch)\b[^}]*\}\}`)
 )
 
 // CIRules returns the CI/CD pipeline rules.
@@ -157,6 +165,30 @@ func CIRules() []Rule {
 			OWASP:       []string{"A03:2021"},
 			Tags:        []string{"jenkins", "injection"},
 		}, pbJenkinsInjectionRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-CI-018",
+			Title:       "Privileged workflow checks out untrusted PR code",
+			Description: "workflow_run runs in the base repository with a write token and secrets; checking out the triggering run's head executes fork code in that privileged context. Keep the default base-repository checkout and treat artifacts as data.",
+			Severity:    model.SeverityCritical,
+			Category:    model.CategoryCI,
+			Languages:   []string{"yaml"},
+			CWE:         []string{"CWE-829", "CWE-94"},
+			OWASP:       []string{"A08:2021"},
+			Tags:        []string{"github-actions", "supply-chain"},
+		}, pbWorkflowRunCheckoutRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-CI-019",
+			Title:       "Untrusted event data interpolated into actions/github-script",
+			Description: "GitHub expands ${{ }} before JavaScript runs, so a PR title or issue body becomes executable script inside github-script. Pass untrusted values through env: and read process.env instead.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryCI,
+			Languages:   []string{"yaml"},
+			CWE:         []string{"CWE-94", "CWE-78"},
+			OWASP:       []string{"A03:2021"},
+			Tags:        []string{"github-actions", "injection"},
+		}, pbGitHubScriptInjectionRule),
 	}
 }
 
@@ -449,6 +481,196 @@ func pbJenkinsInjectionRule(f *File) []model.Finding {
 		fd.Severity = pbSev(f, model.SeverityHigh)
 		fd.Confidence = model.ConfidenceMedium
 		out = append(out, fd)
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// VGL-CI-018 / VGL-CI-019 helpers
+// ---------------------------------------------------------------------------
+
+// pbCiComment reports whether a line is a comment in a workflow or script
+// context; YAML uses "#" and the embedded JavaScript uses "//".
+func pbCiComment(line string) bool {
+	t := strings.TrimSpace(line)
+	return strings.HasPrefix(t, "#") || strings.HasPrefix(t, "//")
+}
+
+// pbGitHubScriptFile reports whether f can host a github-script step: a
+// workflow or a composite action.
+func pbGitHubScriptFile(f *File) bool {
+	if pbIsGitHubWorkflow(f) {
+		return true
+	}
+	base := pbBaseLower(f.Path)
+	return base == "action.yml" || base == "action.yaml"
+}
+
+// pbOnBlock returns the lower-cased lines of the workflow's on: block. Trigger
+// detection has to stay inside that block: workflow_run also appears in
+// github.event.workflow_run.* expressions elsewhere in the file.
+func pbOnBlock(f *File) []string {
+	var out []string
+	inOn := false
+	onIndent := 0
+	for _, line := range f.Lines {
+		t := strings.TrimSpace(line)
+		if t == "" {
+			continue
+		}
+		indent := pbLineIndent(line)
+		if !inOn {
+			m := pbOnKeyRe.FindStringSubmatch(t)
+			if m == nil || indent != 0 {
+				continue
+			}
+			rest := strings.TrimSpace(m[1])
+			if i := strings.Index(rest, "#"); i >= 0 {
+				rest = strings.TrimSpace(rest[:i])
+			}
+			if rest != "" {
+				out = append(out, strings.ToLower(rest))
+				continue
+			}
+			inOn = true
+			onIndent = indent
+			continue
+		}
+		if strings.HasPrefix(t, "#") {
+			continue
+		}
+		if indent <= onIndent {
+			break
+		}
+		out = append(out, strings.ToLower(t))
+	}
+	return out
+}
+
+func pbWorkflowRunCheckoutRule(f *File) []model.Finding {
+	if !pbIsGitHubWorkflow(f) {
+		return nil
+	}
+	onBlock := strings.Join(pbOnBlock(f), "\n")
+	hasWorkflowRun := pbHasAnyFold(onBlock, "workflow_run")
+	hasPRTarget := pbHasAnyFold(onBlock, "pull_request_target")
+	if !hasWorkflowRun && !hasPRTarget {
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbComment(f, line) {
+			continue
+		}
+		m := pbActionUsesRe.FindStringSubmatch(line)
+		if m == nil || !strings.HasPrefix(strings.ToLower(m[1]), "actions/checkout@") {
+			continue
+		}
+		stepIndent := pbLineIndent(line)
+		end := i + 16
+		if end > len(f.Lines) {
+			end = len(f.Lines)
+		}
+		for j := i + 1; j < end; j++ {
+			candidate := f.Lines[j]
+			t := strings.TrimSpace(candidate)
+			if t == "" || strings.HasPrefix(t, "#") {
+				continue
+			}
+			indent := pbLineIndent(candidate)
+			if indent < stepIndent || (indent <= stepIndent && strings.HasPrefix(t, "- ")) {
+				break
+			}
+			if pbUnsafePRCheckoutKeyRe.MatchString(t) {
+				if pbHasAnyFold(t, "true") {
+					fd := pbFinding(f, j+1, "checkout opts into unsafe fork PR checkout: "+t)
+					fd.Severity = pbSev(f, model.SeverityCritical)
+					fd.Confidence = model.ConfidenceHigh
+					fd.Remediation = "Remove allow-unsafe-pr-checkout; keep fork PR code out of the privileged workflow."
+					out = append(out, fd)
+				}
+				continue
+			}
+			if !hasWorkflowRun {
+				continue
+			}
+			lower := strings.ToLower(t)
+			if !strings.HasPrefix(lower, "ref:") && !strings.HasPrefix(lower, "repository:") {
+				continue
+			}
+			if !pbWorkflowRunRefRe.MatchString(t) {
+				continue
+			}
+			fd := pbFinding(f, j+1, "workflow_run checks out the triggering run's head: "+t)
+			fd.Severity = pbSev(f, model.SeverityCritical)
+			fd.Confidence = model.ConfidenceMedium
+			fd.Remediation = "Check out the base repository's default ref and consume the triggering workflow's artifacts as data, or run the build in an unprivileged pull_request workflow."
+			out = append(out, fd)
+		}
+	}
+	return out
+}
+
+func pbGitHubScriptInjectionRule(f *File) []model.Finding {
+	if !pbGitHubScriptFile(f) {
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbComment(f, line) {
+			continue
+		}
+		m := pbActionUsesRe.FindStringSubmatch(line)
+		if m == nil || !strings.HasPrefix(strings.ToLower(m[1]), "actions/github-script@") {
+			continue
+		}
+		stepIndent := pbLineIndent(line)
+		for j := i + 1; j < len(f.Lines) && j <= i+30; j++ {
+			candidate := f.Lines[j]
+			t := strings.TrimSpace(candidate)
+			if t == "" || strings.HasPrefix(t, "#") {
+				continue
+			}
+			indent := pbLineIndent(candidate)
+			if indent < stepIndent || (indent <= stepIndent && strings.HasPrefix(t, "- ")) {
+				break
+			}
+			if !strings.HasPrefix(strings.ToLower(t), "script:") {
+				continue
+			}
+			rest := strings.TrimSpace(t[len("script:"):])
+			if rest == "" || strings.HasPrefix(rest, "|") || strings.HasPrefix(rest, ">") {
+				for k := j + 1; k < len(f.Lines); k++ {
+					body := f.Lines[k]
+					if strings.TrimSpace(body) == "" {
+						continue
+					}
+					if pbLineIndent(body) <= indent {
+						break
+					}
+					if pbCiComment(body) || strings.HasPrefix(strings.TrimSpace(body), "/*") || strings.HasPrefix(strings.TrimSpace(body), "*") {
+						continue
+					}
+					if !pbGitHubScriptInjectionRe.MatchString(body) {
+						continue
+					}
+					fd := pbFinding(f, k+1, "untrusted event data in github-script: "+strings.TrimSpace(body))
+					fd.Severity = pbSev(f, model.SeverityHigh)
+					fd.Confidence = model.ConfidenceHigh
+					fd.Remediation = "Pass the value through env: and read process.env in the script instead of interpolating ${{ }}."
+					out = append(out, fd)
+				}
+				break
+			}
+			if pbGitHubScriptInjectionRe.MatchString(rest) {
+				fd := pbFinding(f, j+1, "untrusted event data in github-script: "+rest)
+				fd.Severity = pbSev(f, model.SeverityHigh)
+				fd.Confidence = model.ConfidenceHigh
+				fd.Remediation = "Pass the value through env: and read process.env in the script instead of interpolating ${{ }}."
+				out = append(out, fd)
+			}
+			break
+		}
 	}
 	return out
 }

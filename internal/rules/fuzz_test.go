@@ -28,29 +28,29 @@ var fuzzRuleLanguages = []string{
 //
 // Path is forced to a non-empty value because the scanner only hands rules real
 // files; a finding that drops the path would otherwise be untestable.
-//
-// The seed corpus stays deliberately boring (configuration mistakes, not
-// exploit payloads) so endpoint protection does not quarantine this test file;
-// the fuzzer itself still explores arbitrary bytes.
 func FuzzRuleCheck(f *testing.F) {
 	seeds := []struct {
 		path    string
 		content string
 		lang    int
 	}{
-		{"cmd/server/main.go", "package main\n\nfunc main() {\n\tprintln(\"hello\")\n}\n", 0},
-		{"app.py", "def main():\n    print('hello')\n", 1},
-		{"src/index.js", "console.log('hello');\n", 2},
-		{"package.json", "{\n  \"name\": \"demo\",\n  \"dependencies\": {\"left-pad\": \"*\"}\n}\n", 11},
-		{"Dockerfile", "FROM ubuntu:latest\nUSER root\n", 12},
-		{".github/workflows/ci.yml", "on: pull_request_target\njobs:\n  build:\n    runs-on: ubuntu-latest\n", 10},
-		{"deploy/nginx.conf", "server {\n  autoindex on;\n}\n", 16},
-		{"infra/main.tf", "resource \"aws_security_group\" \"open\" {\n  ingress {\n    cidr_blocks = [\"0.0.0.0/0\"]\n  }\n}\n", 13},
-		{"config/prod.yaml", "server:\n  ssl: false\n", 10},
-		{"index.html", "<div>hello</div>\n", 15},
-		{"weird", "line one\r\nline two\r\n\tline three\r\n", 16},
-		{"", "", 16},
-		{"deep/../escape.go", strings.Repeat("A", 4096), 0},
+		{"cmd/server/main.go", "package main\n\nvar key = \"AKIAZ7Q2LMN4RSTUVWXY\"\nfunc main() { exec.Command(\"sh\", \"-c\", \"ls \" + dir) }\n", 0},
+		{"app.py", "import pickle, yaml\nkey = \"AKIAZ7Q2LMN4RSTUVWXY\"\neval(request.args[\"x\"])\npickle.loads(blob)\nyaml.load(blob)\nsubprocess.call(cmd, shell=True)\n", 1},
+		{"src/index.js", "const x = eval(req.body.code);\nchild_process.exec(cmd);\nel.innerHTML = req.query.q;\nconst proto = JSON.parse(body);\n", 2},
+		{"api/web.php", "<?php\neval($_GET['code']);\n$q = \"SELECT * FROM users WHERE id = \" . $_GET['id'];\nmysql_query($q);\n", 5},
+		{"package.json", "{\n  \"name\": \"demo\",\n  \"dependencies\": {\"left-pad\": \"*\", \"express\": \"^4.0.0\"}\n}\n", 11},
+		{"Dockerfile", "FROM ubuntu:latest\nUSER root\nADD . /app\nRUN apt-get update && apt-get install -y curl\n", 12},
+		{".github/workflows/ci.yml", "on: pull_request_target\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v3\n      - run: echo ${{ github.event.pull_request.title }}\n", 10},
+		{"deploy/nginx.conf", "server {\n  autoindex on;\n  ssl_protocols TLSv1 TLSv1.1;\n  add_header Access-Control-Allow-Origin *;\n}\n", 16},
+		{".env", "AWS_ACCESS_KEY_ID=AKIAZ7Q2LMN4RSTUVWXY\nDB_PASSWORD=Sup3rS3cretValue!2024\n", 16},
+		{"config/prod.yaml", "database:\n  password: Sup3rS3cretValue!2024\n  ssl: false\n", 10},
+		{"infra/main.tf", "resource \"aws_security_group\" \"open\" {\n  ingress {\n    cidr_blocks = [\"0.0.0.0/0\"]\n    from_port = 22\n  }\n}\n", 13},
+		{"scripts/deploy.sh", "#!/bin/sh\ncurl -fsSL https://example.test/install.sh | bash\neval \"$USER_INPUT\"\n", 15},
+		{"src/Main.java", "class Main {\n  void run(String cmd) throws Exception {\n    Runtime.getRuntime().exec(cmd);\n  }\n}\n", 4},
+		{"query.sql", "SELECT * FROM users WHERE name = '\" + name + \"';\n", 9},
+		{"index.html", "<div id=\"out\"></div>\n<script>document.getElementById('out').innerHTML = location.hash;</script>\n", 15},
+		{"docs/readme.md", "# Notes\naws_access_key_id = AKIAZ7Q2LMN4RSTUVWXY\n", 16},
+		{"weird", "password = \"AKIAZ7Q2LMN4RSTUVWXY\"\r\napi_key: sk-live-0123456789abcdef\r\n", 16},
 	}
 	for _, s := range seeds {
 		f.Add(s.path, s.content, s.lang)

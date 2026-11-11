@@ -40,8 +40,8 @@ func injRulesByID(t *testing.T) map[string]Rule {
 
 func TestInjectionRuleMetadata(t *testing.T) {
 	rules := InjectionRules()
-	if len(rules) != 37 {
-		t.Fatalf("InjectionRules() = %d rules, want 37", len(rules))
+	if len(rules) != 47 {
+		t.Fatalf("InjectionRules() = %d rules, want 47", len(rules))
 	}
 	idRe := regexp.MustCompile(`^VGL-INJ-\d{3}$`)
 	seen := make(map[string]bool, len(rules))

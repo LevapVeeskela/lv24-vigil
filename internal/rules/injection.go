@@ -125,6 +125,67 @@ var (
 	injShellEvalRe = regexp.MustCompile(`(?:^|[;&|]|\b(?:then|do|else)\s+)eval\s+["']?\$`)
 )
 
+// Expansion pack (VGL-INJ-038..048). These regexes and helpers stay in this
+// file so the injection family has no cross-file dependencies.
+var (
+	// Go SQL.
+	injGoSQLSinkRe    = regexp.MustCompile(`\b(?:db|tx|conn|stmt|database)\.(?:Query|QueryRow|QueryContext|Exec|ExecContext|Prepare|PrepareContext|Raw)\s*\(`)
+	injGoSQLKeywordRe = regexp.MustCompile(`(?i)\b(?:select|insert|update|delete|where|values|from)\b`)
+
+	// Java XML parsers (XXE).
+	injJavaXMLFactoryRe   = regexp.MustCompile(`\b(?:DocumentBuilderFactory|SAXParserFactory|XMLInputFactory|TransformerFactory|SchemaFactory|XMLReaderFactory)\.(?:newInstance|newDefaultInstance|createXMLReader)\s*\(|new\s+(?:SAXBuilder|SAXReader|SAXParser)\s*\(`)
+	injJavaXXEHardeningRe = regexp.MustCompile(`disallow-doctype-decl["']?\s*,\s*true|(?:SUPPORT_DTD|IS_SUPPORTING_EXTERNAL_ENTITIES)\s*,\s*(?:false|Boolean\.FALSE)|ACCESS_EXTERNAL_(?:DTD|SCHEMA)\s*,\s*""|external-(?:general|parameter)-entities["']?\s*,\s*false|FEATURE_SECURE_PROCESSING[^,\n]*,\s*true|feature/secure-processing["']?\s*,\s*true|setEntityResolver\s*\(`)
+
+	// Java JNDI.
+	injJavaJNDILookupRe  = regexp.MustCompile(`\.lookup\s*\(`)
+	injJavaJNDIDynamicRe = regexp.MustCompile(`\+|String\.format\s*\(|StringBuilder|System\.getenv\s*\(|String\.valueOf\s*\(`)
+	injJavaJNDISourceRe  = regexp.MustCompile(`getParameter|getHeader|getQueryString|@RequestParam|@PathVariable|request\.|params\.|getCookies`)
+
+	// Ruby deserialization.
+	injRubyMarshalRe       = regexp.MustCompile(`\bMarshal\.(?:load|restore)\s*\(`)
+	injRubyUnsafeYAMLRe    = regexp.MustCompile(`\b(?:YAML|Psych)\.unsafe_load\s*\(`)
+	injRubyJSONLoadRe      = regexp.MustCompile(`\bJSON\.load\s*\(`)
+	injRubyOjRe            = regexp.MustCompile(`\bOj\.(?:load|object_load)\s*\(`)
+	injRubyJSONSafeRe      = regexp.MustCompile(`create_additions\s*:\s*false`)
+	injRubyOjSafeDefaultRe = regexp.MustCompile(`Oj\.default_options[^\n]*mode[^\n]*:(?:compat|strict)`)
+	injRubyOjSafeCallRe    = regexp.MustCompile(`mode\s*:\s*:(?:compat|strict)`)
+
+	// .NET legacy formatters.
+	injCSLegacyFormatterNewRe   = regexp.MustCompile(`\bnew\s+(?:LosFormatter|ObjectStateFormatter|SoapFormatter|NetDataContractSerializer)\s*\(`)
+	injCSLegacyFormatterTypeRe  = regexp.MustCompile(`\b(?:LosFormatter|ObjectStateFormatter|SoapFormatter|NetDataContractSerializer)\b`)
+	injCSLegacyDeserRe          = regexp.MustCompile(`\.(?:Deserialize|ReadObject)(?:<[^>\n]*>)?\s*\(`)
+	injCSJavaScriptSerializerRe = regexp.MustCompile(`\bnew\s+JavaScriptSerializer\s*\(`)
+	injCSSimpleTypeResolverRe   = regexp.MustCompile(`\bnew\s+SimpleTypeResolver\s*\(`)
+	injCSLegacyRefOnlyRe        = regexp.MustCompile(`\b(?:typeof|nameof)\s*\(\s*(?:LosFormatter|ObjectStateFormatter|SoapFormatter|NetDataContractSerializer)\b`)
+
+	// Newtonsoft.Json TypeNameHandling.
+	injCSTypeNameHandlingRe    = regexp.MustCompile(`\bTypeNameHandling\.(?:All|Auto|Objects|Arrays)\b`)
+	injCSSerializationBinderRe = regexp.MustCompile(`\bSerializationBinder\b`)
+
+	// Python shell helpers.
+	injPyPopenRe = regexp.MustCompile(`\b(?:os\.popen[234]?|subprocess\.getoutput|subprocess\.getstatusoutput|commands\.getoutput|commands\.getstatusoutput)\s*\(`)
+
+	// Python pickle-based model/array loaders.
+	injPyTorchLoadRe        = regexp.MustCompile(`\btorch\.(?:load|serialization\.load)\s*\(`)
+	injPyNumpyLoadRe        = regexp.MustCompile(`\b(?:numpy|np)\.load\s*\(`)
+	injPyPandasPickleRe     = regexp.MustCompile(`\b(?:pandas|pd)\.read_pickle\s*\(`)
+	injPyJoblibLoadRe       = regexp.MustCompile(`\bjoblib\.load\s*\(`)
+	injPyDillLoadRe         = regexp.MustCompile(`\bdill\.load\s*\(`)
+	injPyWeightsOnlyTrueRe  = regexp.MustCompile(`weights_only\s*=\s*True`)
+	injPyWeightsOnlyFalseRe = regexp.MustCompile(`weights_only\s*=\s*False`)
+	injPyAllowPickleRe      = regexp.MustCompile(`allow_pickle\s*=\s*True`)
+
+	// PHP variable extraction.
+	injPHPExtractSuperglobalRe = regexp.MustCompile(`\bextract\s*\(\s*\$_(?:GET|POST|REQUEST|COOKIE|FILES|SERVER)`)
+	injPHPExtractRequestRe     = regexp.MustCompile(`\bextract\s*\(\s*\$request\s*->\s*(?:all|input|query)\s*\(`)
+	injPHPExtractSafeFlagRe    = regexp.MustCompile(`EXTR_SKIP|EXTR_PREFIX_ALL|EXTR_PREFIX_SAME|EXTR_PREFIX_STRING|EXTR_PREFIX_INVALID|EXTR_PREFIX_IF_EXISTS`)
+	injPHPParseStrRe           = regexp.MustCompile(`\bparse_str\s*\(\s*\$_(?:GET|POST|REQUEST|COOKIE|SERVER)(?:\[[^\]]*\])?\s*\)`)
+
+	// EF Core raw SQL.
+	injCSEFRawSQLRe       = regexp.MustCompile(`\b(?:FromSqlRaw|ExecuteSqlRawAsync|ExecuteSqlRaw)\s*\(`)
+	injCSEFInterpolatedRe = regexp.MustCompile(`\$@?"|@\$"|string\.Format\s*\(`)
+)
+
 const (
 	injRemediationExec = "Never build code or shell commands from untrusted input. Use a fixed allowlist of operations and pass arguments as an array/argv instead of a shell string; if dynamic evaluation is truly required, parse the input against a strict schema first."
 
@@ -145,6 +206,14 @@ const (
 	injRemediationDynamicLoad = "Load modules from a fixed allowlist; never pass user input to require() or import()."
 
 	injRemediationDebug = "Never enable framework debug mode in production. Gate it behind an explicit development-only flag and ensure the interactive debugger is disabled when the app is reachable."
+
+	injRemediationXXE = "Disable DTDs and external entities on every parser instance: setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true), SUPPORT_DTD/IS_SUPPORTING_EXTERNAL_ENTITIES to false, ACCESS_EXTERNAL_DTD/SCHEMA to \"\", and install a rejecting EntityResolver. setExpandEntityReferences(false) alone is not enough."
+
+	injRemediationJNDI = "Never pass request data to InitialContext.lookup. Resolve names from a fixed allowlist, reject ldap/rmi/ldaps/corba schemes, and keep the JNDI client library patched."
+
+	injRemediationVariableExtraction = "Do not extract request arrays into local scope. Read explicit keys ($_POST['name']) and validate each value; if extract is unavoidable, use EXTR_SKIP with a prefix."
+
+	injRemediationModelLoad = "Load models and arrays only from trusted, integrity-checked artifacts. Pass weights_only=True to torch.load, keep allow_pickle=False for numpy, and prefer safetensors; never unpickle uploads or shared caches."
 )
 
 // injFindingOpts configures how line hits become findings.
@@ -975,6 +1044,157 @@ func InjectionRules() []Rule {
 				})
 			},
 		}.rule(),
+
+		injFindRule(
+			injMeta(
+				"VGL-INJ-038",
+				"SQL query built from dynamic input in Go",
+				"database/sql Query/Exec receives a query assembled with fmt.Sprintf or string concatenation. database/sql never parameterizes text that was already assembled, so interpolated values become SQL syntax and enable authentication bypass and data theft.",
+				model.SeverityHigh,
+				[]string{"go"},
+				[]string{"CWE-89"},
+				nil,
+			),
+			injFindGoSQL,
+		),
+
+		injFindRule(
+			injMeta(
+				"VGL-INJ-039",
+				"Java XML parser created without XXE hardening",
+				"DocumentBuilderFactory, SAXParserFactory, XMLInputFactory and JDOM/dom4j builders are unsafe by default: they expand DTDs and resolve external entities. A parser created without disallow-doctype-decl, SUPPORT_DTD=false, FEATURE_SECURE_PROCESSING or a rejecting EntityResolver lets an attacker read local files, reach internal services or cause denial of service (XXE). Confidence is medium when the file hardens a parser but not this instance.",
+				model.SeverityHigh,
+				[]string{"java"},
+				[]string{"CWE-611"},
+				[]string{"A05:2021 - Security Misconfiguration"},
+			),
+			injFindJavaXXE,
+		),
+
+		injSpec{
+			meta: injMeta(
+				"VGL-INJ-040",
+				"JNDI lookup from dynamic or request-controlled input",
+				"InitialContext.lookup with a name built from request data, concatenation, environment variables or an unvalidated parameter lets an attacker point the server at a remote RMI/LDAP endpoint and load a factory class, the JNDI-injection class behind Log4Shell.",
+				model.SeverityCritical,
+				[]string{"java"},
+				[]string{"CWE-502", "CWE-74"},
+				[]string{"A08:2021 - Software and Data Integrity Failures"},
+			),
+			remediation: injRemediationJNDI,
+			find: func(f *File) []int {
+				return injFindJavaJNDI(f)
+			},
+		}.rule(),
+
+		injSpec{
+			meta: injMeta(
+				"VGL-INJ-041",
+				"Unsafe Ruby deserialization (Marshal, JSON.load, unsafe YAML, Oj)",
+				"Marshal.load/restore, YAML.unsafe_load, JSON.load (create_additions defaults to true) and Oj object mode reconstruct arbitrary Ruby objects. A crafted payload can execute code through gadget chains.",
+				model.SeverityCritical,
+				[]string{"ruby"},
+				[]string{"CWE-502"},
+				[]string{"A08:2021 - Software and Data Integrity Failures"},
+			),
+			remediation: injRemediationDeser,
+			find: func(f *File) []int {
+				return injFindRubyDeser(f)
+			},
+		}.rule(),
+
+		injSpec{
+			meta: injMeta(
+				"VGL-INJ-042",
+				"Legacy .NET formatters and type-resolving JavaScriptSerializer",
+				"LosFormatter, ObjectStateFormatter, SoapFormatter and NetDataContractSerializer perform unrestricted polymorphic deserialization and cannot be made safe on untrusted input. JavaScriptSerializer with SimpleTypeResolver lets the payload choose the .NET type.",
+				model.SeverityCritical,
+				[]string{"csharp"},
+				[]string{"CWE-502"},
+				[]string{"A08:2021 - Software and Data Integrity Failures"},
+			),
+			remediation: injRemediationDeser,
+			find: func(f *File) []int {
+				return injFindCSLegacyFormatters(f)
+			},
+		}.rule(),
+
+		injFindRule(
+			injMeta(
+				"VGL-INJ-043",
+				"Newtonsoft.Json TypeNameHandling enabled",
+				"TypeNameHandling.All/Auto/Objects/Arrays makes Json.NET read the .NET type from the payload, the standard Newtonsoft deserialization RCE (CA2326). A SerializationBinder can restrict types but is easy to misconfigure; confidence is medium when a binder is present.",
+				model.SeverityHigh,
+				[]string{"csharp"},
+				[]string{"CWE-502"},
+				[]string{"A08:2021 - Software and Data Integrity Failures"},
+			),
+			injFindCSTypeNameHandling,
+		),
+
+		injSpec{
+			meta: injMeta(
+				"VGL-INJ-044",
+				"Python shell execution through os.popen or getoutput",
+				"os.popen, subprocess.getoutput/getstatusoutput and the Python 2 commands helpers always run through a shell, so concatenating or formatting a variable into the command allows command chaining.",
+				model.SeverityHigh,
+				[]string{"python"},
+				[]string{"CWE-78"},
+				nil,
+			),
+			remediation: injRemediationExec,
+			find: func(f *File) []int {
+				return injFindPyPopen(f)
+			},
+		}.rule(),
+
+		injSpec{
+			meta: injMeta(
+				"VGL-INJ-045",
+				"Python pickle-based model or array loader",
+				"torch.load, numpy.load(allow_pickle=True), pandas.read_pickle, joblib.load and dill.load rebuild Python objects through pickle. Loading a model or array from an upload, shared cache or downloaded artifact is a code-execution path.",
+				model.SeverityHigh,
+				[]string{"python"},
+				[]string{"CWE-502"},
+				[]string{"A08:2021 - Software and Data Integrity Failures"},
+			),
+			remediation: injRemediationModelLoad,
+			find: func(f *File) []int {
+				return injFindPyPickleLoaders(f)
+			},
+		}.rule(),
+
+		injSpec{
+			meta: injMeta(
+				"VGL-INJ-046",
+				"PHP extract/parse_str imports request data into scope",
+				"extract($_REQUEST) with the default EXTR_OVERWRITE creates or replaces local variables, including authorization and SQL inputs; one-argument parse_str does the same. Read explicit keys from the request array instead.",
+				model.SeverityHigh,
+				[]string{"php"},
+				[]string{"CWE-621"},
+				nil,
+			),
+			remediation: injRemediationVariableExtraction,
+			find: func(f *File) []int {
+				return injFindPHPExtract(f)
+			},
+		}.rule(),
+
+		injSpec{
+			meta: injMeta(
+				"VGL-INJ-048",
+				"EF Core raw SQL built with interpolation or concatenation",
+				"FromSqlRaw/ExecuteSqlRaw receive an already-built string; interpolating or concatenating a value puts it into SQL text. Use FromSql/ExecuteSqlInterpolated or {0} placeholders with separate parameters.",
+				model.SeverityHigh,
+				[]string{"csharp"},
+				[]string{"CWE-89"},
+				nil,
+			),
+			remediation: injRemediationSQL,
+			find: func(f *File) []int {
+				return injFindEFRawSQL(f)
+			},
+		}.rule(),
 	}
 }
 
@@ -1162,4 +1382,695 @@ func injFindJSSQL(f *File) []int {
 // interpolation (${...} / #{...}) or concatenation with a quote on either side.
 func injDynamic(line string) bool {
 	return strings.Contains(line, "${") || strings.Contains(line, "#{") || injConcatRe.MatchString(line)
+}
+
+// ---------------------------------------------------------------------------
+// Expansion-pack helpers (VGL-INJ-038..048)
+// ---------------------------------------------------------------------------
+
+// injFindRule builds a rule that applies the language gate before running find.
+func injFindRule(meta model.RuleMeta, find func(f *File) []model.Finding) Rule {
+	return New(meta, func(f *File) []model.Finding {
+		if f == nil || !injLangAllowed(f.Language, meta.Languages) || find == nil {
+			return nil
+		}
+		return find(f)
+	})
+}
+
+// injCodeMatch reports whether re matches outside a string literal and outside
+// a // comment. Block comments are handled by the callers' IsCommentLine check.
+func injCodeMatch(re *regexp.Regexp, line string) bool {
+	for _, loc := range re.FindAllStringIndex(line, -1) {
+		inString, inComment := codeContextAt(line, loc[0])
+		if !inString && !inComment {
+			return true
+		}
+	}
+	return false
+}
+
+// injCodeOrStringMatch reports whether re matches anywhere except a // comment.
+// It is used for hardening tokens, which live inside string literals.
+func injCodeOrStringMatch(re *regexp.Regexp, line string) bool {
+	for _, loc := range re.FindAllStringIndex(line, -1) {
+		if _, inComment := codeContextAt(line, loc[0]); !inComment {
+			return true
+		}
+	}
+	return false
+}
+
+// injSinkCall returns the matched sink text and the top-level arguments of its
+// call. extraLines extends the scan past the sink line for calls that span
+// lines. An empty match means the regex only hit a string or comment.
+func injSinkCall(f *File, idx int, re *regexp.Regexp, extraLines int) (string, []string) {
+	if f == nil || idx < 0 || idx >= len(f.Lines) {
+		return "", nil
+	}
+	line := f.Lines[idx]
+	for _, loc := range re.FindAllStringIndex(line, -1) {
+		inString, inComment := codeContextAt(line, loc[0])
+		if inString || inComment {
+			continue
+		}
+		open := strings.Index(line[loc[0]:], "(")
+		if open < 0 {
+			continue
+		}
+		end := idx + extraLines
+		if end >= len(f.Lines) {
+			end = len(f.Lines) - 1
+		}
+		joined := strings.Join(f.Lines[idx:end+1], "\n")
+		return line[loc[0]:loc[1]], injCallArgs(joined, loc[0]+open)
+	}
+	return "", nil
+}
+
+// injCallArgs splits the arguments of the call whose opening parenthesis is at
+// open. It tracks quotes and nested brackets, so commas inside strings or nested
+// calls do not split an argument.
+func injCallArgs(s string, open int) []string {
+	if open < 0 || open >= len(s) || s[open] != '(' {
+		return nil
+	}
+	var args []string
+	depth := 0
+	var quote byte
+	escaped := false
+	start := open + 1
+	for i := open; i < len(s); i++ {
+		c := s[i]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			quote = c
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+			if depth == 0 {
+				args = append(args, strings.TrimSpace(s[start:i]))
+				return args
+			}
+		case ',':
+			if depth == 1 {
+				args = append(args, strings.TrimSpace(s[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	args = append(args, strings.TrimSpace(s[start:]))
+	return args
+}
+
+// injFirstArg returns the first top-level argument of the sink call.
+func injFirstArg(f *File, idx int, re *regexp.Regexp, extraLines int) string {
+	_, args := injSinkCall(f, idx, re, extraLines)
+	if len(args) == 0 {
+		return ""
+	}
+	return args[0]
+}
+
+// injIsQuotedLiteral reports whether s is one plain string literal. Interpolated
+// strings (f"...", $"..." and ${...}/#{...}) are not literals for this purpose.
+func injIsQuotedLiteral(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" || strings.HasPrefix(s, "$") || strings.HasPrefix(s, "@$") {
+		return false
+	}
+	for len(s) > 1 {
+		switch s[0] {
+		case 'f', 'F':
+			return false
+		case 'r', 'R', 'b', 'B', 'u', 'U', '@':
+			s = s[1:]
+			continue
+		}
+		break
+	}
+	if len(s) < 2 {
+		return false
+	}
+	q := s[0]
+	if q != '"' && q != '\'' && q != '`' {
+		return false
+	}
+	if s[len(s)-1] != q {
+		return false
+	}
+	body := s[1 : len(s)-1]
+	if injHasUnescapedByte(body, q) {
+		return false
+	}
+	return !strings.Contains(body, "${") && !strings.Contains(body, "#{")
+}
+
+// injHasUnescapedByte reports whether body contains b outside a backslash
+// escape. It keeps escaped quotes inside a literal from looking like a
+// concatenation boundary.
+func injHasUnescapedByte(body string, b byte) bool {
+	escaped := false
+	for i := 0; i < len(body); i++ {
+		c := body[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if c == '\\' {
+			escaped = true
+			continue
+		}
+		if c == b {
+			return true
+		}
+	}
+	return false
+}
+
+// injBareIdentifier returns s when it is a single identifier, else "".
+func injBareIdentifier(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+			continue
+		}
+		if i > 0 && c >= '0' && c <= '9' {
+			continue
+		}
+		return ""
+	}
+	return s
+}
+
+// injAssignmentIndex returns the 0-based line of the nearest assignment to name
+// within back lines above idx, or -1.
+func injAssignmentIndex(f *File, idx int, name string, back int) int {
+	if f == nil || name == "" {
+		return -1
+	}
+	re := regexp.MustCompile(`^\s*(?:var\s+|let\s+|const\s+|final\s+)?(?:[A-Za-z_][\w<>\[\].]*\s+)?` +
+		regexp.QuoteMeta(name) + `\s*(?::[^=]+)?(?::=|=)(?:[^=]|$)`)
+	for j := idx - 1; j >= 0 && j >= idx-back; j-- {
+		if IsCommentLine(f.Lines[j], f.Language) {
+			continue
+		}
+		if re.MatchString(f.Lines[j]) {
+			return j
+		}
+	}
+	return -1
+}
+
+// injAssignmentValue returns the right-hand side of name's assignment on line.
+func injAssignmentValue(line, name string) string {
+	if name == "" {
+		return ""
+	}
+	re := regexp.MustCompile(`(?:^|[^=!<>])\b` + regexp.QuoteMeta(name) + `\s*(?::[^=]+)?(?::=|=)\s*((?:[^=].*)?)$`)
+	m := re.FindStringSubmatch(line)
+	if m == nil {
+		return ""
+	}
+	return strings.TrimSpace(m[1])
+}
+
+// injFindingsByConfidence turns high- and medium-confidence line hits into
+// findings, dropping duplicates and sorting by line.
+func injFindingsByConfidence(f *File, o injFindingOpts, high, medium []int) []model.Finding {
+	if f == nil {
+		return nil
+	}
+	seen := make(map[int]bool, len(high))
+	for _, n := range high {
+		seen[n] = true
+	}
+	md := make([]int, 0, len(medium))
+	for _, n := range medium {
+		if !seen[n] {
+			md = append(md, n)
+		}
+	}
+	o.confidence = model.ConfidenceHigh
+	out := injFindings(f, injUniqueLines(high), o)
+	o.confidence = model.ConfidenceMedium
+	out = append(out, injFindings(f, injUniqueLines(md), o)...)
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].Location.StartLine < out[j].Location.StartLine
+	})
+	return out
+}
+
+// injJavaRequestVarNear reports whether name is a request-derived value declared
+// within back lines above idx: a @RequestParam binding or an assignment from a
+// request source.
+func injJavaRequestVarNear(f *File, idx int, name string, back int) bool {
+	word := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\b`)
+	for j := idx - 1; j >= 0 && j >= idx-back; j-- {
+		line := f.Lines[j]
+		if IsCommentLine(line, f.Language) {
+			continue
+		}
+		if strings.Contains(line, "@RequestParam") && word.MatchString(line) {
+			return true
+		}
+		if injAssignmentValue(line, name) != "" && injJavaJNDISourceRe.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
+// injCSLegacyTypeNear reports whether one of the legacy formatter types appears
+// in the window, ignoring comments, using directives and typeof/nameof refs.
+func injCSLegacyTypeNear(f *File, idx, radius int) bool {
+	for j := idx - radius; j <= idx+radius; j++ {
+		if j < 0 || j >= len(f.Lines) {
+			continue
+		}
+		line := f.Lines[j]
+		if IsCommentLine(line, f.Language) || strings.HasPrefix(strings.TrimSpace(line), "using ") {
+			continue
+		}
+		if injCSLegacyRefOnlyRe.MatchString(line) {
+			continue
+		}
+		if injCodeMatch(injCSLegacyFormatterTypeRe, line) {
+			return true
+		}
+	}
+	return false
+}
+
+// injCSLegacyDeserNear reports whether the receiver of a .Deserialize/.ReadObject
+// call is a legacy formatter. Matching the receiver keeps an unrelated
+// JavaScriptSerializer.Deserialize from inheriting a nearby LosFormatter.
+func injCSLegacyDeserNear(f *File, idx, radius int) bool {
+	line := f.Lines[idx]
+	loc := injCSLegacyDeserRe.FindStringIndex(line)
+	if loc == nil {
+		return false
+	}
+	receiverRe := regexp.MustCompile(`[A-Za-z_][\w.]*$`)
+	receiver := receiverRe.FindString(line[:loc[0]])
+	if receiver == "" {
+		return injCSLegacyTypeNear(f, idx, radius)
+	}
+	name := receiver
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		name = name[i+1:]
+	}
+	if name == "" {
+		return injCSLegacyTypeNear(f, idx, radius)
+	}
+	word := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\b`)
+	decl := regexp.MustCompile(`\bnew\s+(?:LosFormatter|ObjectStateFormatter|SoapFormatter|NetDataContractSerializer)\s*\(`)
+	typeDecl := regexp.MustCompile(`\b(?:LosFormatter|ObjectStateFormatter|SoapFormatter|NetDataContractSerializer)\s+` + regexp.QuoteMeta(name) + `\b`)
+	for j := range f.Lines {
+		candidate := f.Lines[j]
+		if IsCommentLine(candidate, f.Language) || strings.HasPrefix(strings.TrimSpace(candidate), "using ") {
+			continue
+		}
+		if injCSLegacyRefOnlyRe.MatchString(candidate) {
+			continue
+		}
+		if injCodeMatch(typeDecl, candidate) {
+			return true
+		}
+		if word.MatchString(candidate) && injCodeMatch(decl, candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+// injCSSimpleTypeResolverNear reports whether a SimpleTypeResolver is created in
+// the window around idx.
+func injCSSimpleTypeResolverNear(f *File, idx, radius int) bool {
+	for j := idx - radius; j <= idx+radius; j++ {
+		if j < 0 || j >= len(f.Lines) {
+			continue
+		}
+		if IsCommentLine(f.Lines[j], f.Language) {
+			continue
+		}
+		if injCodeMatch(injCSSimpleTypeResolverRe, f.Lines[j]) {
+			return true
+		}
+	}
+	return false
+}
+
+// injFindGoSQL flags database/sql queries assembled with fmt.Sprintf or string
+// concatenation. High confidence when the sink line builds the string; medium
+// when a bare query variable is assigned a dynamic statement within 10 lines.
+func injFindGoSQL(f *File) []model.Finding {
+	var high, medium []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) {
+			continue
+		}
+		match, args := injSinkCall(f, i, injGoSQLSinkRe, 2)
+		if match == "" || len(args) == 0 {
+			continue
+		}
+		argIdx := 0
+		if strings.Contains(match, "Context") && len(args) > 1 {
+			argIdx = 1
+		}
+		arg := args[argIdx]
+		if arg == "" {
+			continue
+		}
+		// A plain quoted statement without a formatting verb is static, and a
+		// placeholder query keeps the values bound as parameters.
+		if injIsQuotedLiteral(arg) && !strings.Contains(arg, "%") {
+			continue
+		}
+		n := i + 1
+		if injGoSQLKeywordRe.MatchString(arg) &&
+			(injConcatRe.MatchString(arg) || strings.Contains(arg, "fmt.Sprintf")) {
+			high = append(high, n)
+			continue
+		}
+		name := injBareIdentifier(arg)
+		if name == "" {
+			continue
+		}
+		j := injAssignmentIndex(f, i, name, 10)
+		if j < 0 {
+			continue
+		}
+		ctx := strings.Join(f.Lines[j:i+1], "\n")
+		if injGoSQLKeywordRe.MatchString(ctx) &&
+			(injConcatRe.MatchString(ctx) || strings.Contains(ctx, "fmt.Sprintf")) {
+			medium = append(medium, n)
+		}
+	}
+	return injFindingsByConfidence(f, injFindingOpts{
+		severity:    model.SeverityHigh,
+		remediation: injRemediationSQL,
+		references: []string{
+			"https://securego.io/docs/rules/g201-g202.html",
+			"https://cwe.mitre.org/data/definitions/89.html",
+		},
+	}, high, medium)
+}
+
+// injFindJavaXXE flags parser factories in a file with no XXE hardening. When
+// the file hardens a parser but not near this factory, the finding is medium
+// confidence: the hardening may apply to a different instance.
+func injFindJavaXXE(f *File) []model.Finding {
+	var factories, hardening []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) {
+			continue
+		}
+		if injCodeOrStringMatch(injJavaXXEHardeningRe, line) {
+			hardening = append(hardening, i)
+		}
+		if injCodeMatch(injJavaXMLFactoryRe, line) {
+			factories = append(factories, i)
+		}
+	}
+	if len(factories) == 0 {
+		return nil
+	}
+	var high, medium []int
+	for _, i := range factories {
+		near := false
+		for _, h := range hardening {
+			if i-h <= 25 && h-i <= 25 {
+				near = true
+				break
+			}
+		}
+		if near {
+			continue
+		}
+		if len(hardening) == 0 {
+			high = append(high, i+1)
+		} else {
+			medium = append(medium, i+1)
+		}
+	}
+	return injFindingsByConfidence(f, injFindingOpts{
+		severity:    model.SeverityHigh,
+		remediation: injRemediationXXE,
+		references: []string{
+			"https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html",
+			"https://cwe.mitre.org/data/definitions/611.html",
+		},
+	}, high, medium)
+}
+
+// injFindJavaJNDI flags InitialContext.lookup with a dynamic, request-derived or
+// unvalidated parameter name.
+func injFindJavaJNDI(f *File) []int {
+	content := string(f.Content)
+	if !strings.Contains(content, "InitialContext") &&
+		!strings.Contains(content, "InitialDirContext") &&
+		!strings.Contains(content, "javax.naming") {
+		return nil
+	}
+	var out []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) {
+			continue
+		}
+		arg := injFirstArg(f, i, injJavaJNDILookupRe, 1)
+		if arg == "" || injIsQuotedLiteral(arg) {
+			continue
+		}
+		if injJavaJNDIDynamicRe.MatchString(arg) || injJavaJNDISourceRe.MatchString(arg) {
+			out = append(out, i+1)
+			continue
+		}
+		name := injBareIdentifier(arg)
+		if name == "" {
+			continue
+		}
+		if injJavaRequestVarNear(f, i, name, 10) {
+			out = append(out, i+1)
+		}
+	}
+	return out
+}
+
+// injFindRubyDeser flags Ruby deserialization sinks that reconstruct arbitrary
+// objects: Marshal, unsafe YAML, JSON.load with additions and Oj object mode.
+func injFindRubyDeser(f *File) []int {
+	safeOj := injRubyOjSafeDefaultRe.MatchString(string(f.Content))
+	var out []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) {
+			continue
+		}
+		n := i + 1
+		if injCodeMatch(injRubyMarshalRe, line) || injCodeMatch(injRubyUnsafeYAMLRe, line) {
+			re := injRubyMarshalRe
+			if injCodeMatch(injRubyUnsafeYAMLRe, line) {
+				re = injRubyUnsafeYAMLRe
+			}
+			if arg := injFirstArg(f, i, re, 1); arg != "" && !injIsQuotedLiteral(arg) {
+				out = append(out, n)
+			}
+			continue
+		}
+		if injCodeMatch(injRubyJSONLoadRe, line) {
+			arg := injFirstArg(f, i, injRubyJSONLoadRe, 1)
+			if arg == "" || injIsQuotedLiteral(arg) {
+				continue
+			}
+			if injRubyJSONSafeRe.MatchString(line) || injRubyJSONSafeRe.MatchString(f.Window(n, 3)) {
+				continue
+			}
+			out = append(out, n)
+			continue
+		}
+		if injCodeMatch(injRubyOjRe, line) {
+			arg := injFirstArg(f, i, injRubyOjRe, 1)
+			if arg == "" || injIsQuotedLiteral(arg) {
+				continue
+			}
+			if strings.Contains(line, "object_load") {
+				out = append(out, n)
+				continue
+			}
+			if injRubyOjSafeCallRe.MatchString(line) {
+				continue
+			}
+			if strings.Contains(line, "mode: :object") || strings.Contains(line, "object_mode: true") || !safeOj {
+				out = append(out, n)
+			}
+		}
+	}
+	return out
+}
+
+// injFindCSLegacyFormatters flags the .NET legacy formatters and the
+// type-resolving JavaScriptSerializer.
+func injFindCSLegacyFormatters(f *File) []int {
+	var out []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) {
+			continue
+		}
+		n := i + 1
+		if injCodeMatch(injCSLegacyFormatterNewRe, line) {
+			out = append(out, n)
+			continue
+		}
+		if injCodeMatch(injCSLegacyDeserRe, line) && injCSLegacyDeserNear(f, i, 5) {
+			out = append(out, n)
+			continue
+		}
+		if injCodeMatch(injCSJavaScriptSerializerRe, line) && injCSSimpleTypeResolverNear(f, i, 3) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// injFindCSTypeNameHandling flags Json.NET settings that let the payload choose
+// the .NET type. A nearby SerializationBinder lowers confidence to medium.
+func injFindCSTypeNameHandling(f *File) []model.Finding {
+	content := string(f.Content)
+	if !strings.Contains(content, "Newtonsoft") &&
+		!strings.Contains(content, "JsonSerializerSettings") &&
+		!strings.Contains(content, "JsonConvert") {
+		return nil
+	}
+	var high, medium []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) || !injCodeMatch(injCSTypeNameHandlingRe, line) {
+			continue
+		}
+		n := i + 1
+		if injCSSerializationBinderRe.MatchString(f.Window(n, 5)) {
+			medium = append(medium, n)
+			continue
+		}
+		high = append(high, n)
+	}
+	return injFindingsByConfidence(f, injFindingOpts{
+		severity:    model.SeverityHigh,
+		remediation: injRemediationDeser,
+		references: []string{
+			"https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca2326",
+			"https://cwe.mitre.org/data/definitions/502.html",
+		},
+	}, high, medium)
+}
+
+// injFindPyPopen flags Python helpers that always execute through a shell.
+func injFindPyPopen(f *File) []int {
+	var out []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) {
+			continue
+		}
+		arg := injFirstArg(f, i, injPyPopenRe, 2)
+		if arg == "" || injIsQuotedLiteral(arg) {
+			continue
+		}
+		if name := injBareIdentifier(arg); name != "" {
+			if j := injAssignmentIndex(f, i, name, 10); j >= 0 {
+				if injIsQuotedLiteral(injAssignmentValue(f.Lines[j], name)) {
+					continue
+				}
+			}
+		}
+		out = append(out, i+1)
+	}
+	return out
+}
+
+// injFindPyPickleLoaders flags ML/data-science loaders that rebuild objects
+// through pickle.
+func injFindPyPickleLoaders(f *File) []int {
+	var out []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) {
+			continue
+		}
+		n := i + 1
+		switch {
+		case injCodeMatch(injPyTorchLoadRe, line):
+			ctx := f.Window(n, 3)
+			if injPyWeightsOnlyFalseRe.MatchString(ctx) || !injPyWeightsOnlyTrueRe.MatchString(ctx) {
+				out = append(out, n)
+			}
+		case injCodeMatch(injPyNumpyLoadRe, line):
+			if injPyAllowPickleRe.MatchString(f.Window(n, 3)) {
+				out = append(out, n)
+			}
+		case injCodeMatch(injPyPandasPickleRe, line),
+			injCodeMatch(injPyJoblibLoadRe, line),
+			injCodeMatch(injPyDillLoadRe, line):
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// injFindPHPExtract flags extract()/parse_str() that import request arrays into
+// local scope with overwrite semantics.
+func injFindPHPExtract(f *File) []int {
+	var out []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) {
+			continue
+		}
+		n := i + 1
+		switch {
+		case injPHPExtractSuperglobalRe.MatchString(line) && injCodeMatch(injPHPExtractSuperglobalRe, line),
+			injPHPExtractRequestRe.MatchString(line) && injCodeMatch(injPHPExtractRequestRe, line):
+			if injPHPExtractSafeFlagRe.MatchString(f.Window(n, 2)) {
+				continue
+			}
+			out = append(out, n)
+		case injCodeMatch(injPHPParseStrRe, line):
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// injFindEFRawSQL flags EF Core raw SQL calls whose first argument is
+// interpolated, formatted or concatenated.
+func injFindEFRawSQL(f *File) []int {
+	var out []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) {
+			continue
+		}
+		arg := injFirstArg(f, i, injCSEFRawSQLRe, 5)
+		if arg == "" {
+			continue
+		}
+		if injCSEFInterpolatedRe.MatchString(arg) || injConcatRe.MatchString(arg) {
+			out = append(out, i+1)
+		}
+	}
+	return out
 }

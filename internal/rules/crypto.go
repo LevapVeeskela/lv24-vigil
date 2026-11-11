@@ -103,6 +103,38 @@ var (
 	pbCurlInsecureRe    = regexp.MustCompile(`(?i)\bcurl\b[^\n|]*\s(?:-[a-zA-Z]*k[a-zA-Z]*|--insecure)\b|\bwget\b[^\n|]*--no-check-certificate\b`)
 	pbJWTNoneRe         = regexp.MustCompile(`(?i)["']?alg["']?\s*[:=]\s*["']none["']|algorithms?\s*[:=]\s*\[[^\]]*["']none["']`)
 	pbRSAWeakRe         = regexp.MustCompile(`(?i)(?:generatekey|genrsa|rsa[_-]?key[_-]?size|keysize|key_size|bits|initialize)\D{0,24}(512|1024|1536)\b|rsa\.GenerateKey\([^,]+,\s*(512|1024|1536)\)`)
+
+	// VGL-CRY-013: Java trust-all TrustManager / HostnameVerifier.
+	pbJavaTrustAllNameRe        = regexp.MustCompile(`(?i)\b(?:TrustAllCerts|TrustAllManager|TrustAllTrustManager|AllTrustingTrustManager|AcceptAllTrustManager)\b`)
+	pbJavaX509TrustManagerRe    = regexp.MustCompile(`(?i)\b(?:implements\s+X509TrustManager|new\s+X509TrustManager\s*\()`)
+	pbJavaCheckServerTrustedRe  = regexp.MustCompile(`(?i)\bvoid\s+checkServerTrusted\s*\(`)
+	pbJavaHostnameVerifierRe    = regexp.MustCompile(`(?i)\bverify\s*\(\s*(?:final\s+)?String\s+\w+\s*,\s*(?:final\s+)?SSLSession\s+\w+\s*\)\s*\{\s*return\s+true\s*;`)
+	pbJavaHostnameVerifierClsRe = regexp.MustCompile(`(?i)\bnew\s+HostnameVerifier\s*\(`)
+	pbJavaVerifyMethodRe        = regexp.MustCompile(`(?i)\bboolean\s+verify\s*\(`)
+
+	// VGL-CRY-014: .NET certificate validation callbacks.
+	pbDotNetCertCallbackRe  = regexp.MustCompile(`(?i)\b(?:ServerCertificateCustomValidationCallback|ServerCertificateValidationCallback|RemoteCertificateValidationCallback)\s*\+?=`)
+	pbDotNetCertTrueArrowRe = regexp.MustCompile(`(?i)\b(?:ServerCertificateCustomValidationCallback|ServerCertificateValidationCallback|RemoteCertificateValidationCallback)\s*\+?=\s*(?:delegate\s*)?(?:\([^)]*\)|\w+)\s*=>\s*true\b`)
+	pbDotNetDangerousCertRe = regexp.MustCompile(`(?i)\bDangerousAcceptAnyServerCertificateValidator\b`)
+	pbDotNetCertSafeTokenRe = regexp.MustCompile(`(?i)SslPolicyErrors|ValidateCertificate|CustomValidator|X509Chain|chain\.Build|==|!=|\bif\s*\(`)
+
+	// VGL-CRY-015: PHP / Ruby TLS verification disabled.
+	pbPHPTLSVerifyOffRe    = regexp.MustCompile(`(?i)CURLOPT_SSL_VERIFYPEER\s*=>\s*(?:false|0)\b|CURLOPT_SSL_VERIFYHOST\s*=>\s*(?:0|false)\b|curl_setopt\s*\([^,]+,\s*CURLOPT_SSL_VERIFYPEER\s*,\s*(?:false|0)\b|curl_setopt\s*\([^,]+,\s*CURLOPT_SSL_VERIFYHOST\s*,\s*(?:0|false)\b|["']verify_peer(?:_?name)?["']\s*=>\s*false\b`)
+	pbPHPVerifyPeerOffRe   = regexp.MustCompile(`(?i)["']verify_peer(?:_?name)?["']\s*=>\s*(?:false|0)\b`)
+	pbPHPAllowSelfSignedRe = regexp.MustCompile(`(?i)["']allow_self_signed["']\s*=>\s*true\b`)
+	pbRubyTLSVerifyOffRe   = regexp.MustCompile(`(?i)\bOpenSSL::SSL::VERIFY_NONE\b|\bverify_mode\s*[:=]\s*(?:OpenSSL::SSL::)?VERIFY_NONE\b|\bssl_verify_mode\s*[:=]\s*(?:0|:none)\b`)
+	pbRubyVerifyFalseRe    = regexp.MustCompile(`(?i)\bverify\s*:\s*false\b`)
+	pbRubyTLSContextRe     = regexp.MustCompile(`(?i)\bssl\b|\btls\b|faraday|httparty|net::http|rest-client`)
+
+	// VGL-CRY-017: legacy SSLv3 / TLS 1.0 / TLS 1.1 pinned in code.
+	pbGoLegacyTLSRe     = regexp.MustCompile(`(?i)\b(?:MinVersion|MaxVersion)\s*:\s*tls\.Version(?:SSL30|TLS10|TLS11)\b`)
+	pbGoLegacyTLSBareRe = regexp.MustCompile(`(?i)\btls\.Version(?:SSL30|TLS10|TLS11)\b`)
+	pbPyLegacyTLSRe     = regexp.MustCompile(`(?i)\bssl\.PROTOCOL_(?:SSLv3|TLSv1|TLSv1_1)\b`)
+	pbJavaLegacyTLSRe   = regexp.MustCompile(`(?i)SSLContext\.getInstance\(\s*"(?:SSLv3|TLSv1|TLSv1\.1)"\s*\)|setEnabledProtocols\s*\([^)]*"(?:SSLv3|TLSv1|TLSv1\.1)"`)
+	pbCSharpLegacyTLSRe = regexp.MustCompile(`(?i)\bSslProtocols\.(?:Ssl3|Tls|Tls11)\b|\bSecurityProtocolType\.(?:Ssl3|Tls|Tls11)\b`)
+	pbNodeLegacyTLSRe   = regexp.MustCompile(`(?i)\bminVersion\s*:\s*["'](?:SSLv3|TLSv1|TLSv1\.1)["']|\bsecureProtocol\s*:\s*["'](?:SSLv3|TLSv1|TLSv1_1)_method["']`)
+	pbRubyLegacyTLSRe   = regexp.MustCompile(`(?i)\bssl_version\s*[:=]\s*["']?:?(?:SSLv3|TLSv1_1|TLSv1)\b`)
+	pbPHPLegacyTLSRe    = regexp.MustCompile(`(?i)CURLOPT_SSLVERSION\s*=>\s*CURL_SSLVERSION_(?:SSLv3|TLSv1(?:_0|_1)?)\b|STREAM_CRYPTO_METHOD_(?:SSLv3|TLSv1_0|TLSv1_1)_CLIENT`)
 )
 
 // CryptoRules returns the cryptographic hygiene rules.
@@ -242,6 +274,53 @@ func CryptoRules() []Rule {
 			OWASP:       []string{"A02:2021"},
 			Tags:        []string{"crypto", "rsa"},
 		}, pbRSAWeakRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-CRY-013",
+			Title:       "TLS certificate verification disabled (Java trust-all TrustManager)",
+			Description: "An X509TrustManager with an empty checkServerTrusted accepts every certificate, and a HostnameVerifier that returns true accepts every host. Use the platform TrustManagerFactory and the default hostname verifier.",
+			Severity:    model.SeverityCritical,
+			Category:    model.CategoryCrypto,
+			Languages:   []string{"java"},
+			CWE:         []string{"CWE-295"},
+			OWASP:       []string{"A02:2021", "A07:2021"},
+			Tags:        []string{"tls", "java"},
+		}, pbJavaTrustAllRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-CRY-014",
+			Title:       "TLS certificate verification disabled (.NET validation callback)",
+			Description: "A certificate validation callback that returns true unconditionally disables chain and hostname validation for HttpClient and ServicePointManager. Check SslPolicyErrors or delegate to a real validator.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryCrypto,
+			Languages:   []string{"csharp"},
+			CWE:         []string{"CWE-295"},
+			OWASP:       []string{"A02:2021", "A07:2021"},
+			Tags:        []string{"tls", "dotnet"},
+		}, pbDotNetTrustAllRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-CRY-015",
+			Title:       "TLS certificate verification disabled (PHP or Ruby)",
+			Description: "CURLOPT_SSL_VERIFYPEER=false, CURLOPT_SSL_VERIFYHOST=0 and OpenSSL VERIFY_NONE disable certificate validation, making every HTTPS call interceptable. Keep verification on and configure a CA bundle instead.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryCrypto,
+			Languages:   []string{"php", "ruby"},
+			CWE:         []string{"CWE-295"},
+			OWASP:       []string{"A02:2021", "A07:2021"},
+			Tags:        []string{"tls", "php", "ruby"},
+		}, pbPHPRubyTLSRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-CRY-017",
+			Title:       "Legacy SSLv3, TLS 1.0 or TLS 1.1 pinned in code",
+			Description: "SSLv3 is broken (POODLE) and RFC 8996 deprecates TLS 1.0 and TLS 1.1. Pin TLS 1.2 or newer instead of an exact legacy protocol version.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryCrypto,
+			CWE:         []string{"CWE-326", "CWE-327"},
+			OWASP:       []string{"A02:2021"},
+			Tags:        []string{"tls", "protocol"},
+		}, pbLegacyTLSVersionRule),
 	}
 }
 
@@ -470,4 +549,318 @@ func pbRSAWeakRule(f *File) []model.Finding {
 		out = append(out, fd)
 	}
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// VGL-CRY-013 — Java trust-all TrustManager / HostnameVerifier
+// ---------------------------------------------------------------------------
+
+func pbJavaTrustAllRule(f *File) []model.Finding {
+	if f.Language != "java" || pbDocsPath(f.Path) {
+		return nil
+	}
+	var out []model.Finding
+	reported := map[int]bool{}
+	add := func(line int, evidence string, conf model.Confidence) {
+		if line < 1 || reported[line] {
+			return
+		}
+		reported[line] = true
+		fd := pbFinding(f, line, evidence)
+		fd.Severity = pbSev(f, model.SeverityCritical)
+		fd.Confidence = conf
+		out = append(out, fd)
+	}
+	for i, line := range f.Lines {
+		if pbComment(f, line) {
+			continue
+		}
+		trimmed := strings.TrimSpace(line)
+		if pbJavaTrustAllNameRe.MatchString(line) &&
+			!strings.HasPrefix(trimmed, "import ") && !strings.HasPrefix(trimmed, "package ") {
+			add(i+1, line, model.ConfidenceHigh)
+		}
+		if pbJavaHostnameVerifierRe.MatchString(line) {
+			add(i+1, line, model.ConfidenceHigh)
+		}
+		if pbJavaX509TrustManagerRe.MatchString(line) {
+			for _, j := range pbJavaEmptyCheckServerTrusted(f, i) {
+				add(j+1, f.Line(j+1), model.ConfidenceHigh)
+			}
+		}
+		if pbJavaHostnameVerifierClsRe.MatchString(line) {
+			if j, ok := pbJavaHostnameVerifierTrustAll(f, i); ok {
+				add(j+1, f.Line(j+1), model.ConfidenceHigh)
+			}
+		}
+	}
+	return out
+}
+
+// pbJavaEmptyCheckServerTrusted scans up to 40 lines after an X509TrustManager
+// declaration for checkServerTrusted implementations with an empty body.
+func pbJavaEmptyCheckServerTrusted(f *File, idx int) []int {
+	var out []int
+	limit := idx + 40
+	if limit >= len(f.Lines) {
+		limit = len(f.Lines) - 1
+	}
+	for j := idx; j <= limit; j++ {
+		if pbComment(f, f.Lines[j]) || !pbJavaCheckServerTrustedRe.MatchString(f.Lines[j]) {
+			continue
+		}
+		stmt, ok := pbJavaMethodBodyFirstStatement(f, j, 6)
+		if ok && pbJavaBodyIsEmpty(stmt) {
+			out = append(out, j)
+		}
+	}
+	return out
+}
+
+// pbJavaHostnameVerifierTrustAll scans a `new HostnameVerifier()` block for a
+// verify method whose only statement is `return true;`.
+func pbJavaHostnameVerifierTrustAll(f *File, idx int) (int, bool) {
+	limit := idx + 10
+	if limit >= len(f.Lines) {
+		limit = len(f.Lines) - 1
+	}
+	for j := idx; j <= limit; j++ {
+		if pbComment(f, f.Lines[j]) || !pbJavaVerifyMethodRe.MatchString(f.Lines[j]) {
+			continue
+		}
+		stmt, ok := pbJavaMethodBodyFirstStatement(f, j, 6)
+		if !ok {
+			return 0, false
+		}
+		return j, strings.HasPrefix(strings.ToLower(strings.TrimSpace(stmt)), "return true")
+	}
+	return 0, false
+}
+
+// pbJavaMethodBodyFirstStatement returns the first non-blank, non-comment line
+// of the Java method body that opens on line idx (or on one of the following
+// lines). A body that closes on the same line returns the text before `}`.
+// The second result is false for an abstract/interface declaration, which has
+// no body and must not be treated as an empty implementation.
+func pbJavaMethodBodyFirstStatement(f *File, idx, lookahead int) (string, bool) {
+	line := f.Lines[idx]
+	if strings.HasSuffix(strings.TrimSpace(line), ";") {
+		return "", false
+	}
+	open := strings.Index(line, "{")
+	if open < 0 {
+		for j := idx + 1; j <= idx+lookahead && j < len(f.Lines); j++ {
+			candidate := strings.TrimSpace(f.Lines[j])
+			if candidate == "" || pbComment(f, f.Lines[j]) {
+				continue
+			}
+			if i := strings.Index(candidate, "{"); i >= 0 {
+				idx = j
+				line = f.Lines[j]
+				open = i
+				break
+			}
+			if strings.Contains(candidate, ";") || strings.HasPrefix(candidate, "}") {
+				return "", false
+			}
+		}
+	}
+	if open < 0 {
+		return "", false
+	}
+	rest := line[open+1:]
+	if end := strings.Index(rest, "}"); end >= 0 {
+		return strings.TrimSpace(rest[:end]), true
+	}
+	for j := idx + 1; j <= idx+lookahead && j < len(f.Lines); j++ {
+		candidate := strings.TrimSpace(f.Lines[j])
+		if candidate == "" || pbComment(f, f.Lines[j]) {
+			continue
+		}
+		return candidate, true
+	}
+	// The body did not start within the lookahead window; do not guess that it
+	// is empty.
+	return "", false
+}
+
+// pbJavaBodyIsEmpty reports whether the inspected body statement is absent or
+// is the closing brace of an empty method.
+func pbJavaBodyIsEmpty(stmt string) bool {
+	stmt = strings.TrimSpace(stmt)
+	return stmt == "" || strings.HasPrefix(stmt, "}")
+}
+
+// ---------------------------------------------------------------------------
+// VGL-CRY-014 — .NET certificate validation callback
+// ---------------------------------------------------------------------------
+
+func pbDotNetTrustAllRule(f *File) []model.Finding {
+	if f.Language != "csharp" || pbDocsPath(f.Path) {
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbComment(f, line) {
+			continue
+		}
+		sev := pbSev(f, model.SeverityHigh)
+		switch {
+		case pbDotNetCertTrueArrowRe.MatchString(line), pbDotNetDangerousCertRe.MatchString(line):
+			fd := pbFinding(f, i+1, line)
+			fd.Severity = sev
+			fd.Confidence = model.ConfidenceHigh
+			out = append(out, fd)
+		case pbDotNetCertCallbackRe.MatchString(line) && pbDotNetBlockArrow(line):
+			window := strings.Join(f.Lines[i+1:min(i+6, len(f.Lines))], "\n")
+			if !pbHasAnyFold(window, "return true") || pbDotNetCertSafeTokenRe.MatchString(window) {
+				continue
+			}
+			fd := pbFinding(f, i+1, line)
+			fd.Severity = sev
+			fd.Confidence = model.ConfidenceMedium
+			out = append(out, fd)
+		}
+	}
+	return out
+}
+
+// pbDotNetBlockArrow reports whether an assignment line ends with `=>` or
+// `=> {`, meaning the callback body starts on a following line.
+func pbDotNetBlockArrow(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	trimmed = strings.TrimSuffix(trimmed, "{")
+	return strings.HasSuffix(strings.TrimSpace(trimmed), "=>")
+}
+
+// ---------------------------------------------------------------------------
+// VGL-CRY-015 — PHP / Ruby TLS verification disabled
+// ---------------------------------------------------------------------------
+
+func pbPHPRubyTLSRule(f *File) []model.Finding {
+	if f.Language != "php" && f.Language != "ruby" {
+		return nil
+	}
+	if pbDocsPath(f.Path) {
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbComment(f, line) {
+			continue
+		}
+		var hit bool
+		switch f.Language {
+		case "php":
+			hit = pbPHPTLSVerifyOffRe.MatchString(line)
+			if !hit && pbPHPAllowSelfSignedRe.MatchString(line) {
+				hit = pbPHPStreamContextDisablesVerify(f, i)
+			}
+		case "ruby":
+			hit = pbRubyTLSVerifyOffRe.MatchString(line)
+			if !hit && pbRubyVerifyFalseRe.MatchString(line) {
+				hit = pbRubyTLSContextWindow(f, i)
+			}
+		}
+		if !hit {
+			continue
+		}
+		fd := pbFinding(f, i+1, line)
+		fd.Severity = pbSev(f, model.SeverityHigh)
+		fd.Confidence = model.ConfidenceHigh
+		out = append(out, fd)
+	}
+	return out
+}
+
+// pbPHPStreamContextDisablesVerify reports whether the surrounding
+// stream_context_create window also turns verify_peer off.
+func pbPHPStreamContextDisablesVerify(f *File, idx int) bool {
+	start := idx - 10
+	if start < 0 {
+		start = 0
+	}
+	end := idx + 10
+	if end >= len(f.Lines) {
+		end = len(f.Lines) - 1
+	}
+	window := strings.Join(f.Lines[start:end+1], "\n")
+	return pbHasAnyFold(window, "stream_context_create") && pbPHPVerifyPeerOffRe.MatchString(window)
+}
+
+// pbRubyTLSContextWindow reports whether `verify: false` belongs to an SSL
+// client configuration rather than an unrelated option hash.
+func pbRubyTLSContextWindow(f *File, idx int) bool {
+	start := idx - 2
+	if start < 0 {
+		start = 0
+	}
+	for j := start; j <= idx; j++ {
+		if pbRubyTLSContextRe.MatchString(f.Lines[j]) {
+			return true
+		}
+	}
+	return false
+}
+
+// ---------------------------------------------------------------------------
+// VGL-CRY-017 — legacy TLS protocol versions pinned in code
+// ---------------------------------------------------------------------------
+
+func pbLegacyTLSVersionRule(f *File) []model.Finding {
+	if pbDocsPath(f.Path) {
+		return nil
+	}
+	var re *regexp.Regexp
+	switch f.Language {
+	case "go":
+		re = pbGoLegacyTLSRe
+	case "python":
+		re = pbPyLegacyTLSRe
+	case "java":
+		re = pbJavaLegacyTLSRe
+	case "csharp":
+		re = pbCSharpLegacyTLSRe
+	case "javascript", "typescript":
+		re = pbNodeLegacyTLSRe
+	case "ruby":
+		re = pbRubyLegacyTLSRe
+	case "php":
+		re = pbPHPLegacyTLSRe
+	default:
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbComment(f, line) {
+			continue
+		}
+		hit := re.MatchString(line)
+		if !hit && f.Language == "go" && pbGoLegacyTLSBareRe.MatchString(line) {
+			hit = pbGoTLSConfigWindow(f, i)
+		}
+		if !hit {
+			continue
+		}
+		fd := pbFinding(f, i+1, line)
+		fd.Severity = pbSev(f, model.SeverityHigh)
+		fd.Confidence = model.ConfidenceHigh
+		out = append(out, fd)
+	}
+	return out
+}
+
+// pbGoTLSConfigWindow reports whether a tls.Config literal is in scope on the
+// current line or within the previous five lines.
+func pbGoTLSConfigWindow(f *File, idx int) bool {
+	start := idx - 5
+	if start < 0 {
+		start = 0
+	}
+	for j := start; j <= idx; j++ {
+		if strings.Contains(f.Lines[j], "tls.Config") {
+			return true
+		}
+	}
+	return false
 }

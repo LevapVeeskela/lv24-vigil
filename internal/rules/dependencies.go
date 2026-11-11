@@ -16,6 +16,31 @@ var (
 	pbLocalReplace = regexp.MustCompile(`(?i)=>\s*(?:\./|\.\./|/|[A-Za-z]:[\\/])`)
 	pbStrictSSLRe  = regexp.MustCompile(`(?i)^\s*strict-ssl\s*=\s*false\s*$`)
 	pbTrustedHost  = regexp.MustCompile(`(?i)--trusted-host|^\s*trusted-host\s*=`)
+
+	pbComposerTLSRe = regexp.MustCompile(`(?i)"(secure-http|disable-tls)"\s*:\s*(true|false)`)
+
+	pbYarnBerrySSLRe = regexp.MustCompile(`^\s*enableStrictSsl\s*:\s*false\s*(?:#.*)?$`)
+
+	pbYarnClassicSSLRe = regexp.MustCompile(`^\s*strict-ssl\s*(?:=|\s)\s*false\s*$`)
+
+	pbGoInsecureRe = regexp.MustCompile(`(?i)\bGOINSECURE\s*=\s*["']?([^\s"'#]+)`)
+
+	pbGoSumDBOffRe = regexp.MustCompile(`(?i)\bGOSUMDB\s*=\s*["']?off\b`)
+
+	pbComposerTLSRefs = []string{
+		"https://getcomposer.org/doc/06-config.md#secure-http",
+		"https://getcomposer.org/doc/06-config.md#disable-tls",
+	}
+
+	pbYarnSSLRefs = []string{
+		"https://yarnpkg.com/configuration/yarnrc#enableStrictSsl",
+		"https://classic.yarnpkg.com/lang/en/docs/cli/config/",
+	}
+
+	pbGoChecksumRefs = []string{
+		"https://go.dev/ref/mod#checksum-database",
+		"https://pkg.go.dev/cmd/go#hdr-Environment_variables",
+	}
 )
 
 // DependencyRules returns the dependency and package-manager rules. These are
@@ -101,6 +126,43 @@ func DependencyRules() []Rule {
 			OWASP:       []string{"A02:2021"},
 			Tags:        []string{"pip", "tls"},
 		}, pbPipTrustedHostRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-DEP-013",
+			Title:       "Composer secure-http or TLS requirement disabled",
+			Description: "Composer's secure-http defaults to true. Disabling it (or setting disable-tls) allows http:// package metadata and dist downloads, so a network attacker can serve a malicious package or a tampered lockfile source.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryDependency,
+			Languages:   []string{"json"},
+			CWE:         []string{"CWE-319", "CWE-494"},
+			OWASP:       []string{"A02:2021", "A08:2021"},
+			Tags:        []string{"composer", "php", "tls"},
+			References:  pbComposerTLSRefs,
+		}, pbComposerTLSRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-DEP-014",
+			Title:       "Yarn strict SSL disabled",
+			Description: "enableStrictSsl/strict-ssl false disables certificate validation for package downloads. A MITM or a compromised registry can then serve a tampered tarball that Yarn installs.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryDependency,
+			CWE:         []string{"CWE-295"},
+			OWASP:       []string{"A02:2021", "A08:2021"},
+			Tags:        []string{"yarn", "tls"},
+			References:  pbYarnSSLRefs,
+		}, pbYarnStrictSSLRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-DEP-015",
+			Title:       "Go module checksum verification disabled",
+			Description: "GOINSECURE permits HTTP/insecure VCS for matching module paths, and GOSUMDB=off disables the checksum database entirely. Either lets a tampered module be accepted without the normal integrity check.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryDependency,
+			CWE:         []string{"CWE-494", "CWE-345"},
+			OWASP:       []string{"A08:2021"},
+			Tags:        []string{"go", "supply-chain"},
+			References:  pbGoChecksumRefs,
+		}, pbGoChecksumRule),
 	}
 }
 
@@ -299,4 +361,122 @@ func pbPipTrustedHostRule(f *File) []model.Finding {
 		out = append(out, fd)
 	}
 	return out
+}
+
+func pbComposerTLSRule(f *File) []model.Finding {
+	if pbBaseLower(f.Path) != "composer.json" {
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbComment(f, line) {
+			continue
+		}
+		for _, m := range pbComposerTLSRe.FindAllStringSubmatch(line, -1) {
+			key, value := strings.ToLower(m[1]), strings.ToLower(m[2])
+			unsafe := (key == "secure-http" && value == "false") ||
+				(key == "disable-tls" && value == "true")
+			if !unsafe {
+				continue
+			}
+			fd := pbFinding(f, i+1, strings.TrimSpace(line))
+			fd.Severity = pbSev(f, model.SeverityHigh)
+			fd.Confidence = model.ConfidenceHigh
+			fd.References = append([]string(nil), pbComposerTLSRefs...)
+			fd.Remediation = "Remove secure-http=false / disable-tls=true, keep Composer's TLS verification enabled, and fix the CA chain or use a trusted mirror instead."
+			out = append(out, fd)
+		}
+	}
+	return out
+}
+
+func pbYarnStrictSSLRule(f *File) []model.Finding {
+	var re *regexp.Regexp
+	switch pbBaseLower(f.Path) {
+	case ".yarnrc.yml":
+		re = pbYarnBerrySSLRe
+	case ".yarnrc":
+		re = pbYarnClassicSSLRe
+	default:
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbComment(f, line) || !re.MatchString(line) {
+			continue
+		}
+		fd := pbFinding(f, i+1, strings.TrimSpace(line))
+		fd.Severity = pbSev(f, model.SeverityHigh)
+		fd.Confidence = model.ConfidenceHigh
+		fd.References = append([]string(nil), pbYarnSSLRefs...)
+		fd.Remediation = "Re-enable certificate validation (enableStrictSsl: true / strict-ssl true), fix the registry certificate chain, and rotate any packages installed while verification was off."
+		out = append(out, fd)
+	}
+	return out
+}
+
+func pbGoChecksumRule(f *File) []model.Finding {
+	if !pbGoEnvScan(f) {
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbGoEnvComment(f, line) {
+			continue
+		}
+		if m := pbGoInsecureRe.FindStringSubmatch(line); m != nil && pbGoInsecureValue(m[1]) {
+			fd := pbFinding(f, i+1, strings.TrimSpace(line))
+			fd.Severity = pbSev(f, model.SeverityHigh)
+			fd.Confidence = model.ConfidenceHigh
+			fd.References = append([]string(nil), pbGoChecksumRefs...)
+			fd.Remediation = "Remove GOINSECURE, serve modules over HTTPS, and use GOPRIVATE/GONOSUMDB only for genuinely private modules that still verify checksums."
+			out = append(out, fd)
+		}
+		if pbGoSumDBOffRe.MatchString(line) {
+			fd := pbFinding(f, i+1, strings.TrimSpace(line))
+			fd.Severity = pbSev(f, model.SeverityHigh)
+			fd.Confidence = model.ConfidenceHigh
+			fd.References = append([]string(nil), pbGoChecksumRefs...)
+			fd.Remediation = "Remove GOSUMDB=off and let the public checksum database verify modules. Use GONOSUMDB/GOPRIVATE for private module paths instead of disabling verification globally."
+			out = append(out, fd)
+		}
+	}
+	return out
+}
+
+// pbGoEnvScan limits the Go checksum rule to non-documentation files. The
+// settings can appear in Dockerfiles, CI YAML, shell scripts, Makefiles, .env
+// files and source code, so only prose documentation is excluded.
+func pbGoEnvScan(f *File) bool {
+	if f == nil || pbDocsPath(f.Path) {
+		return false
+	}
+	switch pbBaseLower(f.Path) {
+	case "readme", "changelog", "license", "contributing", "notice", "authors":
+		return false
+	}
+	return true
+}
+
+// pbGoEnvComment extends comment detection to formats whose comment marker is
+// "#" but whose language label is not shell/yaml (Dockerfile, Makefile, .env,
+// TOML/INI and other config files).
+func pbGoEnvComment(f *File, line string) bool {
+	if pbComment(f, line) {
+		return true
+	}
+	if !strings.HasPrefix(strings.TrimSpace(line), "#") {
+		return false
+	}
+	return f.Language == "dockerfile" || f.Language == "other"
+}
+
+// pbGoInsecureValue reports whether a GOINSECURE value is a literal module
+// pattern rather than an empty value or an environment interpolation.
+func pbGoInsecureValue(v string) bool {
+	v = strings.TrimSpace(v)
+	if v == "" || LooksLikePlaceholder(v) {
+		return false
+	}
+	return !strings.ContainsAny(v, "$%{}")
 }

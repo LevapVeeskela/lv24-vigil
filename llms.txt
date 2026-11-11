@@ -1,6 +1,6 @@
 # Vigil
 
-Vigil is a local-first security auditor for source repositories. It runs 163
+Vigil is a local-first security auditor for source repositories. It runs 198
 deterministic rules, then optionally uses the model configured by the user for
 triage, deep review, fix proposals and a STRIDE-style threat model. The same
 binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud.
@@ -8,7 +8,7 @@ binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud
 Repository: https://github.com/LevapVeeskela/lv24-vigil
 License: Apache-2.0
 Binary: vigil
-Current release line: 0.5.x
+Current release line: 0.6.x
 
 ## Canonical install
 
@@ -173,7 +173,7 @@ OLLAMA_HOST points at a non-default Ollama.
 
 ## Rules
 
-163 deterministic rules in eight families:
+198 deterministic rules in eight families:
 VGL-SEC 24 secrets, VGL-INJ 37 injection, VGL-CRY 12 crypto, VGL-AUTH 16 auth,
 VGL-WEB 17 web, VGL-CFG 28 config/IaC, VGL-CI 17 CI, VGL-DEP 12 dependencies.
 

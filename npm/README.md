@@ -10,7 +10,7 @@
 [![MCP](https://img.shields.io/badge/MCP-stdio-6C5CE7)](https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/mcp.md)
 
 **Vigil is a security auditor for your code that runs on your own model.** It
-runs 163 deterministic rules over a repository, then optionally sends the minimum
+runs 198 deterministic rules over a repository, then optionally sends the minimum
 context to the model you already pay for to triage findings, review risky code,
 propose fixes and write a threat model. OpenAI, Anthropic, Gemini, OpenRouter,
 Groq, DeepSeek, Mistral, xAI, OpenCode Go, Ollama, LM Studio, a local CLI or any
@@ -142,7 +142,7 @@ three findings."*
 ```
 
 Use `lv24-vigil`, not the platform packages. If no model is configured,
-`--no-llm` still runs all 163 rules. Prefer `--format json` or MCP over parsing
+`--no-llm` still runs all 198 rules. Prefer `--format json` or MCP over parsing
 the human summary. Show a fix diff before applying it.
 
 ## Links

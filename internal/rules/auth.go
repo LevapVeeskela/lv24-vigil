@@ -33,7 +33,31 @@ var (
 	pbOAuthStateRe     = regexp.MustCompile(`(?i)\bstate\b\s*[:=]`)
 
 	pbClientRoleRe = regexp.MustCompile(`(?i)(?:req|request)\.(?:headers|query|body)\s*[\[.]\s*["']?(?:x-(?:user|admin|role|forwarded-user|remote-user)|role|is_?admin|admin)["']?|r\.Header\.Get\(\s*"(?:X-User-Role|X-Admin|X-Forwarded-User|X-Remote-User)"\s*\)|request\.headers\.get\(\s*["']X-(?:User|Admin|Forwarded-User|Remote-User)`)
+
+	// VGL-AUTH-017: OAuth redirect_uri taken from request data.
+	pbReqReadJSRe     = regexp.MustCompile(`(?i)\b(?:req|request|ctx|event)\s*\.\s*(?:query|body|params|headers|queryStringParameters|pathParameters)\s*(?:\.\s*([A-Za-z_$][A-Za-z0-9_$]*)|\[\s*["']([^"']+)["']\s*\])`)
+	pbReqReadPyRe     = regexp.MustCompile(`(?i)\brequest\s*\.\s*(?:args|GET|POST|form|json|values|query_params)\s*(?:\.\s*get\s*\(\s*["']([^"']+)["']|\[\s*["']([^"']+)["']\s*\])`)
+	pbReqReadJavaRe   = regexp.MustCompile(`(?i)\brequest\s*\.\s*get(?:Parameter|Header)\s*\(\s*["']([^"']+)["']`)
+	pbReqReadPHPRe    = regexp.MustCompile(`(?i)\$_(?:GET|POST|REQUEST|COOKIE)\s*\[\s*["']([^"']+)["']\s*\]`)
+	pbReqReadCSharpRe = regexp.MustCompile(`(?i)\bRequest\s*\.\s*(?:QueryString|Form|Query|Headers)\s*\[\s*["']([^"']+)["']\s*\]`)
+	pbReqReadRubyRe   = regexp.MustCompile(`(?i)\bparams\s*\[\s*:?["']?([A-Za-z_][A-Za-z0-9_]*)["']?\s*\]`)
+	pbReqReadGoRe     = regexp.MustCompile(`(?i)\b(?:r\s*\.\s*URL\s*\.\s*Query\s*\(\s*\)\s*\.\s*Get|c\s*\.\s*Query|r\s*\.\s*FormValue|ctx\s*\.\s*Query|r\s*\.\s*Form\s*\.\s*Get)\s*\(\s*["']([^"']+)["']`)
+
+	pbOAuthRedirectGuardRe = regexp.MustCompile(`(?i)allowlist|allowedredirect|allowed|whitelist|isvalidredirect|startswith|equals|in_array|contains|includes`)
 )
+
+// pbOAuthRedirectKeys are the redirect parameter names an authorization
+// request must not take from request data (RFC 6749 §3.1.2.3).
+var pbOAuthRedirectKeys = []string{
+	"redirect_uri", "redirectUri", "callback_url", "callbackUrl", "return_uri", "returnUri",
+}
+
+// pbRequestReadRegexes are the per-language request accessors understood by
+// pbRequestReadsKey and the redirect-sink helpers.
+var pbRequestReadRegexes = []*regexp.Regexp{
+	pbReqReadJSRe, pbReqReadPyRe, pbReqReadJavaRe, pbReqReadPHPRe,
+	pbReqReadCSharpRe, pbReqReadRubyRe, pbReqReadGoRe,
+}
 
 // AuthRules returns the authentication and session rules.
 func AuthRules() []Rule {
@@ -136,6 +160,18 @@ func AuthRules() []Rule {
 			OWASP:       []string{"A01:2021"},
 			Tags:        []string{"authz", "headers"},
 		}, pbClientRoleRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-AUTH-017",
+			Title:       "OAuth redirect_uri taken from request data",
+			Description: "RFC 6749 requires the authorization server to compare redirect_uri with a pre-registered exact value. Building it from request data lets an attacker receive the authorization code at a host they control. Resolve it against a fixed allow-list.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryAuth,
+			Languages:   []string{"javascript", "typescript", "python", "java", "php", "csharp", "ruby", "go"},
+			CWE:         []string{"CWE-601", "CWE-522"},
+			OWASP:       []string{"A01:2021", "A07:2021"},
+			Tags:        []string{"oauth", "redirect"},
+		}, pbOAuthRedirectFromRequestRule),
 	}
 }
 
@@ -777,4 +813,302 @@ func pbClientRoleRule(f *File) []model.Finding {
 		out = append(out, fd)
 	}
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// VGL-AUTH-017 — OAuth redirect_uri taken from request data
+// ---------------------------------------------------------------------------
+
+func pbOAuthRedirectFromRequestRule(f *File) []model.Finding {
+	if !pbOAuthRedirectLanguage(f.Language) || pbDocsPath(f.Path) {
+		return nil
+	}
+	if isTestPath(strings.ToLower(strings.ReplaceAll(f.Path, "\\", "/"))) {
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbComment(f, line) || pbOAuthRedirectAllowlistWindow(f, i) {
+			continue
+		}
+		hit := false
+		for _, key := range pbOAuthRedirectKeys {
+			if !pbHasAnyFold(line, key) {
+				continue
+			}
+			// Direct: the redirect key is the assignment target or URL
+			// parameter and the value is read from the request on this line.
+			if pbOAuthRedirectSink(line, key) && pbRequestReadsAny(line) {
+				hit = true
+				break
+			}
+			// Direct: the request field is the redirect key and the line
+			// stores it in a redirect-shaped variable.
+			if pbRequestReadsKey(line, key) && pbOAuthRedirectishTarget(line) {
+				hit = true
+				break
+			}
+			// Indirection: the redirect value is a variable assigned from a
+			// request source in the previous five lines.
+			if pbOAuthRedirectVariableFromRequest(f, i, key) {
+				hit = true
+				break
+			}
+		}
+		if !hit {
+			continue
+		}
+		fd := pbFinding(f, i+1, line)
+		fd.Severity = pbSev(f, model.SeverityHigh)
+		fd.Confidence = model.ConfidenceMedium
+		out = append(out, fd)
+	}
+	return out
+}
+
+func pbOAuthRedirectLanguage(lang string) bool {
+	switch lang {
+	case "javascript", "typescript", "python", "java", "php", "csharp", "ruby", "go":
+		return true
+	default:
+		return false
+	}
+}
+
+// pbRequestReadsKey reports whether line reads key from a request object.
+// It covers the common accessors of the supported languages and returns false
+// for constants (redirect_uri: "https://app.example/cb") and for values read
+// from configuration (config.redirectUri, process.env.REDIRECT_URI).
+func pbRequestReadsKey(line, key string) bool {
+	for _, name := range pbRequestFieldNames(line) {
+		if strings.EqualFold(name, key) {
+			return true
+		}
+	}
+	return false
+}
+
+// pbRequestReadsAny reports whether line reads any field from a request object.
+func pbRequestReadsAny(line string) bool {
+	return len(pbRequestFieldNames(line)) > 0
+}
+
+// pbRequestFieldNames returns the request fields read on a line.
+func pbRequestFieldNames(line string) []string {
+	var out []string
+	for _, re := range pbRequestReadRegexes {
+		for _, m := range re.FindAllStringSubmatch(line, -1) {
+			for _, group := range m[1:] {
+				if group != "" {
+					out = append(out, group)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// pbStripRequestReads removes request accessors so the remaining text can be
+// inspected for the redirect key used as a sink.
+func pbStripRequestReads(line string) string {
+	for _, re := range pbRequestReadRegexes {
+		line = re.ReplaceAllString(line, " ")
+	}
+	return line
+}
+
+// pbOAuthRedirectSink reports whether key is used as an assignment target or
+// URL parameter (`redirect_uri=`, `redirectUri:`) rather than only as the
+// request field name.
+func pbOAuthRedirectSink(line, key string) bool {
+	stripped := pbStripRequestReads(line)
+	lower := strings.ToLower(stripped)
+	k := strings.ToLower(key)
+	for from := 0; from < len(lower); {
+		pos := strings.Index(lower[from:], k)
+		if pos < 0 {
+			return false
+		}
+		pos += from
+		from = pos + len(k)
+		if !pbIdentBoundary(lower, pos, len(k)) {
+			continue
+		}
+		rest := strings.TrimLeft(stripped[pos+len(k):], " \t\"'`")
+		if strings.HasPrefix(rest, "==") || strings.HasPrefix(rest, "=>") {
+			continue
+		}
+		if strings.HasPrefix(rest, "=") || strings.HasPrefix(rest, ":") {
+			return true
+		}
+	}
+	return false
+}
+
+// pbOAuthRedirectishTarget reports whether the assignment target looks like a
+// redirect value (redirectUri, callbackUrl, return_url, ...).
+func pbOAuthRedirectishTarget(line string) bool {
+	assign := pbFirstAssignIndex(line)
+	if assign < 0 {
+		return false
+	}
+	lhs := strings.ToLower(line[:assign])
+	return pbHasAnyFold(lhs, "redirect", "callback", "return_url", "returnuri", "return_uri")
+}
+
+// pbOAuthRedirectVariableFromRequest reports whether the redirect value on
+// line idx is a bare variable assigned from a request source in the previous
+// five lines.
+func pbOAuthRedirectVariableFromRequest(f *File, idx int, key string) bool {
+	target := pbOAuthRedirectValueTarget(f.Lines[idx], key)
+	if target == "" {
+		return false
+	}
+	start := idx - 5
+	if start < 0 {
+		start = 0
+	}
+	for j := idx - 1; j >= start; j-- {
+		if pbComment(f, f.Lines[j]) {
+			continue
+		}
+		if pbLineAssignsFromRequest(f.Lines[j], target) {
+			return true
+		}
+	}
+	return false
+}
+
+// pbOAuthRedirectValueTarget returns the bare variable assigned to key on the
+// line, or "" when the value is a literal, a call or a member expression.
+func pbOAuthRedirectValueTarget(line, key string) string {
+	stripped := pbStripRequestReads(line)
+	lower := strings.ToLower(stripped)
+	k := strings.ToLower(key)
+	for from := 0; from < len(lower); {
+		pos := strings.Index(lower[from:], k)
+		if pos < 0 {
+			return ""
+		}
+		pos += from
+		from = pos + len(k)
+		if !pbIdentBoundary(lower, pos, len(k)) {
+			continue
+		}
+		rest := strings.TrimLeft(stripped[pos+len(k):], " \t\"'`")
+		if strings.HasPrefix(rest, "==") || strings.HasPrefix(rest, "=>") {
+			continue
+		}
+		if !strings.HasPrefix(rest, "=") && !strings.HasPrefix(rest, ":") {
+			continue
+		}
+		rest = strings.TrimLeft(rest[1:], "= \t\"'`${")
+		end := 0
+		for end < len(rest) && pbIdentChar(rest[end]) {
+			end++
+		}
+		if end == 0 {
+			continue
+		}
+		next := byte(0)
+		if end < len(rest) {
+			next = rest[end]
+		}
+		if !pbIdentTerminator(next) {
+			continue
+		}
+		return rest[:end]
+	}
+	return ""
+}
+
+// pbLineAssignsFromRequest reports whether line assigns target from a request
+// source (target must be on the left of the assignment).
+func pbLineAssignsFromRequest(line, target string) bool {
+	assign := pbFirstAssignIndex(line)
+	if assign < 0 {
+		return false
+	}
+	lower := strings.ToLower(line)
+	t := strings.ToLower(target)
+	found := false
+	for from := 0; from < len(lower) && !found; {
+		pos := strings.Index(lower[from:], t)
+		if pos < 0 {
+			break
+		}
+		pos += from
+		from = pos + len(t)
+		if pbIdentBoundary(lower, pos, len(t)) && pos < assign {
+			found = true
+		}
+	}
+	if !found {
+		return false
+	}
+	return pbRequestReadsAny(line[assign:])
+}
+
+// pbFirstAssignIndex returns the byte index of the first plain assignment
+// operator on the line, skipping comparisons and arrow functions.
+func pbFirstAssignIndex(line string) int {
+	for i := 0; i < len(line); i++ {
+		if line[i] != '=' {
+			continue
+		}
+		var prev, next byte
+		if i > 0 {
+			prev = line[i-1]
+		}
+		if i+1 < len(line) {
+			next = line[i+1]
+		}
+		switch {
+		case prev == '=' || prev == '!' || prev == '<' || prev == '>':
+			continue
+		case next == '=' || next == '>':
+			continue
+		}
+		return i
+	}
+	return -1
+}
+
+func pbIdentChar(c byte) bool {
+	return c == '_' || c == '$' || (c >= 'a' && c <= 'z') ||
+		(c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+func pbIdentTerminator(c byte) bool {
+	switch c {
+	case 0, ' ', '\t', ';', ',', '"', '\'', '}', '`', ')', ']':
+		return true
+	default:
+		return false
+	}
+}
+
+func pbIdentBoundary(s string, pos, n int) bool {
+	if pos > 0 && pbIdentChar(s[pos-1]) {
+		return false
+	}
+	if pos+n < len(s) && pbIdentChar(s[pos+n]) {
+		return false
+	}
+	return true
+}
+
+// pbOAuthRedirectAllowlistWindow reports whether the line or one of the three
+// previous lines contains a redirect allow-list check.
+func pbOAuthRedirectAllowlistWindow(f *File, idx int) bool {
+	start := idx - 3
+	if start < 0 {
+		start = 0
+	}
+	for j := start; j <= idx; j++ {
+		if pbOAuthRedirectGuardRe.MatchString(f.Lines[j]) {
+			return true
+		}
+	}
+	return false
 }

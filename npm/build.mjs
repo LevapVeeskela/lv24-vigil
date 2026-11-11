@@ -89,7 +89,7 @@ export function mainPackageJson(version) {
     name: MAIN_PACKAGE,
     version,
     description:
-      'Vigil — security audit for your code on your own model: 163 deterministic rules, LLM triage, fixes and an MCP server',
+      'Vigil — security audit for your code on your own model: 198 deterministic rules, LLM triage, fixes and an MCP server',
     license: LICENSE,
     repository: { type: 'git', url: `git+${REPOSITORY_URL}.git` },
     homepage: `${REPOSITORY_URL}#readme`,

@@ -75,11 +75,21 @@ var (
 
 	secDockerAuthRe = regexp.MustCompile(`"auth"\s*:\s*"([A-Za-z0-9+/=]{16,})"`)
 
+	secTelegramBotRe = regexp.MustCompile(`\b\d{8,10}:[A-Za-z0-9_-]{35}\b`)
+
+	secVaultTokenRe = regexp.MustCompile(`\b(?:hvs\.[A-Za-z0-9_-]{90,120}|hvb\.[A-Za-z0-9_-]{138,300})\b`)
+
+	secNPMTokenOutsideRe = regexp.MustCompile(`\bnpm_[A-Za-z0-9]{36}\b`)
+
+	secGitLabTokenRe = regexp.MustCompile(`\b(?:glrtr?|gldt|glptt|gloas|glcbt|glft|glimt|glsoat|glagent|glwt)-[A-Za-z0-9_-]{20,}\b`)
+
+	secAzureSBAccessKeyRe = regexp.MustCompile(`(?i)\bSharedAccessKey\s*=\s*([A-Za-z0-9+/=]{30,})`)
+
 	secEnvLineRe = regexp.MustCompile(`^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$`)
 
 	secEnvKeyRe = regexp.MustCompile(`(?i)(password|passwd|secret|token|api_?key|apikey|auth|credential|private_?key|access_?key|client_?secret|dsn|connection_?string)`)
 
-	secProviderUnionRe = regexp.MustCompile(`^(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|glpat-[A-Za-z0-9_\-]{20,}|x(?:ox[abposr]|app)-[A-Za-z0-9\-]{10,}|sk_live_[0-9A-Za-z]{20,}|AIza[0-9A-Za-z_\-]{35}|sk-ant-[A-Za-z0-9_\-]{20,}|sk-[A-Za-z0-9_\-]{20,}|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}|eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}|dop_v1_[a-f0-9]{64})$`)
+	secProviderUnionRe = regexp.MustCompile(`^(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|glpat-[A-Za-z0-9_\-]{20,}|(?:glrtr?|gldt|glptt|gloas|glcbt|glft|glimt|glsoat|glagent|glwt)-[A-Za-z0-9_\-]{20,}|x(?:ox[abposr]|app)-[A-Za-z0-9\-]{10,}|sk_live_[0-9A-Za-z]{20,}|AIza[0-9A-Za-z_\-]{35}|sk-ant-[A-Za-z0-9_\-]{20,}|sk-[A-Za-z0-9_\-]{20,}|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}|eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}|dop_v1_[a-f0-9]{64}|hvs\.[A-Za-z0-9_-]{90,120}|hvb\.[A-Za-z0-9_-]{138,300}|npm_[A-Za-z0-9]{36}|\d{8,10}:[A-Za-z0-9_-]{35})$`)
 
 	// secEnvNameRe matches an environment-variable name such as
 	// TELEGRAM_BOT_TOKEN: a mapping target, never a credential value.
@@ -91,7 +101,7 @@ var (
 
 	// secHardRedactor masks well-known credential shapes that may appear on a
 	// neighbouring line inside a snippet window.
-	secHardRedactor = regexp.MustCompile(`(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|glpat-[A-Za-z0-9_\-]{20,}|x(?:ox[abposr]|app)-[A-Za-z0-9\-]{10,}|sk_live_[0-9A-Za-z]{20,}|AIza[0-9A-Za-z_\-]{35}|sk-ant-[A-Za-z0-9_\-]{20,}|sk-[A-Za-z0-9_\-]{20,}|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}|eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}|dop_v1_[a-f0-9]{64}|HRKU-[A-Za-z0-9_\-]{20,})`)
+	secHardRedactor = regexp.MustCompile(`(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|glpat-[A-Za-z0-9_\-]{20,}|(?:glrtr?|gldt|glptt|gloas|glcbt|glft|glimt|glsoat|glagent|glwt)-[A-Za-z0-9_\-]{20,}|x(?:ox[abposr]|app)-[A-Za-z0-9\-]{10,}|sk_live_[0-9A-Za-z]{20,}|AIza[0-9A-Za-z_\-]{35}|sk-ant-[A-Za-z0-9_\-]{20,}|sk-[A-Za-z0-9_\-]{20,}|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}|eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}|dop_v1_[a-f0-9]{64}|HRKU-[A-Za-z0-9_\-]{20,}|hvs\.[A-Za-z0-9_-]{90,120}|hvb\.[A-Za-z0-9_-]{138,300}|npm_[A-Za-z0-9]{36}|\d{8,10}:[A-Za-z0-9_-]{35})`)
 )
 
 const (
@@ -591,6 +601,84 @@ func SecretsRules() []Rule {
 		}.rule(),
 
 		secDockerAuthRule(),
+
+		secPattern{
+			meta: secMeta(
+				"VGL-SEC-025",
+				"Telegram bot token hardcoded in source",
+				"A Telegram BotFather token is embedded in the repository. The token is the bot's full credential: anyone who has it can read updates, send messages as the bot, and change the webhook to intercept traffic.",
+				model.SeverityCritical,
+				[]string{"CWE-798"},
+				[]string{"telegram", "bot"},
+				[]string{"https://core.telegram.org/bots/api#authorizing-your-bot"},
+			),
+			re:           secTelegramBotRe,
+			skipComments: true,
+			opts: secFindingOpts{
+				remediation: "Revoke the token in @BotFather (/revoke), issue a replacement, and load it from a secret manager or environment variable. Purge the value from git history and re-check the bot webhook and administrators.",
+				label:       "Telegram bot token",
+			},
+		}.rule(),
+
+		secPattern{
+			meta: secMeta(
+				"VGL-SEC-026",
+				"HashiCorp Vault token hardcoded in source",
+				"A Vault service or batch token is committed. It authenticates directly to Vault and inherits the token's policies, which commonly allow reading or writing application secrets.",
+				model.SeverityCritical,
+				[]string{"CWE-798"},
+				[]string{"vault", "hashicorp"},
+				[]string{"https://developer.hashicorp.com/vault/docs/concepts/tokens"},
+			),
+			re:           secVaultTokenRe,
+			skipComments: true,
+			opts: secFindingOpts{
+				remediation: "Revoke the token with `vault token revoke`, issue short-lived tokens through AppRole or Kubernetes authentication, and load them at runtime. Review Vault audit logs for use of the leaked token.",
+				label:       "Vault token",
+			},
+		}.rule(),
+
+		secPattern{
+			meta: secMeta(
+				"VGL-SEC-028",
+				"npm access token hardcoded outside .npmrc",
+				"An npm access token is embedded in the repository outside .npmrc. It can publish packages, move dist-tags and read private packages, which makes it a direct supply-chain credential.",
+				model.SeverityHigh,
+				[]string{"CWE-798"},
+				[]string{"npm", "supply-chain"},
+				[]string{"https://docs.npmjs.com/about-access-tokens"},
+			),
+			re:           secNPMTokenOutsideRe,
+			skipComments: true,
+			validate: func(f *File, _ string, _ []string) bool {
+				// VGL-SEC-016 owns registry auth lines in .npmrc.
+				return f != nil && pbBaseLower(f.Path) != ".npmrc"
+			},
+			opts: secFindingOpts{
+				remediation: "Revoke the token at npmjs.com/settings/tokens, replace it with a granular access token limited to the required packages, and inject it from CI secrets. Purge the value from git history.",
+				label:       "npm access token",
+			},
+		}.rule(),
+
+		secPattern{
+			meta: secMeta(
+				"VGL-SEC-029",
+				"GitLab deploy, runner, CI or OAuth token hardcoded in source",
+				"A GitLab deploy, runner, pipeline-trigger, OAuth, job or agent token is committed. Depending on the prefix it grants repository write access, the ability to run jobs on a runner, or API access as the application.",
+				model.SeverityHigh,
+				[]string{"CWE-798"},
+				[]string{"gitlab", "scm"},
+				[]string{"https://docs.gitlab.com/security/tokens/"},
+			),
+			re:           secGitLabTokenRe,
+			skipComments: true,
+			opts: secFindingOpts{
+				remediation: "Revoke the token in GitLab (project access tokens, CI/CD runner or trigger tokens, or the OAuth application), rotate it, and use masked CI variables or short-lived job tokens. Purge the value from git history.",
+				label:       "GitLab token",
+			},
+		}.rule(),
+
+		secAzureServiceBusRule(),
 	}
 }
 
@@ -1008,4 +1096,53 @@ func secDockerAuthContext(f *File, line int) bool {
 		return true
 	}
 	return strings.Contains(strings.ToLower(f.Window(line, 8)), `"auths"`)
+}
+
+func secAzureServiceBusRule() Rule {
+	meta := secMeta(
+		"VGL-SEC-030",
+		"Azure Service Bus or Event Hubs connection string with SharedAccessKey",
+		"A Service Bus or Event Hubs connection string contains a shared access key. The key is a complete bearer credential for the namespace and can send, receive or manage every entity the policy allows.",
+		model.SeverityCritical,
+		[]string{"CWE-798"},
+		[]string{"azure", "messaging"},
+		[]string{"https://learn.microsoft.com/en-us/azure/service-bus-messaging/service-bus-authentication-and-authorization"},
+	)
+	return New(meta, func(f *File) []model.Finding {
+		if f == nil {
+			return nil
+		}
+		var matches []secMatch
+		for i, line := range f.Lines {
+			if IsCommentLine(line, f.Language) {
+				continue
+			}
+			for _, m := range secAzureSBAccessKeyRe.FindAllStringSubmatch(line, -1) {
+				value := strings.TrimSpace(m[1])
+				if value == "" || LooksLikePlaceholder(value) {
+					continue
+				}
+				if !secAzureSBContext(f, i+1) {
+					continue
+				}
+				matches = append(matches, secMatch{line: i + 1, value: value})
+			}
+		}
+		return secFindings(f, matches, secFindingOpts{
+			severity:    model.SeverityCritical,
+			remediation: "Rotate the shared access policy key for the Service Bus or Event Hubs namespace, move clients to Microsoft Entra ID (managed identity) authentication, and load connection strings from a secret manager.",
+			references:  meta.References,
+			label:       "Azure SharedAccessKey",
+		})
+	})
+}
+
+// secAzureSBContext reports whether the surrounding lines still look like a
+// Service Bus or Event Hubs connection string. Connection strings are sometimes
+// folded over several YAML/JSON lines, so the endpoint or key name may sit on a
+// neighbouring line.
+func secAzureSBContext(f *File, line int) bool {
+	window := strings.ToLower(f.Window(line, 2))
+	return strings.Contains(window, "endpoint=sb://") ||
+		strings.Contains(window, "sharedaccesskeyname=")
 }

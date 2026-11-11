@@ -4,6 +4,28 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.6.0 - 2026-11-11
+
+### Added
+
+- **35 new deterministic rules** (198 total): 5 secrets (Telegram, Vault, npm,
+  GitLab, Azure Service Bus), 3 dependency/TLS checks (Composer, Yarn, Go
+  checksum), 10 injection/language sinks (Go SQL, Java XXE/JNDI, Ruby/.NET
+  deserialization, TypeNameHandling, Python popen/pickle, PHP extract, EF Core
+  raw SQL), 6 crypto/auth/web (Java/.NET/PHP/Ruby TLS verification, legacy TLS,
+  OAuth redirect_uri, Spring actuator) and 11 config/IaC/CI (Docker privileged
+  and host namespaces, seccomp/AppArmor, dangerous caps, IAM/SG/S3/IMDS,
+  workflow_run checkout, github-script injection, nginx upstream TLS).
+- Rules were selected from gitleaks/trufflehog/detect-secrets, Semgrep, Bandit,
+  gosec, FindSecBugs, Brakeman, nodejsscan, hadolint, Checkov/tfsec/KICS,
+  kube-linter/kubesec, zizmor and OWASP guidance; noisy or taint-only candidates
+  were rejected.
+
+### Changed
+
+- The composite action default CLI version is now `0.6.0`. No engine, CLI or MCP
+  behaviour changes beyond the new rules.
+
 ## 0.5.4 - 2026-11-11
 
 ### Fixed

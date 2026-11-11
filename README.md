@@ -13,7 +13,7 @@
 
 **Docs:** English · [Русский](README.ru.md) · [Documentation](docs/) · [llms.txt](llms.txt)
 
-> **Your code. Your model. Your findings.** Vigil runs 163 deterministic
+> **Your code. Your model. Your findings.** Vigil runs 198 deterministic
 > security rules over a repository, then — only if you ask — sends the minimum
 > context to the model you already pay for to triage findings, review risky
 > code, propose fixes and write a threat model. One static Go binary, one MCP
@@ -62,7 +62,7 @@ vigil fix VGL-XXXXXXXXXX --apply  # write it to the working tree, never commit
 - **Your model, your keys.** OpenAI, Anthropic, Gemini, OpenRouter, Groq,
   DeepSeek, Mistral, xAI, OpenCode Go, Ollama, LM Studio, a local CLI or any
   OpenAI-compatible endpoint. No proxy, no Vigil account, no telemetry.
-- **Deterministic first.** All 163 rules run before any model call. A provider
+- **Deterministic first.** All 198 rules run before any model call. A provider
   outage cannot hide a hardcoded secret, a shell injection or a disabled JWT
   check.
 - **Fits the agent you already use.** One stdio MCP server for OpenCode, Claude
@@ -80,7 +80,7 @@ vigil fix VGL-XXXXXXXXXX --apply  # write it to the working tree, never commit
 
 | | Feature | What it does |
 | --- | --- | --- |
-| 🔍 | **163 deterministic rules** | Secrets, injection, crypto, auth, web, config/IaC, CI and dependencies — no model required |
+| 🔍 | **198 deterministic rules** | Secrets, injection, crypto, auth, web, config/IaC, CI and dependencies — no model required |
 | 🧠 | **LLM triage** | Ranks and filters findings with your model; deterministic severity stays visible |
 | 🧪 | **Deep review** | Reads bounded windows of high-risk files and adds `VGL-AI-001` findings |
 | 🛠 | **Fix diffs** | Produces a validated unified diff; `--apply` writes the working tree only |
@@ -126,7 +126,7 @@ platform packages. Keep optional dependencies enabled — `--no-optional` and
 Do not pin `0.5.0`: the tag and the npm package are immutable and still
 installable, but the CI examples on that tag are stale (`inputs.fail-on`, an
 unguarded GitLab pre-check). The binaries are fine; the templates are not. Use
-`0.5.4` or newer, or `@latest`.
+`0.6.0` or newer, or `@latest`.
 
 Requirements: Node.js 18+ for npm, Go 1.27+ for `go install`; release binaries
 and installers need no runtime.
@@ -308,7 +308,7 @@ Rules that matter when you drive it:
 
 1. **Install `lv24-vigil` only.** Never install `@lv24/vigil-<os>-<cpu>`
    directly; it is an optional dependency selected by the launcher.
-2. **No model? Use `--no-llm`.** All 163 deterministic rules still run and
+2. **No model? Use `--no-llm`.** All 198 deterministic rules still run and
    produce findings. A missing model is a warning, not a failed scan.
 3. **Do not parse the human summary.** Use `--format json`, `vigil status
    --json`, or an MCP tool. stdout carries the report; logs go to stderr.
@@ -370,7 +370,7 @@ endpoint for any provider; `custom` requires it. Full reference:
 
 ## Rules
 
-163 deterministic rules in eight families. They are pure: they read a file,
+198 deterministic rules in eight families. They are pure: they read a file,
 never write, never execute scanned code and never make a network call. The CLI is
 the authoritative catalog:
 
@@ -464,7 +464,7 @@ backup.
 
 ### GitHub Actions (PR, `main`, manual)
 
-The same action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Use `uses: LevapVeeskela/lv24-vigil@v0.5.4`; add `version: 0.5.4` when the CLI must match the action tag.
+The same action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Use `uses: LevapVeeskela/lv24-vigil@v0.6.0`; add `version: 0.6.0` when the CLI must match the action tag.
 
 Copy [`examples/github-workflow.yml`](examples/github-workflow.yml) to
 `.github/workflows/vigil.yml`:

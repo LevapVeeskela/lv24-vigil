@@ -122,10 +122,10 @@ refuses an older npm). Use the same or newer npm for the `npm trust` commands.
 ## Verify a release
 
 ```bash
-npm view lv24-vigil version          # 0.5.4
-npm view lv24-vigil dist-tags        # { latest: '0.5.4' }
-npm i -g lv24-vigil@0.5.4            # or @latest
-vigil version                        # vigil 0.5.4 (<commit>, <date>, go<version>)
+npm view lv24-vigil version          # 0.6.0
+npm view lv24-vigil dist-tags        # { latest: '0.6.0' }
+npm i -g lv24-vigil@0.6.0            # or @latest
+vigil version                        # vigil 0.6.0 (<commit>, <date>, go<version>)
 ```
 
 Platform packages, one line each:
@@ -154,7 +154,7 @@ Provenance:
 npm view lv24-vigil dist.attestations
 ```
 
-For `0.5.4` this returns a `https://slsa.dev/provenance/v1` attestation built
+For `0.6.0` this returns a `https://slsa.dev/provenance/v1` attestation built
 from `.github/workflows/npm-publish.yml` on a GitHub-hosted runner. The npm page
 shows the matching provenance badge.
 
@@ -200,15 +200,22 @@ vigil version                                                 # reports the tag 
 
 ### Decision log
 
+- **0.6.0 adds 35 deterministic rules (2026-11-11).** Research compared the
+  current catalog with gitleaks/trufflehog/detect-secrets, Semgrep, Bandit,
+  gosec, FindSecBugs, Brakeman, nodejsscan, hadolint, Checkov/tfsec/KICS,
+  kube-linter/kubesec, zizmor and OWASP guidance. Only P0/P1 high-signal rules
+  were selected; noisy/taint-only candidates were rejected. Total: **198** rules
+  (secrets 29, injection 47, crypto 16, auth 17, web 18, config/IaC 37, CI 19,
+  dependencies 15). No engine/runtime changes beyond the rules; the action
+  default moves to `0.6.0`.
 - **Do not pin 0.5.0; warn on every surface we can still edit (2026-11-10).**
   The `v0.5.0` tag and its npm/PyPI artifacts are immutable, so only mutable
   surfaces remain. The GitHub **release body** for `v0.5.0` now opens with a
   warning; that is a release-object edit, so the tag still points at `2c26dfd`
   and `v0.5.1` at `600d850`. The npm package version is deprecated in place
   (`npm deprecate lv24-vigil@0.5.0`, a metadata change with no republish and no
-  tag move) once the npm 2FA OTP is completed: the token is valid (`npm whoami`
-  succeeds) but `npm deprecate` returns `EOTP` on 2026-11-10, so that step is
-  owner-gated. The six
+  tag move) and the deprecation is live: `npm view lv24-vigil@0.5.0 deprecated`
+  shows the warning. The six
   platform packages are **not** deprecated: their binaries are correct and a
   deprecation notice there would only add noise to `npm i` output.
 - **0.5.4 hardcodes the action CLI version (2026-11-11).** `GITHUB_ACTION_REF` is
@@ -329,18 +336,18 @@ reasoning and the procedure if a rewrite is ever required are in
 ## Current state
 
 `0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
-path. All seven npm packages and PyPI are live at `0.5.4`, and `latest` points
-at it. `v0.5.4` hardcodes the action's npm CLI version so the Marketplace action
-is reproducible; `v0.5.3` contains the Marketplace listing and the first
-(auto-ref) attempt, which is superseded. `v0.5.2` contains the corrected CI
-templates and the post-0.5.1 docs. `v0.5.0` remains published and immutable, but
-its examples use `inputs.fail-on` and an unguarded GitLab pre-check, so do not
-copy them.
+path. All seven npm packages and PyPI are live at `0.6.0`, and `latest` points
+at it. `v0.6.0` adds 35 deterministic rules (198 total) and keeps the action's
+npm CLI hardcoded to its release; `v0.5.4` is the previous action-pinning
+release; `v0.5.3` contains the Marketplace listing and the superseded auto-ref
+attempt. `v0.5.2` contains the corrected CI templates and the post-0.5.1 docs.
+`v0.5.0` remains published and immutable, but its examples use
+`inputs.fail-on` and an unguarded GitLab pre-check, so do not copy them.
 
 The composite action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
 as **Vigil security scan** (Security + Code quality).
 
-**Do not pin `0.5.0`.** Use `0.5.4` or newer, or `@latest`. The `v0.5.0` tag is
+**Do not pin `0.5.0`.** Use `0.6.0` or newer, or `@latest`. The `v0.5.0` tag is
 immutable and still resolves, so pinning it silently keeps the stale templates;
 its GitHub release body carries the warning. The npm package version is marked
 with a deprecation notice (a metadata change, not a republish) once the npm 2FA

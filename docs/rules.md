@@ -15,16 +15,16 @@ a complete list and will lag behind the code.
 
 | Family | Prefix | Rules | Focus |
 |---|---|---:|---|
-| Secrets | `VGL-SEC` | 24 | Credentials committed to the repository |
-| Injection | `VGL-INJ` | 37 | Sinks that turn untrusted input into code, SQL, shell or markup |
-| Crypto | `VGL-CRY` | 12 | Broken algorithms, weak parameters and disabled verification |
-| Auth | `VGL-AUTH` | 16 | JWT, cookies, CORS, CSRF and default credentials |
-| Web | `VGL-WEB` | 17 | SSRF, traversal, redirects, headers, debug surfaces |
-| Config / IaC | `VGL-CFG` | 28 | Docker, Compose, Kubernetes, Terraform, nginx, env files |
-| CI | `VGL-CI` | 17 | Workflow permissions, untrusted checkouts and shell injection |
-| Dependencies | `VGL-DEP` | 12 | Lockfiles, version ranges, install sources and TLS |
+| Secrets | `VGL-SEC` | 29 | Credentials committed to the repository |
+| Injection | `VGL-INJ` | 47 | Sinks that turn untrusted input into code, SQL, shell or markup |
+| Crypto | `VGL-CRY` | 16 | Broken algorithms, weak parameters and disabled verification |
+| Auth | `VGL-AUTH` | 17 | JWT, cookies, CORS, CSRF and default credentials |
+| Web | `VGL-WEB` | 18 | SSRF, traversal, redirects, headers, debug surfaces |
+| Config / IaC | `VGL-CFG` | 37 | Docker, Compose, Kubernetes, Terraform, nginx, env files |
+| CI | `VGL-CI` | 19 | Workflow permissions, untrusted checkouts and shell injection |
+| Dependencies | `VGL-DEP` | 15 | Lockfiles, version ranges, install sources and TLS |
 
-The table counts the 163 deterministic rules in 0.5.x; `vigil rules` is always
+The table counts the 198 deterministic rules in 0.6.x; `vigil rules` is always
 current. `VGL-AI-001` is synthesized by the LLM deep review and is not part of
 the deterministic catalog, so it does not appear in `vigil rules`. OSV findings
 use `VGL-OSV-<advisory>` and only appear when `scan.osv` is enabled.
@@ -33,6 +33,15 @@ use `VGL-OSV-<advisory>` and only appear when `scan.osv` is enabled.
 
 | ID | Severity | Title |
 |---|---|---|
+| `VGL-SEC-025` | critical | Telegram bot token hardcoded in source |
+| `VGL-INJ-038` | high | SQL query built from dynamic input in Go |
+| `VGL-INJ-040` | critical | JNDI lookup receives dynamic or request-controlled name |
+| `VGL-CRY-013` | critical | TLS verification disabled (Java trust-all TrustManager) |
+| `VGL-AUTH-017` | high | OAuth `redirect_uri` taken from request data |
+| `VGL-CFG-036` | high | Docker CLI runs a container privileged |
+| `VGL-CFG-040` | critical | IAM policy grants full administrative access |
+| `VGL-CI-018` | critical | Privileged workflow checks out untrusted PR code |
+| `VGL-DEP-015` | high | Go module checksum verification disabled |
 | `VGL-SEC-002` | Critical | AWS secret access key hardcoded in source |
 | `VGL-SEC-003` | Critical | GitHub token hardcoded in source |
 | `VGL-SEC-011` | Critical | Private key block committed to the repository |
