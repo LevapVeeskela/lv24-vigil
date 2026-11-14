@@ -4,16 +4,45 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
-## Unreleased
+## 0.9.0 - 2026-11-15
+
+263 rules (42 new since 0.8.0), inline suppression, an offline MCP configuration
+audit and SBOM export.
 
 ### Added
 
-- 27 deterministic rules from the security-tool research pass: provider-specific
-  secrets (1Password, age, Docker Hub, Discord, Stripe webhook secrets, PyPI,
-  RubyGems, Terraform Cloud), LDAP/XPath injection, unsafe SnakeYAML, Jinja2
-  `autoescape=False`, zip-slip and upload path traversal, SSH host-key
-  verification, five mobile/desktop anti-RE checks, five Terraform/Kubernetes/
-  Compose checks and a CI scanner-gate check. Catalog: **248 rules**.
+- 42 deterministic rules since 0.8.0. The security-tool research pass added 27:
+  provider-specific secrets (1Password, age, Docker Hub, Discord, Stripe webhook
+  secrets, PyPI, RubyGems, Terraform Cloud), LDAP/XPath injection, unsafe
+  SnakeYAML, Jinja2 `autoescape=False`, an exposed `phpinfo()`, zip-slip and
+  upload path traversal, SSH
+  host-key verification, five mobile/desktop anti-RE checks, five
+  Terraform/Kubernetes/Compose checks and a CI scanner-gate check.
+- 15 more deterministic rules: `VGL-MCP-001`–`VGL-MCP-010` audit MCP server
+  configuration posture (unpinned packages, literal secrets, cleartext
+  endpoints, TLS bypass), `VGL-AUTH-023` covers JWT key material taken from the
+  token header, `VGL-WEB-026` covers a static file server rooted at the project
+  root, `VGL-INJ-063` covers Django raw SQL APIs receiving formatted SQL,
+  `VGL-INJ-064` covers PHP XML parsing with entity substitution or external
+  DTDs, and `VGL-INJ-065` covers Ruby `raw`/`html_safe` rendering request data.
+  Catalog: **263 rules** in ten families.
+- Inline suppression: a `vigil:ignore` comment on the finding's line or the line
+  above suppresses matching findings, optionally limited to rule IDs and
+  annotated with `reason="..."` and `until=YYYY-MM-DD`. Suppressed findings stay
+  in the result with `suppressed: true`; an expired or malformed directive emits
+  a warning and suppresses nothing. Disable per run with
+  `--no-inline-suppressions`, or in configuration with
+  `scan.inline_suppressions: false`.
+- `vigil mcp-audit [path] [--user]` and the `vigil_mcp_audit` MCP tool run only
+  the `VGL-MCP` rules over MCP server configuration files (`.mcp.json`,
+  `mcp.json`, `mcp-config.json`, `claude_desktop_config.json`, `opencode.json`,
+  `*.mcp.json` and YAML variants). Deterministic and offline: no configured
+  server is started and no endpoint is contacted.
+- `vigil sbom [path] [--format cyclonedx|spdx] [--include-dev]` exports the
+  declared dependency inventory as CycloneDX 1.6 (default) or SPDX 2.3 JSON.
+  The document is reproducible (inventory-derived serial number and SPDX
+  namespace, `SOURCE_DATE_EPOCH` timestamp), offline, and does not resolve
+  version ranges.
 - Python dependency collection covers `requirements*.txt`, `-r` includes and
   PEP 621 `pyproject.toml` dependencies.
 
@@ -28,7 +57,8 @@ stable.
 
 ### Changed
 
-- Documentation counts and family tables now report 248 rules.
+- Documentation counts and family tables now report 263 rules, ten families and
+  14 MCP tools.
 
 ## 0.8.0 - 2026-11-11
 

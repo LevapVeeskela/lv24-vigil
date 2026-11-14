@@ -59,8 +59,12 @@ func runWithIO(args []string, stdout, stderr io.Writer) error {
 		return runRules(rest, stdout, stderr)
 	case "hardening":
 		return runHardening(rest, stdout, stderr)
+	case "mcp-audit", "mcpaudit":
+		return runMCPAudit(rest, stdout, stderr)
 	case "dependencies", "deps":
 		return runDependencies(rest, stdout, stderr)
+	case "sbom":
+		return runSBOM(rest, stdout, stderr)
 	case "baseline":
 		return runBaseline(rest, stdout, stderr)
 	case "report":
@@ -95,7 +99,9 @@ Usage:
   vigil status [--json]            show provider, model and engine health
   vigil rules [flags]              list detection rules
   vigil hardening [path]           review anti-RE hardening gaps (VGL-ARE)
+  vigil mcp-audit [path]           audit MCP server configuration (VGL-MCP)
   vigil dependencies [path]        audit dependency advisories via OSV
+  vigil sbom [path]                build a CycloneDX or SPDX bill of materials
   vigil baseline [list|add|remove|clear]
   vigil report [--scan ID]         render the last scan
   vigil precheck [flags]           upload a SARIF pre-check to LV24 security scans
@@ -134,6 +140,8 @@ Other flags:
   vigil precheck --sarif FILE --target TARGET --api URL --token JWT
   vigil threat-model --output FILE
   vigil rules --category C --language L --severity S --query Q --json
+  vigil mcp-audit --user --format sarif --fail-on high
+  vigil sbom --format spdx --include-dev --output sbom.json
   vigil baseline add ID --reason TEXT
   vigil baseline clear --yes
   vigil hook install --mode pre-push --fail-on critical --force

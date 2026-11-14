@@ -239,6 +239,40 @@ func TestScanDiffOnlyAddedLines(t *testing.T) {
 	}
 }
 
+func TestScanDiffInlineDirectiveOnContextLine(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "app.go", strings.Join([]string{
+		"package main",
+		"// vigil:ignore TEST-ALPHA",
+		"VULN = 1",
+		"",
+	}, "\n"))
+
+	// The directive sits on an unchanged context line. The padded diff file
+	// contains only the added line, so the suppression has to read the
+	// preceding line from disk.
+	diff := `--- a/app.go
++++ b/app.go
+@@ -1,2 +1,3 @@
+ package main
+ // vigil:ignore TEST-ALPHA
++VULN = 1
+`
+	res, err := New(inlineRegistry(), nil).Scan(context.Background(), Options{Root: root, Diff: diff, NoBaseline: true})
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(res.Suppressed) != 1 || res.Suppressed[0].RuleID != "TEST-ALPHA" {
+		t.Fatalf("suppressed = %+v, want only TEST-ALPHA", res.Suppressed)
+	}
+	if len(res.Suppressed[0].SuppressWhy) == 0 || res.Suppressed[0].Location.StartLine != 3 {
+		t.Errorf("suppressed finding = %+v, want line 3 with a reason", res.Suppressed[0])
+	}
+	if len(res.Findings) != 1 || res.Findings[0].RuleID != "TEST-BETA" {
+		t.Fatalf("kept findings = %+v, want only TEST-BETA", res.Findings)
+	}
+}
+
 func TestScanDiffMalformedReturnsError(t *testing.T) {
 	root := t.TempDir()
 	s := New(rules.NewRegistry(), nil)

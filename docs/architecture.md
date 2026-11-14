@@ -45,8 +45,10 @@ findings remain, and the scan still finishes.
 |---|---|
 | `internal/model` | Domain types: `Finding`, `ScanResult`, `Severity`, `Confidence`, `Fix`, `Location` |
 | `internal/config` | Defaults, user config, project config, environment, validation |
-| `internal/rules` | Rule interface, registry, nine rule packs, secret masking helpers |
+| `internal/rules` | Rule interface, registry, ten rule packs, secret masking helpers |
 | `internal/scanner` | Walker, ignore matcher, language detection, diff mode, baseline, orchestration |
+| `internal/mcpaudit` | MCP config discovery and the `VGL-MCP` posture audit (offline, read-only) |
+| `internal/sbom` | Dependency inventory as CycloneDX 1.6 or SPDX 2.3 JSON (offline, reproducible) |
 | `internal/gitutil` | Repository root, changed files, unified diff, `git apply --check`, apply |
 | `internal/store` | Scan history on disk, atomic writes, retention |
 | `internal/llm` | Provider clients, shared HTTP transport, retries, typed errors |

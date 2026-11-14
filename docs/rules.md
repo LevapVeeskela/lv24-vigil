@@ -1,6 +1,6 @@
 # Detection rules
 
-Vigil ships 248 deterministic rules. They are pure: they read a file, never
+Vigil ships 263 deterministic rules. They are pure: they read a file, never
 write, never execute scanned code and never make a network call. The CLI is the
 authoritative catalog:
 
@@ -16,16 +16,17 @@ a complete list and will lag behind the code.
 | Family | Prefix | Rules | Focus |
 |---|---|---:|---|
 | Secrets | `VGL-SEC` | 37 | Credentials committed to the repository |
-| Injection | `VGL-INJ` | 51 | Sinks that turn untrusted input into code, SQL, shell or markup |
+| Injection | `VGL-INJ` | 54 | Sinks that turn untrusted input into code, SQL, shell or markup |
 | Crypto | `VGL-CRY` | 16 | Broken algorithms, weak parameters and disabled verification |
-| Auth | `VGL-AUTH` | 18 | JWT, cookies, CORS, CSRF and default credentials |
-| Web | `VGL-WEB` | 21 | SSRF, traversal, redirects, headers, debug surfaces |
+| Auth | `VGL-AUTH` | 19 | JWT, cookies, CORS, CSRF and default credentials |
+| Web | `VGL-WEB` | 22 | SSRF, traversal, redirects, headers, debug surfaces |
 | Config / IaC | `VGL-CFG` | 42 | Docker, Compose, Kubernetes, Terraform, nginx, env files |
 | CI | `VGL-CI` | 20 | Workflow permissions, untrusted checkouts and shell injection |
 | Dependencies | `VGL-DEP` | 15 | Lockfiles, version ranges, install sources and TLS |
 | Anti-RE | `VGL-ARE` | 28 | Missing mobile/desktop hardening: release obfuscation, debug signing, debuggable builds, backup/cleartext, plist exceptions, inspector flags, source maps, plus Rust/.NET/iOS debug symbols, iOS testability, Electron fuses/ASAR, JS minification, WebView debugging, Hermes, user-CA trust, Gradle debuggable releases, ProGuard obfuscation, Electron remote debugging and iOS optimization. Mapping: [anti-re-hardening.md](anti-re-hardening.md) |
+| MCP | `VGL-MCP` | 10 | MCP server configuration: unpinned packages, literal secrets in env/headers/args, cleartext endpoints, disabled TLS verification, dangerous mounts, auto-approval and prompt-injection surfaces |
 
-The table counts the 248 deterministic rules in the current catalog; `vigil rules` is always
+The table counts the 263 deterministic rules in the current catalog; `vigil rules` is always
 current. `VGL-AI-001` is synthesized by the LLM deep review and is not part of
 the deterministic catalog, so it does not appear in `vigil rules`. OSV findings
 use `VGL-OSV-<advisory>` and only appear when `scan.osv` is enabled or when the
@@ -74,6 +75,7 @@ dedicated `vigil_dependencies` tool / `vigil dependencies` command is used.
 | `VGL-CI-002` | Critical | `pull_request_target` checks out untrusted PR code |
 | `VGL-CI-003` | High | Untrusted event data interpolated into a shell command |
 | `VGL-DEP-006` | High | npm TLS verification disabled |
+| `VGL-MCP-002` | Critical | Literal secret in an MCP server definition |
 
 Each finding carries a description, evidence, a location, CWE/OWASP references
 where applicable, a remediation and a confidence.
@@ -138,6 +140,53 @@ scan:
 
 Disable a rule when it does not fit the project, not to make a report green. Add a
 reason in the pull request or the baseline entry.
+
+## Inline suppressions
+
+A `vigil:ignore` directive in a comment suppresses matching findings on that
+line. A comment that starts the previous line also applies to the next line.
+Supported comment forms: `#`, `//`, `--`, `;` and `<!-- ... -->`.
+
+```go
+// vigil:ignore VGL-SEC-001 reason="test fixture" until=2027-01-01
+password := "example"
+
+value := 1 // vigil:ignore VGL-SEC-001,VGL-WEB-002
+```
+
+| Part | Meaning |
+|---|---|
+| `vigil:ignore` | Required marker, compared case-insensitively. It must begin the comment. |
+| rule IDs | Optional comma- or space-separated IDs. No IDs at all covers every rule. |
+| `*` | Covers every rule. |
+| `reason=TEXT` | Optional note, bare or quoted. Stored as `suppressedReason: "inline: TEXT"`. |
+| `until=YYYY-MM-DD` | Optional expiry date, UTC. An expired directive emits a warning and suppresses nothing. |
+
+Rules and options may appear in any order. An unrecognized `key=value` token is
+not a rule ID; a directive left without any rule IDs by a mistyped option is
+inert instead of covering every rule. An `until` value that is not a valid
+`YYYY-MM-DD` date also fails closed and emits a warning.
+
+Inline suppressions apply after deduplication and before the baseline. An
+inline directive wins over a baseline entry, and the finding stays in the
+suppressed list with `suppressed: true`. Disable inline directives for one run
+with `--no-inline-suppressions`, or in configuration:
+
+```yaml
+scan:
+  inline_suppressions: false
+```
+
+With `--diff` and `vigil review`, only added lines are scanned. A directive on
+the unchanged line directly above an added line still applies: when the file
+the scanner was given does not contain that line (a padded diff file), it is
+read from the working tree, for example:
+
+```diff
+ package main
+ // vigil:ignore VGL-SEC-001
++password := "example"
+```
 
 ## Baseline and suppression
 

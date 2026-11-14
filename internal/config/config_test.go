@@ -700,3 +700,47 @@ func TestOSVBaseURLAllowedFromUserConfigAndEnv(t *testing.T) {
 		t.Fatalf("env OSVBaseURL = %q", cfg.Scan.OSVBaseURL)
 	}
 }
+
+func TestInlineSuppressionsDefaultAndConfig(t *testing.T) {
+	clearEnv(t)
+	if !Defaults().Scan.InlineSuppressions {
+		t.Fatal("inline suppressions must default to enabled")
+	}
+
+	userDir := t.TempDir()
+	t.Setenv("VIGIL_CONFIG", writeConfig(t, userDir, "config.yaml", "scan:\n  inline_suppressions: false\n"))
+	root := t.TempDir()
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load user config: %v", err)
+	}
+	if cfg.Scan.InlineSuppressions {
+		t.Fatal("user config inline_suppressions: false was ignored")
+	}
+	if !strings.Contains(cfg.Sources["scan.inline_suppressions"], "config.yaml") {
+		t.Errorf("source = %q, want the user config file", cfg.Sources["scan.inline_suppressions"])
+	}
+
+	// A project file is allowed to set the key and wins over the user file.
+	writeConfig(t, root, ".vigil.yaml", "scan:\n  inline_suppressions: true\n")
+	cfg, err = Load(root)
+	if err != nil {
+		t.Fatalf("Load project config: %v", err)
+	}
+	if !cfg.Scan.InlineSuppressions {
+		t.Fatal("project config inline_suppressions: true did not override the user config")
+	}
+	if filepath.Base(cfg.Sources["scan.inline_suppressions"]) != ".vigil.yaml" {
+		t.Errorf("source = %q, want the project config file", cfg.Sources["scan.inline_suppressions"])
+	}
+
+	// An unrelated config file keeps the built-in default.
+	clearEnv(t)
+	cfg, err = Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load defaults: %v", err)
+	}
+	if !cfg.Scan.InlineSuppressions {
+		t.Fatal("inline suppressions were disabled without a config entry")
+	}
+}

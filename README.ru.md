@@ -13,7 +13,7 @@
 
 **Документация:** [English](README.md) · Русский · [docs/](docs/) · [llms.txt](llms.txt)
 
-> **Ваш код. Ваша модель. Ваши находки.** Vigil прогоняет 248 детерминированных
+> **Ваш код. Ваша модель. Ваши находки.** Vigil прогоняет 263 детерминированных
 > правила по репозиторию, а затем — только если вы попросите — отправляет
 > минимальный контекст в модель, за которую вы уже платите: триаж находок,
 > разбор рискованного кода, предложения исправлений и модель угроз. Один
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | [Установка](#установка) · [Посмотрите, как это работает](#посмотрите-как-это-работает) · [Быстрый старт](#быстрый-старт-за-60-секунд) | [Настройка MCP](#настройка-mcp) · [Для ИИ-агентов](#для-ии-агентов) · [Провайдеры](#провайдеры) · [Правила](#правила) | [CI и SARIF](#ci-sarif-и-precheck) · [Безопасность](#безопасность) · [Документация](#документация) |
 
-> **Статус: 0.8.x.** Детерминированный движок, CLI и MCP-сервер уже можно
+> **Статус: 0.9.x.** Детерминированный движок, CLI и MCP-сервер уже можно
 > использовать. Вывод модели носит рекомендательный характер, покрытие правил
 > растёт, и Vigil не заменяет пентест. Любая находка — это повод проверить, а не
 > готовый приговор.
@@ -63,7 +63,7 @@ vigil fix VGL-XXXXXXXXXX --apply  # записать в рабочее дере�
 - **Ваша модель, ваши ключи.** OpenAI, Anthropic, Gemini, OpenRouter, Groq,
   DeepSeek, Mistral, xAI, OpenCode Go, Ollama, LM Studio, локальный CLI или любой
   OpenAI-совместимый endpoint. Без прокси, аккаунта Vigil и телеметрии.
-- **Сначала детерминизм.** Все 248 правила отрабатывают до вызова модели. Сбой
+- **Сначала детерминизм.** Все 263 правила отрабатывают до вызова модели. Сбой
   провайдера не спрячет захардкоженный секрет, shell-инъекцию или отключённую
   проверку JWT.
 - **Встраивается в агента, которым вы уже пользуетесь.** Один stdio MCP-сервер
@@ -82,16 +82,18 @@ vigil fix VGL-XXXXXXXXXX --apply  # записать в рабочее дере�
 
 | | Возможность | Что делает |
 | --- | --- | --- |
-| 🔍 | **248 детерминированных правила** | Секреты, инъекции, криптография, auth, web, config/IaC, CI, зависимости и anti-RE hardening — без модели |
+| 🔍 | **263 детерминированных правила** | Секреты, инъекции, криптография, auth, web, config/IaC, CI, зависимости, конфигурация MCP и anti-RE hardening — без модели |
 | 🧠 | **LLM-триаж** | Ранжирует и фильтрует находки вашей моделью; детерминированная severity остаётся видимой |
 | 🧪 | **Глубокий разбор** | Читает ограниченные окна рискованных файлов и добавляет находки `VGL-AI-001` |
 | 🛠 | **Diff для фикса** | Готовит проверенный unified diff; `--apply` пишет только рабочее дерево |
 | 🗺 | **Модель угроз** | Генерирует STRIDE-модель в Markdown |
-| 🔌 | **MCP-сервер** | 13 инструментов, 4 ресурса и 5 промптов по stdio |
+| 🔌 | **MCP-сервер** | 14 инструментов, 4 ресурса и 5 промптов по stdio |
 | 📊 | **Отчёты** | Markdown, JSON, SARIF 2.1.0 и самодостаточный HTML |
 | 🧾 | **Baseline** | Подавляет принятые находки, чтобы гейт падал только на новых |
 | 🧰 | **Провайдер `command`** | Переиспользует уже авторизованный локальный CLI без хранения API-ключа |
 | 🛡 | **Проверка зависимостей** | Читает lockfile и запрашивает `api.osv.dev` по известным публичным advisory (сеть opt-in); `vigil_dependencies` |
+| 🧩 | **Аудит конфигурации MCP** | Правила `VGL-MCP`: незапиненные пакеты серверов, литеральные секреты, cleartext-endpoint, отключённый TLS и опасные mount; CLI и `vigil_mcp_audit` |
+| 📦 | **SBOM** | CycloneDX 1.6 или SPDX 2.3 JSON из манифестов и lockfile, которые Vigil уже читает; офлайн |
 | 🔒 | **Anti-RE hardening** | Ищет отсутствующую защиту релиза и поверхности, которые читает reverse-engineering-инструмент (REA): symbols/DWARF, Electron fuses, JS minify, WebView, Hermes, iOS testability, а также debug-подпись, debuggable, backup/cleartext, inspector и production source maps |
 | 🚦 | **CI-гейт** | `--fail-on`, код выхода `2`, загрузка SARIF и `vigil precheck` |
 
@@ -128,7 +130,7 @@ Publishing (OIDC) с аттестацией происхождения.
 
 Не пиньте `0.5.0`: тег и npm-пакет неизменяемы и всё ещё ставятся, но примеры
 CI на этом теге устарели (`inputs.fail-on`, непроверенный GitLab pre-check).
-Бинарники в порядке, шаблоны — нет. Используйте `0.8.0` или новее, либо
+Бинарники в порядке, шаблоны — нет. Используйте `0.9.0` или новее, либо
 `@latest`.
 
 Требования: Node.js 18+ для npm, Go 1.27+ для `go install`; готовым бинарникам и
@@ -206,6 +208,8 @@ vigil fix VGL-XXXXXXXXXX                         # предложенный diff
 vigil fix VGL-XXXXXXXXXX --apply                 # записать, без коммита
 vigil threat-model                               # STRIDE-модель в Markdown, нужна модель
 vigil report --format html > report.html         # отрисовать последний скан
+vigil mcp-audit . --fail-on high                 # posture конфигурации MCP (VGL-MCP)
+vigil sbom . --output sbom.cdx.json              # CycloneDX 1.6 bill of materials
 ```
 
 `vigil scan` без пути сканирует текущий каталог. ID находки берётся из
@@ -264,7 +268,7 @@ args = ["-y", "lv24-vigil", "mcp"]
 Запускайте клиент из репозитория, который хотите сканировать;
 `vigil mcp --root DIR` задаёт другой корень проекта.
 
-Сервер отдаёт 13 инструментов:
+Сервер отдаёт 14 инструментов:
 
 | Инструмент | Что делает | Что нужно |
 | --- | --- | --- |
@@ -276,6 +280,7 @@ args = ["-y", "lv24-vigil", "mcp"]
 | `vigil_status` | Провайдер, модель, движок, хранилище, baseline, последний скан | ничего |
 | `vigil_rules` | Каталог правил с ID, критичностью и категориями | ничего |
 | `vigil_hardening` | Пробелы release-hardening по VGL-ARE, сгруппированные по платформам | офлайн |
+| `vigil_mcp_audit` | Пробелы конфигурации MCP по VGL-MCP | офлайн |
 | `vigil_dependencies` | Объявленные пакеты, сверенные с OSV | сеть до OSV |
 | `vigil_baseline` | Просмотр, добавление, удаление и очистка принятых находок | файл baseline |
 | `vigil_report` | Рендерит сохранённый скан в md/json/sarif/html | локальное хранилище |
@@ -316,8 +321,8 @@ args = ["-y", "lv24-vigil", "mcp"]
   "mcp_tools": [
     "vigil_scan", "vigil_review", "vigil_explain", "vigil_fix",
     "vigil_threat_model", "vigil_status", "vigil_rules", "vigil_hardening",
-    "vigil_dependencies", "vigil_baseline", "vigil_report", "vigil_verify",
-    "vigil_history"
+    "vigil_mcp_audit", "vigil_dependencies", "vigil_baseline", "vigil_report",
+    "vigil_verify", "vigil_history"
   ],
   "exit_codes": { "0": "clean", "1": "error", "2": "findings at or above --fail-on" },
   "docs_index": "llms.txt"
@@ -329,7 +334,7 @@ args = ["-y", "lv24-vigil", "mcp"]
 1. **Ставьте только `lv24-vigil`.** Никогда не устанавливайте
    `@lv24/vigil-<os>-<cpu>` напрямую: это optional dependency, который выбирает
    лаунчер.
-2. **Нет модели? Используйте `--no-llm`.** Все 248 детерминированных правила
+2. **Нет модели? Используйте `--no-llm`.** Все 263 детерминированных правила
    всё равно отработают и дадут находки. Отсутствие модели — предупреждение, а
    не проваленный скан.
 3. **Не парсите человеческую сводку.** Используйте `--format json`,
@@ -396,7 +401,7 @@ command_output: opencode-json
 
 ## Правила
 
-248 детерминированных правила в девяти семействах. Они чистые: читают файл,
+263 детерминированных правила в десяти семействах. Они чистые: читают файл,
 ничего не пишут, не исполняют сканируемый код и не делают сетевых вызовов.
 Авторитетный каталог — CLI:
 
@@ -407,21 +412,23 @@ vigil rules
 | Семейство | Префикс | Правил | Что ищет |
 | --- | --- | ---: | --- |
 | Секреты | `VGL-SEC` | 37 | Ключи облаков, токены, приватные ключи, строки подключения, утечки `.env` |
-| Инъекции | `VGL-INJ` | 51 | SQL, shell, eval, XSS, десериализация, SSTI, prototype pollution |
+| Инъекции | `VGL-INJ` | 54 | SQL, shell, eval, XSS, десериализация, SSTI, prototype pollution |
 | Криптография | `VGL-CRY` | 16 | Слабые хэши/шифры, ECB, статические IV, плохая случайность, отключённый TLS |
-| Аутентификация | `VGL-AUTH` | 18 | Проверка JWT, флаги cookie, CORS с credentials, CSRF, пароли по умолчанию |
-| Web | `VGL-WEB` | 21 | SSRF, path traversal, open redirect, заголовки, debug-поверхности |
+| Аутентификация | `VGL-AUTH` | 19 | Проверка JWT, флаги cookie, CORS с credentials, CSRF, пароли по умолчанию |
+| Web | `VGL-WEB` | 22 | SSRF, path traversal, open redirect, заголовки, debug-поверхности |
 | Конфигурация / IaC | `VGL-CFG` | 42 | Docker, Compose, Kubernetes, Terraform, nginx, закоммиченные env-файлы |
 | CI | `VGL-CI` | 20 | Незапиненные actions, `pull_request_target`, инъекции в скрипты, секреты в логах |
 | Зависимости | `VGL-DEP` | 15 | Lockfile, wildcard-версии, git/HTTP-установки, отключённый TLS |
 | Anti-RE | `VGL-ARE` | 28 | Отсутствующая защита mobile/desktop: обфускация релиза, debug-подпись, debuggable, backup/cleartext, plist-исключения, inspector, source maps, а также Rust symbols/DWARF, .NET, iOS testability и symbols, Electron fuses/ASAR, JS minify, WebView и Hermes. Маппинг: [docs/anti-re-hardening.md](docs/anti-re-hardening.md) |
+| MCP | `VGL-MCP` | 10 | Конфигурация MCP-серверов: незапиненные пакеты, литеральные секреты в env/headers/args, cleartext-endpoint, отключённый TLS, опасные mount, auto-approval и поверхности prompt injection |
 
 Примеры ID: `VGL-SEC-002` (critical, AWS secret key), `VGL-INJ-019` (critical,
 десериализация Java), `VGL-CRY-011` (critical, JWT `none`), `VGL-AUTH-002`
 (critical, отключена проверка JWT), `VGL-WEB-001` (high, SSRF), `VGL-CFG-009`
 (high, Docker socket), `VGL-CI-002` (critical, `pull_request_target` checkout),
 `VGL-DEP-006` (high, отключён TLS в npm), `VGL-ARE-003` (high, debuggable
-Android manifest), `VGL-ARE-010` (high, iOS `get-task-allow`).
+Android manifest), `VGL-ARE-010` (high, iOS `get-task-allow`), `VGL-MCP-002`
+(critical, литеральный секрет в определении MCP-сервера).
 
 Находки только от модели помечаются `VGL-AI-001` и имеют источник LLM. Находки
 OSV используют `VGL-OSV-<advisory>` и появляются только при `scan.osv: true`.
@@ -432,6 +439,11 @@ OSV используют `VGL-OSV-<advisory>` и появляются тольк
 scan:
   disable_rules: [VGL-DEP-001]
 ```
+
+Для единичных случаев находку можно подавить комментарием:
+`// vigil:ignore VGL-SEC-001 reason="test fixture"`. Списки правил, `*`,
+`reason=`, `until=YYYY-MM-DD`, приоритет и поведение в diff/review:
+[docs/rules.md#inline-suppressions](docs/rules.md#inline-suppressions).
 
 Severity, confidence, baseline и маскирование: [docs/rules.md](docs/rules.md).
 
@@ -493,7 +505,7 @@ vigil hook uninstall
 
 ### GitHub Actions (PR, `main`, вручную)
 
-Действие также опубликовано в [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Используйте `uses: LevapVeeskela/lv24-vigil@v0.8.0`; добавьте `version: 0.8.0`, если CLI должен совпадать с тегом действия.
+Действие также опубликовано в [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Используйте `uses: LevapVeeskela/lv24-vigil@v0.9.0`; добавьте `version: 0.9.0`, если CLI должен совпадать с тегом действия.
 
 Скопируйте [`examples/github-workflow.yml`](examples/github-workflow.yml) в
 `.github/workflows/vigil.yml`:

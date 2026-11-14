@@ -339,3 +339,64 @@ func TestScanOSVFindingsHonourBaselineSeverityAndStats(t *testing.T) {
 		t.Fatalf("baselined advisory missing from suppressed: %+v", res.Suppressed)
 	}
 }
+
+func TestOptionsInlineSuppressions(t *testing.T) {
+	hermeticEnv(t)
+	repo := newTestRepo(t)
+	a, err := New(repo, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+
+	if a.Options(model.ScanRequest{}).NoInlineSuppressions {
+		t.Fatal("inline suppressions must be enabled by default")
+	}
+	a.NoInlineSuppressions = true
+	if !a.Options(model.ScanRequest{}).NoInlineSuppressions {
+		t.Fatal("the CLI override was not threaded into scanner options")
+	}
+	a.NoInlineSuppressions = false
+
+	if err := os.WriteFile(filepath.Join(repo, ".vigil.yaml"),
+		[]byte("scan:\n  inline_suppressions: false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b, err := New(repo, nil)
+	if err != nil {
+		t.Fatalf("New with config: %v", err)
+	}
+	t.Cleanup(func() { _ = b.Close() })
+	if !b.Options(model.ScanRequest{}).NoInlineSuppressions {
+		t.Fatal("scan.inline_suppressions: false was not threaded into scanner options")
+	}
+}
+
+func TestScanHonoursInlineSuppression(t *testing.T) {
+	hermeticEnv(t)
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".vigil"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "# vigil:ignore VGL-SEC-001 reason=\"fixture\"\n" +
+		"aws_access_key_id = \"" + testAWSKey + "\"\n"
+	if err := os.WriteFile(filepath.Join(repo, "config.py"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, err := New(repo, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+
+	res, err := a.Scan(context.Background(), model.ScanRequest{Mode: "quick"})
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(res.Findings) != 0 {
+		t.Fatalf("findings = %+v, want none", res.Findings)
+	}
+	if len(res.Suppressed) != 1 || res.Suppressed[0].SuppressWhy != "inline: fixture" {
+		t.Fatalf("suppressed = %+v, want one inline: fixture finding", res.Suppressed)
+	}
+}

@@ -1339,3 +1339,155 @@ func TestCollectPackagesExported(t *testing.T) {
 		t.Errorf("package = %q, want requests", pkgs[0].Name)
 	}
 }
+
+// npmLockFixture is a minimal package-lock.json that pins one dependency.
+func npmLockFixture(name, version string) string {
+	return fmt.Sprintf(`{"lockfileVersion":3,"packages":{"":{},"node_modules/%s":{"version":"%s"}}}`, name, version)
+}
+
+func TestCollectPackagesWithExcludesPrunesNestedManifests(t *testing.T) {
+	// Arrange
+	dir := t.TempDir()
+	writeFixture(t, dir, "package-lock.json", npmLockFixture("root-dep", "1.0.0"))
+	writeFixture(t, dir, "app/package-lock.json", npmLockFixture("lodash", "4.17.21"))
+	writeFixture(t, dir, "ideas/one/package-lock.json", npmLockFixture("idea-one", "1.0.0"))
+	writeFixture(t, dir, "ideas/one/packages/deep/package-lock.json", npmLockFixture("idea-deep", "1.0.0"))
+
+	// Act
+	pkgs, warnings, err := CollectPackagesWithExcludes(context.Background(), dir, true, DefaultMaxPackages, []string{"ideas/**"})
+
+	// Assert
+	if err != nil {
+		t.Fatalf("CollectPackagesWithExcludes: %v", err)
+	}
+	idx := indexPackages(pkgs)
+	requirePackage(t, idx, "root-dep", "1.0.0")
+	requirePackage(t, idx, "lodash", "4.17.21")
+	for _, gone := range []string{"idea-one", "idea-deep"} {
+		if _, ok := idx[gone]; ok {
+			t.Errorf("excluded manifest still contributed %q", gone)
+		}
+	}
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %v, want none: an explicit exclude is intentional", warnings)
+	}
+}
+
+func TestCollectPackagesWithExcludesDoubleStar(t *testing.T) {
+	// Arrange
+	dir := t.TempDir()
+	writeFixture(t, dir, "app/package-lock.json", npmLockFixture("lodash", "4.17.21"))
+	writeFixture(t, dir, "testdata/package-lock.json", npmLockFixture("fixture-only", "1.0.0"))
+	writeFixture(t, dir, "pkg/a/testdata/package-lock.json", npmLockFixture("nested-fixture", "1.0.0"))
+
+	// Act
+	pkgs, _, err := CollectPackagesWithExcludes(context.Background(), dir, true, DefaultMaxPackages, []string{"**/testdata/**"})
+
+	// Assert
+	if err != nil {
+		t.Fatalf("CollectPackagesWithExcludes: %v", err)
+	}
+	idx := indexPackages(pkgs)
+	requirePackage(t, idx, "lodash", "4.17.21")
+	for _, gone := range []string{"fixture-only", "nested-fixture"} {
+		if _, ok := idx[gone]; ok {
+			t.Errorf("**/testdata/** did not exclude %q", gone)
+		}
+	}
+}
+
+func TestCollectPackagesWithExcludesBaseNameGlob(t *testing.T) {
+	// Arrange
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "requests==2.31.0\n")
+	writeFixture(t, dir, "app/poetry.lock", "[[package]]\nname = \"urllib3\"\nversion = \"2.0.7\"\n")
+
+	// Act
+	pkgs, _, err := CollectPackagesWithExcludes(context.Background(), dir, true, DefaultMaxPackages, []string{"*.lock"})
+
+	// Assert
+	if err != nil {
+		t.Fatalf("CollectPackagesWithExcludes: %v", err)
+	}
+	idx := indexPackages(pkgs)
+	requirePackage(t, idx, "requests", "2.31.0")
+	if _, ok := idx["urllib3"]; ok {
+		t.Error("*.lock did not exclude app/poetry.lock")
+	}
+}
+
+func TestCollectPackagesWithExcludesNoPatternsKeepsBehavior(t *testing.T) {
+	// Arrange
+	dir := t.TempDir()
+	writeFixture(t, dir, "app/package-lock.json", npmLockFixture("lodash", "4.17.21"))
+	writeFixture(t, dir, "ideas/one/package-lock.json", npmLockFixture("idea-one", "1.0.0"))
+	want := collectForTest(t, dir, true)
+
+	for _, excludes := range [][]string{nil, {}} {
+		// Act
+		got, warnings, err := CollectPackagesWithExcludes(context.Background(), dir, true, DefaultMaxPackages, excludes)
+
+		// Assert
+		if err != nil {
+			t.Fatalf("CollectPackagesWithExcludes(%v): %v", excludes, err)
+		}
+		if len(warnings) != 0 {
+			t.Errorf("excludes %v: warnings = %v, want none", excludes, warnings)
+		}
+		if len(got) != len(want) {
+			t.Fatalf("excludes %v: got %d packages, want %d", excludes, len(got), len(want))
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("excludes %v: package %d = %+v, want %+v", excludes, i, got[i], want[i])
+			}
+		}
+	}
+}
+
+func TestCollectPackagesWithExcludesRequirementsInclude(t *testing.T) {
+	// Arrange
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "-r testdata/requirements-dev.txt\nrequests==2.31.0\n")
+	writeFixture(t, dir, "testdata/requirements-dev.txt", "pytest==8.0.0\n")
+
+	// Act
+	pkgs, warnings, err := CollectPackagesWithExcludes(context.Background(), dir, true, DefaultMaxPackages, []string{"**/testdata/**"})
+
+	// Assert
+	if err != nil {
+		t.Fatalf("CollectPackagesWithExcludes: %v", err)
+	}
+	idx := indexPackages(pkgs)
+	requirePackage(t, idx, "requests", "2.31.0")
+	if _, ok := idx["pytest"]; ok {
+		t.Error("an excluded requirements include still contributed a package")
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, "excluded by the scan exclude list") {
+		t.Errorf("warnings do not mention the excluded include:\n%s", joined)
+	}
+}
+
+func TestCollectPackagesWithExcludesReportsTruncation(t *testing.T) {
+	// Arrange
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "aaa==1.0.0\nbbb==1.0.0\nccc==1.0.0\n")
+
+	// Act
+	pkgs, warnings, err := CollectPackagesWithExcludes(context.Background(), dir, true, 2, nil)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("CollectPackagesWithExcludes: %v", err)
+	}
+	if len(pkgs) != 2 {
+		t.Fatalf("got %d packages, want 2", len(pkgs))
+	}
+	joined := strings.Join(warnings, "\n")
+	for _, want := range []string{"inventory truncated at the 2 package cap", "found 3 packages"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("warnings missing %q:\n%s", want, joined)
+		}
+	}
+}

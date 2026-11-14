@@ -8,7 +8,7 @@ locally and in CI:
 vigil scan . --no-llm --format sarif --output vigil.sarif --fail-on high
 ```
 
-`--no-llm` runs all 248 rules with no model, no key and no network. `--fail-on`
+`--no-llm` runs all 263 rules with no model, no key and no network. `--fail-on`
 changes the exit code, not the report: the SARIF file is written before the
 process exits `2`, so an upload step with `if: always()` still runs.
 
@@ -176,7 +176,7 @@ vigil:
 runners should call `actions/setup-node` first.
 
 The action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
-as **Vigil security scan** (Security + Code quality). Pin `version: 0.8.0` when
+as **Vigil security scan** (Security + Code quality). Pin `version: 0.9.0` when
 the CLI must match the action tag; the default `latest` follows the newest npm
 release.
 
@@ -184,13 +184,13 @@ release.
 - uses: actions/checkout@v7
 
 - id: vigil
-  uses: LevapVeeskela/lv24-vigil@v0.8.0
+  uses: LevapVeeskela/lv24-vigil@v0.9.0
   with:
     path: .
     fail-on: high
     no-llm: true
     format: sarif
-    version: 0.8.0
+    version: 0.9.0
 
 - if: always()
   uses: github/codeql-action/upload-sarif@v4
@@ -225,6 +225,19 @@ vigil scan . --no-llm --format sarif --output vigil.sarif --fail-on high
 Keep the report as an artifact with `when: always` / `if: always()` so reviewers
 can see why the job failed. Do not run `vigil fix --apply` in CI: fixes are a
 developer action.
+
+## SBOM artifact
+
+A bill of materials can be published next to the SARIF file:
+
+```bash
+vigil sbom . --format cyclonedx --output vigil.cdx.json
+```
+
+The command is offline and reads the same manifests and lockfiles as the OSV
+scanner. CycloneDX 1.6 is the default; `--format spdx` emits SPDX 2.3. Add
+development dependencies with `--include-dev`. Keep the file as a build artifact,
+or feed it to a separate scanner; Vigil does not upload it anywhere.
 
 ## Exit codes
 

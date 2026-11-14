@@ -106,6 +106,13 @@ var (
 	pbUploadJSNameRe    = regexp.MustCompile(`(?i)\b[A-Za-z_$][A-Za-z0-9_$]*\.originalname\b`)
 	pbUploadJavaNameRe  = regexp.MustCompile(`(?i)\bget(?:OriginalFilename|SubmittedFileName)\s*\(`)
 	pbUploadGoNameRe    = regexp.MustCompile(`\b[A-Za-z_][A-Za-z0-9_]*\.Filename\b`)
+
+	// VGL-WEB-026: static file server rooted at the project root.
+	pbStaticServeJSRe = regexp.MustCompile(`(?i)\b(?:express\s*\.\s*static|serveStatic|serve-static)\s*\(`)
+	pbStaticServeGoRe = regexp.MustCompile(`(?i)\bhttp\s*\.\s*Dir\s*\(`)
+	pbStaticServePyRe = regexp.MustCompile(`(?i)\bStaticFiles\s*\(|\bsend_from_directory\s*\(`)
+	pbStaticServeRbRe = regexp.MustCompile(`(?i)\bRack::Static\b`)
+	pbStaticRbRootRe  = regexp.MustCompile(`(?i)\broot\s*:\s*["']\./?["']`)
 )
 
 // pbSpringDangerousEndpoints are the actuator endpoints that leak credentials,
@@ -313,6 +320,24 @@ func WebRules() []Rule {
 				"https://cwe.mitre.org/data/definitions/22.html",
 			},
 		}, pbUploadFilenameRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-WEB-026",
+			Title:       "Static file server rooted at the project root",
+			Description: "Serving files from __dirname, process.cwd(), \".\" or the working directory exposes .env, .git/, node_modules, source maps, backups and configuration to anyone who can reach the server. Mount a dedicated public/static/build directory instead.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryWeb,
+			Languages:   []string{"javascript", "typescript", "python", "go", "ruby"},
+			CWE:         []string{"CWE-538", "CWE-548"},
+			OWASP:       []string{"A01:2021", "A05:2021"},
+			Tags:        []string{"static-files", "exposure", "web"},
+			References: []string{
+				"https://expressjs.com/en/4x/api.html#express.static",
+				"https://pkg.go.dev/net/http#FileServer",
+				"https://fastapi.tiangolo.com/tutorial/static-files/",
+				"https://cwe.mitre.org/data/definitions/538.html",
+			},
+		}, pbStaticRootRule),
 	}
 }
 
@@ -1536,4 +1561,193 @@ func pbFirstCodeMatch(re *regexp.Regexp, line string) int {
 		}
 	}
 	return -1
+}
+
+// ---------------------------------------------------------------------------
+// VGL-WEB-026 — static file server rooted at the project root
+// ---------------------------------------------------------------------------
+
+// pbStaticRootRule flags a static-file API mounted on the repository or
+// working directory. A configured subdirectory (public, static, dist, ...) is
+// the safe equivalent and is not reported. Python docstrings are prose, not a
+// mount, and are skipped.
+func pbStaticRootRule(f *File) []model.Finding {
+	if f == nil || pbDocsPath(f.Path) {
+		return nil
+	}
+	switch f.Language {
+	case "javascript", "typescript", "python", "go", "ruby":
+	default:
+		return nil
+	}
+	docstrings := PythonDocstringLines(f)
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if docstrings[i] || pbComment(f, line) || !pbStaticRootLine(f, i, line) {
+			continue
+		}
+		fd := pbFinding(f, i+1, line)
+		fd.Severity = pbSev(f, model.SeverityHigh)
+		fd.Confidence = model.ConfidenceHigh
+		out = append(out, fd)
+	}
+	return out
+}
+
+// pbStaticRootLine reports whether line mounts a static server on the project
+// root for the file's language.
+func pbStaticRootLine(f *File, idx int, line string) bool {
+	switch f.Language {
+	case "javascript", "typescript":
+		if !pbStaticServeJSRe.MatchString(line) {
+			return false
+		}
+		return pbStaticFirstArgIsRoot(f, idx, line, pbStaticServeJSRe)
+	case "go":
+		if !pbStaticServeGoRe.MatchString(line) {
+			return false
+		}
+		return pbStaticFirstArgIsRoot(f, idx, line, pbStaticServeGoRe)
+	case "python":
+		if !pbStaticServePyRe.MatchString(line) {
+			return false
+		}
+		return pbStaticFirstArgIsRoot(f, idx, line, pbStaticServePyRe)
+	case "ruby":
+		return pbStaticServeRbRe.MatchString(line) && pbStaticRbRootRe.MatchString(line)
+	default:
+		return false
+	}
+}
+
+// pbStaticFirstArgIsRoot extracts the first argument of the matched call and
+// reports whether it names the project root.
+func pbStaticFirstArgIsRoot(f *File, idx int, line string, re *regexp.Regexp) bool {
+	args := pbStaticCallArgs(f, idx, line, re)
+	if len(args) == 0 {
+		return false
+	}
+	return pbStaticRootIsProjectRoot(args[0])
+}
+
+// pbStaticCallArgs returns the top-level arguments of the first call matched by
+// re on line idx. The call may span up to five following lines.
+func pbStaticCallArgs(f *File, idx int, line string, re *regexp.Regexp) []string {
+	loc := pbFirstCodeMatch(re, line)
+	if loc < 0 {
+		return nil
+	}
+	open := strings.Index(line[loc:], "(")
+	if open < 0 {
+		return nil
+	}
+	span := pbParenSpan(f, idx, loc+open)
+	if span == "" {
+		return nil
+	}
+	return injCallArgs(span, 0)
+}
+
+// pbStaticRootIsProjectRoot reports whether arg is the repository or working
+// directory rather than a bounded subdirectory or a configured absolute path.
+// Path components are resolved segment by segment: a `..` that walks back to the
+// root ("./web/..", path.join(__dirname, "..")) serves the project root and is
+// reported, while a `..` that leaves the project entirely is reported too.
+func pbStaticRootIsProjectRoot(arg string) bool {
+	a := strings.TrimSpace(arg)
+	if strings.HasPrefix(strings.ToLower(a), "directory") {
+		rest := strings.TrimSpace(a[len("directory"):])
+		if strings.HasPrefix(rest, "=") {
+			a = strings.TrimSpace(strings.TrimPrefix(rest, "="))
+		}
+	}
+	a = strings.Trim(strings.TrimSpace(a), "\"'`")
+	a = strings.TrimSpace(a)
+	if a == "" {
+		return false
+	}
+	lower := strings.ToLower(a)
+	if strings.HasPrefix(lower, "/") || strings.HasPrefix(lower, "~") {
+		return false // configured absolute path
+	}
+	if len(lower) > 2 && lower[1] == ':' && (lower[2] == '\\' || lower[2] == '/') {
+		return false // configured Windows absolute path
+	}
+	parts := []string{a}
+	if inner, ok := pbStaticPathCallInner(a); ok {
+		parts = injCallArgs("("+inner+")", 0)
+		if len(parts) == 0 {
+			return false
+		}
+	}
+	_, root, escaped := pbStaticResolveSegments(parts)
+	return root || escaped
+}
+
+// pbStaticRootTokens are expressions that evaluate to the repository or working
+// directory.
+var pbStaticRootTokens = []string{
+	".", "./", `.\`, "__dirname", "process.cwd()", "os.getcwd()", "os.getwd()",
+	"path.cwd()", "dirname(__file__)", "path.dirname(__file__)",
+}
+
+// pbStaticResolveSegments walks path components as written and reports whether
+// they land on the project root (root) or above it (escaped). `..` pops one
+// component, so "web/.." is the root and "../public" leaves the project.
+func pbStaticResolveSegments(parts []string) (segs []string, root, escaped bool) {
+	for _, part := range parts {
+		p := strings.Trim(strings.TrimSpace(part), "\"'`")
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if pbStaticRootToken(p) {
+			continue
+		}
+		for _, seg := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
+			switch seg {
+			case "", ".":
+				continue
+			case "..":
+				if len(segs) == 0 {
+					escaped = true
+					continue
+				}
+				segs = segs[:len(segs)-1]
+			default:
+				segs = append(segs, seg)
+			}
+		}
+	}
+	return segs, len(segs) == 0 && !escaped, escaped
+}
+
+// pbStaticRootToken reports whether s is an expression that names the project
+// root without a path component.
+func pbStaticRootToken(s string) bool {
+	s = strings.ReplaceAll(strings.ToLower(strings.TrimSpace(s)), " ", "")
+	for _, token := range pbStaticRootTokens {
+		if s == token {
+			return true
+		}
+	}
+	return false
+}
+
+// pbStaticPathCallInner returns the argument text of a path.join/path.resolve
+// call that starts the expression.
+func pbStaticPathCallInner(a string) (string, bool) {
+	lower := strings.ToLower(a)
+	for _, prefix := range []string{"path.join(", "path.resolve("} {
+		if !strings.HasPrefix(lower, prefix) {
+			continue
+		}
+		open := strings.Index(a, "(")
+		inner := strings.TrimSpace(a[open+1:])
+		if !strings.HasSuffix(inner, ")") {
+			return "", false
+		}
+		return strings.TrimSpace(inner[:len(inner)-1]), true
+	}
+	return "", false
 }

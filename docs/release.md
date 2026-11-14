@@ -122,10 +122,10 @@ refuses an older npm). Use the same or newer npm for the `npm trust` commands.
 ## Verify a release
 
 ```bash
-npm view lv24-vigil version          # 0.8.0
-npm view lv24-vigil dist-tags        # { latest: '0.8.0' }
-npm i -g lv24-vigil@0.8.0            # or @latest
-vigil version                        # vigil 0.8.0 (<commit>, <date>, go<version>)
+npm view lv24-vigil version          # 0.9.0
+npm view lv24-vigil dist-tags        # { latest: '0.9.0' }
+npm i -g lv24-vigil@0.9.0            # or @latest
+vigil version                        # vigil 0.9.0 (<commit>, <date>, go<version>)
 ```
 
 Platform packages, one line each:
@@ -154,7 +154,7 @@ Provenance:
 npm view lv24-vigil dist.attestations
 ```
 
-For `0.8.0` this returns a `https://slsa.dev/provenance/v1` attestation built
+For `0.9.0` this returns a `https://slsa.dev/provenance/v1` attestation built
 from `.github/workflows/npm-publish.yml` on a GitHub-hosted runner. The npm page
 shows the matching provenance badge.
 
@@ -200,6 +200,15 @@ vigil version                                                 # reports the tag 
 
 ### Decision log
 
+- **0.9.0 adds MCP audit, SBOM and inline suppression (2026-11-15).** Ten
+  `VGL-MCP` rules and the offline `vigil mcp-audit` / `vigil_mcp_audit` tool
+  audit MCP configs without starting a server. `vigil sbom` emits CycloneDX 1.6
+  or SPDX 2.3, with config excludes limited to directories so lockfiles stay in
+  the inventory. `vigil:ignore` suppresses a finding with an optional reason and
+  expiry. Fifteen more deterministic rules on top of the 27-rule research pass
+  (42 new since 0.8.0; 263 total); OSV withdrawn/MAL handling,
+  Python `requirements*.txt`/`pyproject.toml` and staged pre-commit scanning are
+  fixed.
 - **0.8.0 fixes dependency severities and locks the OSV endpoint
   (2026-11-11).** OSV `querybatch` returns advisory IDs only, so every
   advisory in 0.7.x was `medium` and `--fail-on high` never fired on a
@@ -356,8 +365,12 @@ reasoning and the procedure if a rewrite is ever required are in
 ## Current state
 
 `0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
-path. All seven npm packages and PyPI are live at `0.8.0`, and `latest` points
-at it. `v0.8.0` makes dependency severities real (0.7.x reported every OSV
+path. All seven npm packages and PyPI are live at `0.9.0`, and `latest` points
+at it. `v0.9.0` adds MCP configuration auditing (`vigil mcp-audit` /
+`vigil_mcp_audit`), SBOM export (CycloneDX 1.6 / SPDX 2.3), inline
+`vigil:ignore` suppression and 42 new rules since 0.8.0 (**263** total, 10
+families).
+`v0.8.0` made dependency severities real (0.7.x reported every OSV
 advisory as `medium`), follows OSV result pages, rejects `scan.osv_base_url` in
 project files and lets `vigil doctor` explain config errors. **Upgrade from
 0.7.x** if you use `vigil dependencies` or `scan.osv`. `v0.7.1` fixes two
@@ -374,7 +387,7 @@ attempt. `v0.5.2` contains the corrected CI templates and the post-0.5.1 docs.
 The composite action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
 as **Vigil security scan** (Security + Code quality).
 
-**Do not pin `0.5.0`.** Use `0.8.0` or newer, or `@latest`. The `v0.5.0` tag is
+**Do not pin `0.5.0`.** Use `0.9.0` or newer, or `@latest`. The `v0.5.0` tag is
 immutable and still resolves, so pinning it silently keeps the stale templates;
 its GitHub release body carries the warning. The npm package version is marked
 with a deprecation notice (a metadata change, not a republish) once the npm 2FA

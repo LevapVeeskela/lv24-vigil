@@ -787,7 +787,7 @@ func TestPackBRuleMetadata(t *testing.T) {
 			counts["VGL-AUTH-"]++
 		}
 	}
-	exact := map[string]int{"VGL-WEB-": 21, "VGL-AUTH-": 18}
+	exact := map[string]int{"VGL-WEB-": 22, "VGL-AUTH-": 19}
 	for prefix, want := range exact {
 		if counts[prefix] != want {
 			t.Errorf("%s: got %d rules in total, want exactly %d", prefix, counts[prefix], want)

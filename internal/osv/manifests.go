@@ -97,6 +97,135 @@ var skipManifestDirs = map[string]bool{
 	".venv":        true,
 }
 
+// manifestExcludePattern is one compiled exclude glob. The semantics
+// deliberately mirror the scanner's include/exclude list
+// (internal/scanner/ignore.go) so one .vigil.yaml selects the same tree for
+// `vigil scan` and `vigil sbom`. The scanner package cannot be imported here
+// without an import cycle, so the small glob translator is repeated.
+type manifestExcludePattern struct {
+	re      *regexp.Regexp
+	dirOnly bool
+}
+
+// manifestExcludes is a compiled, nil-safe set of exclude patterns.
+type manifestExcludes struct {
+	patterns []manifestExcludePattern
+}
+
+// newManifestExcludes compiles raw patterns. Invalid or empty patterns are
+// dropped, and an empty result is nil so callers take the fast path.
+func newManifestExcludes(raw []string) *manifestExcludes {
+	if len(raw) == 0 {
+		return nil
+	}
+	set := &manifestExcludes{}
+	for _, pattern := range raw {
+		if compiled := compileManifestExclude(pattern); compiled != nil {
+			set.patterns = append(set.patterns, *compiled)
+		}
+	}
+	if len(set.patterns) == 0 {
+		return nil
+	}
+	return set
+}
+
+// excludes reports whether rel (slash-separated, relative to the scan root) is
+// excluded. A file also inherits the exclude of a parent directory, which keeps
+// directory patterns effective for paths resolved outside the walk (requirements
+// includes).
+func (s *manifestExcludes) excludes(rel string, isDir bool) bool {
+	if s == nil {
+		return false
+	}
+	for i := range s.patterns {
+		if s.patterns[i].matches(rel, isDir) {
+			return true
+		}
+		if isDir {
+			continue
+		}
+		for dir := path.Dir(rel); dir != "." && dir != "/"; dir = path.Dir(dir) {
+			if s.patterns[i].matches(dir, true) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (g *manifestExcludePattern) matches(rel string, isDir bool) bool {
+	if g.dirOnly && !isDir {
+		return false
+	}
+	if g.re.MatchString(rel) {
+		return true
+	}
+	return isDir && g.re.MatchString(rel+"/")
+}
+
+// compileManifestExclude translates one pattern into an anchored regular
+// expression. "**" crosses directories, "*" and "?" stay within one segment and
+// every other character is literal, so a pattern such as "x[1].txt" keeps its
+// brackets.
+func compileManifestExclude(raw string) *manifestExcludePattern {
+	p := strings.TrimSpace(raw)
+	if p == "" {
+		return nil
+	}
+	p = strings.ReplaceAll(p, "\\", "/")
+	p = strings.TrimPrefix(p, "./")
+	dirOnly := strings.HasSuffix(p, "/")
+	p = strings.TrimSuffix(p, "/")
+	p = strings.TrimPrefix(p, "/")
+	if p == "" {
+		return nil
+	}
+
+	baseOnly := !strings.Contains(p, "/")
+	expr := manifestGlobRegexp(p)
+	if baseOnly {
+		expr = `(?:.*/)?` + expr
+	}
+	re, err := regexp.Compile(`^` + expr + `$`)
+	if err != nil {
+		return nil
+	}
+	return &manifestExcludePattern{re: re, dirOnly: dirOnly}
+}
+
+func manifestGlobRegexp(p string) string {
+	var b strings.Builder
+	for i := 0; i < len(p); {
+		switch p[i] {
+		case '*':
+			if i+1 < len(p) && p[i+1] == '*' {
+				i += 2
+				if i < len(p) && p[i] == '/' {
+					b.WriteString(`(?:.*/)?`)
+					i++
+				} else {
+					b.WriteString(`.*`)
+				}
+				continue
+			}
+			b.WriteString(`[^/]*`)
+			i++
+		case '?':
+			b.WriteString(`[^/]`)
+			i++
+		default:
+			j := i
+			for j < len(p) && p[j] != '*' && p[j] != '?' {
+				j++
+			}
+			b.WriteString(regexp.QuoteMeta(p[i:j]))
+			i = j
+		}
+	}
+	return b.String()
+}
+
 // CollectPackages walks root, parses every supported manifest and returns the
 // deduplicated, sorted package list capped at max.
 //
@@ -112,11 +241,34 @@ func CollectPackages(ctx context.Context, root string, includeDev bool, max int)
 	return pkgs, err
 }
 
+// CollectPackagesWithExcludes is CollectPackages with an exclude list and the
+// coverage warnings the cap and skipped manifests produce.
+//
+// excludes are slash-separated globs relative to root that follow the scanner's
+// exclude semantics: "**" crosses directory boundaries, "*" and "?" do not, a
+// pattern without a slash matches a base name at any depth (for example
+// "*.lock"), and a matching directory is pruned entirely. A nil or empty list
+// collects the whole tree.
+//
+// The warnings are what CollectPackages has always dropped: manifests that could
+// not be parsed, walk and requirements limits that were hit and an inventory
+// truncated by max. They must be shown, because a truncated or partial
+// inventory otherwise looks complete.
+func CollectPackagesWithExcludes(ctx context.Context, root string, includeDev bool, max int, excludes []string) ([]Package, []string, error) {
+	return collectPackagesExcluding(ctx, root, includeDev, max, newManifestExcludes(excludes))
+}
+
 // collectPackages is CollectPackages plus coverage warnings: manifests that
 // were skipped (oversized or unparseable), walk limits that were hit and an
 // inventory truncated by max. A skipped manifest must never look like a
 // clean result, so callers surface these next to query errors.
 func collectPackages(ctx context.Context, root string, includeDev bool, max int) ([]Package, []string, error) {
+	return collectPackagesExcluding(ctx, root, includeDev, max, nil)
+}
+
+// collectPackagesExcluding is collectPackages with an optional exclude set; a
+// nil set walks the whole tree.
+func collectPackagesExcluding(ctx context.Context, root string, includeDev bool, max int, excludes *manifestExcludes) ([]Package, []string, error) {
 	var warnings []string
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
@@ -154,6 +306,9 @@ func collectPackages(ctx context.Context, root string, includeDev bool, max int)
 			if p == absRoot {
 				return nil
 			}
+			if excludes.excludes(rel, true) {
+				return filepath.SkipDir
+			}
 			if skipManifestDirs[strings.ToLower(d.Name())] {
 				return filepath.SkipDir
 			}
@@ -163,6 +318,9 @@ func collectPackages(ctx context.Context, root string, includeDev bool, max int)
 			return nil
 		}
 		if !d.Type().IsRegular() {
+			return nil
+		}
+		if excludes.excludes(rel, false) {
 			return nil
 		}
 		kind, ok := manifestKindFor(d.Name())
@@ -188,8 +346,10 @@ func collectPackages(ctx context.Context, root string, includeDev bool, max int)
 	}
 
 	// Parse lockfiles first so a manifest is only used when its directory has
-	// no usable lockfile.
+	// no usable lockfile. Requirements includes must honour the same excludes
+	// as the walk: an include may name a file the walk refused to enter.
 	reqBudget := newRequirementsParseBudget(ctx, absRoot)
+	reqBudget.excludes = excludes
 	var packages []Package
 	lockDirs := make(map[string]bool)
 	for _, f := range files {
@@ -241,7 +401,7 @@ func collectPackages(ctx context.Context, root string, includeDev bool, max int)
 		packages = kept
 	}
 	if max > 0 && len(packages) > max {
-		warnings = append(warnings, fmt.Sprintf("osv: found %d packages but only the first %d (sorted by ecosystem and name) were queried; raise the package limit for full coverage", len(packages), max))
+		warnings = append(warnings, fmt.Sprintf("osv: inventory truncated at the %d package cap: found %d packages but only the first %d (sorted by ecosystem and name) were kept; raise the package limit for full coverage", max, len(packages), max))
 	}
 	return capPackages(packages, max), warnings, nil
 }
@@ -681,6 +841,7 @@ func parsePyPIRequirement(raw string) (string, string, bool) {
 type requirementsParseBudget struct {
 	ctx         context.Context
 	root        string
+	excludes    *manifestExcludes
 	visited     map[string]bool
 	includes    int
 	maxIncludes int
@@ -814,6 +975,10 @@ func (s *requirementsParseBudget) include(abs, rel, target string, depth int, de
 	}
 	if dir := skippedManifestDir(targetRel); dir != "" {
 		*warnings = append(*warnings, fmt.Sprintf("osv: %s: requirements include %q is inside the skipped directory %q", rel, target, dir))
+		return
+	}
+	if s.excludes.excludes(targetRel, false) {
+		*warnings = append(*warnings, fmt.Sprintf("osv: %s: requirements include %q is excluded by the scan exclude list", rel, target))
 		return
 	}
 

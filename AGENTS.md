@@ -1,6 +1,6 @@
 # AGENTS.md — working with Vigil
 
-Vigil is a local-first security auditor: 248 deterministic rules plus optional
+Vigil is a local-first security auditor: 263 deterministic rules plus optional
 LLM triage, fixes and a threat model. It is a CLI and a stdio MCP server. Read
 [`llms.txt`](llms.txt) for the compact machine index.
 
@@ -106,10 +106,16 @@ Cursor: use the `mcpServers` JSON shape in
    `vigil_dependencies` for known public dependency advisories.
    The dependency tool makes an explicit OSV network request; the hardening
    tool is deterministic and offline.
+6. Use `vigil_mcp_audit` / `vigil mcp-audit` for MCP server configuration
+   posture (unpinned packages, literal secrets, cleartext endpoints, TLS
+   bypass). It reads configuration files only: no configured server is started
+   and no endpoint is contacted.
+7. Use `vigil sbom` to inventory declared dependencies as CycloneDX 1.6 or
+   SPDX 2.3 JSON. It is offline and does not resolve version ranges.
 
 ## Rules that matter
 
-- **No model? `--no-llm`.** All 248 rules still run; a missing model is a
+- **No model? `--no-llm`.** All 263 rules still run; a missing model is a
   warning, not a failed scan.
 - **Do not parse the human summary.** Use `--format json`, `vigil status
   --json`, or an MCP tool.

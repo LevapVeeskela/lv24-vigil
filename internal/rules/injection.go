@@ -208,6 +208,28 @@ var (
 	// injTaintAccessRe covers request/parameter accessors that read client
 	// input without a local assignment.
 	injTaintAccessRe = regexp.MustCompile(`(?i)\b(?:request|req)\s*\.\s*(?:GET|POST|FILES|COOKIES|args|form|values|json|params|query|body|headers)\b|\.(?:getParameter|getHeader|getQueryString|getInputStream)\s*\(|\b(?:params|args|form|query)\s*\.\s*get\s*\(`)
+
+	// Wave-2 SAST pack (VGL-INJ-063..065).
+	injPyDjangoRawSQLRe  = regexp.MustCompile(`\bRawSQL\s*\(`)
+	injPyDjangoExtraRe   = regexp.MustCompile(`\.extra\s*\(`)
+	injPyDjangoRawRe     = regexp.MustCompile(`\.raw\s*\(`)
+	injPyDjangoFStringRe = regexp.MustCompile(`(?i)\bf["']`)
+	// Django request sources, matched without string/comment context because a
+	// tainted value inside an f-string is still tainted.
+	injPyDjangoTaintRe = regexp.MustCompile(`(?i)\brequest\s*\.\s*(?:GET|POST|COOKIE|FILES|body|data|query_params|headers)\b|\bself\s*\.\s*request\b|\bkwargs\b|\bparams\s*\[`)
+
+	injPHPEntityLoaderOffRe = regexp.MustCompile(`(?i)\blibxml_disable_entity_loader\s*\(\s*false\s*\)`)
+	injPHPXMLEntityFlagRe   = regexp.MustCompile(`\bLIBXML_(?:NOENT|DTDLOAD|DTDVALID)\b`)
+	injPHPNoXXERe           = regexp.MustCompile(`\bLIBXML_NO_XXE\b`)
+	injPHPXMLParseCallRe    = regexp.MustCompile(`(?i)\b(?:DOMDocument|loadXML|simplexml_load_string|simplexml_load_file|XMLReader|xml_parse)\b|->\s*open\s*\(|\bload\s*\(`)
+
+	injRubyRawRequestRe = regexp.MustCompile(`\braw\s*\(\s*(?:params|request|cookies|session|@)`)
+	injRubyHTMLSafeRe   = regexp.MustCompile(`\.html_safe\b`)
+	injRubySanitizeRe   = regexp.MustCompile(`\bsanitize\s*[\(\s]`)
+	// injRubyRequestishRe names the Rails sources that make raw/html_safe a
+	// live XSS sink. Instance variables are included: a controller assigns
+	// request-derived data to them.
+	injRubyRequestishRe = regexp.MustCompile(`(?i)\bparams\b|\brequest\b|\bcookies\b|\bsession\b|\buser\b|\binput\b|@`)
 )
 
 const (
@@ -1291,7 +1313,112 @@ func InjectionRules() []Rule {
 				return injFindXPath(f)
 			},
 		}.rule(),
+
+		injSpec{
+			meta: injMeta(
+				"VGL-INJ-063",
+				"Django raw SQL API receives formatted SQL",
+				"Django's RawSQL, QuerySet.extra and QuerySet.raw accept SQL fragments without binding them. An f-string, %-format, .format() or concatenation puts request values into the SQL text, so the database executes attacker-controlled syntax. Pass the SQL text as a constant and bind values through params.",
+				model.SeverityHigh,
+				[]string{"python"},
+				[]string{"CWE-89"},
+				nil,
+			),
+			remediation: injRemediationSQL,
+			// Syntactic detection: the SQL text is formatted, but only a
+			// taint path proves request data reaches it.
+			confidence: model.ConfidenceMedium,
+			find: func(f *File) []int {
+				return injFindDjangoRawSQL(f)
+			},
+		}.rule(),
+
+		injPHPRule(
+			"VGL-INJ-064",
+			"PHP XML parsing enables entity substitution or external DTDs",
+			"LIBXML_NOENT substitutes entities, LIBXML_DTDLOAD/LIBXML_DTDVALID load external DTDs and libxml_disable_entity_loader(false) re-enables external entity loading, so a crafted document can read local files or reach internal services. Parse with LIBXML_NOENT omitted and reject external entities explicitly (LIBXML_NO_XXE on PHP 8.4+ or a null external entity loader).",
+			[]string{"php"},
+			[]string{"CWE-611"},
+			[]string{"A05:2021"},
+			injFindPHPXMLEntities,
+		),
+
+		injRubyRule(
+			"VGL-INJ-065",
+			"Ruby raw or html_safe renders request data",
+			"Rails auto-escapes ERB output; raw() and .html_safe turn that escaping off. Applying either to params, request data, cookies, the session or an instance variable renders attacker HTML in the victim's browser. Keep auto-escaping and sanitize with an allow-list when markup is required.",
+		),
 	}
+}
+
+// injPHPRule builds a PHP-only rule whose finder also accepts the .phtml and
+// .inc templates that the scanner labels as "other".
+func injPHPRule(id, title, description string, langs, cwe, owasp []string, find func(*File) []int) Rule {
+	meta := injMeta(id, title, description, model.SeverityHigh, langs, cwe, owasp)
+	meta.References = append(meta.References,
+		"https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html#php")
+	return New(meta, func(f *File) []model.Finding {
+		if f == nil || !injPHPSourceLanguage(f) || find == nil {
+			return nil
+		}
+		return injFindings(f, injUniqueLines(find(f)), injFindingOpts{
+			severity:    model.SeverityHigh,
+			confidence:  model.ConfidenceHigh,
+			remediation: injRemediationXXE,
+			references:  meta.References,
+		})
+	})
+}
+
+// injRubyRule builds the Ruby/ERB rule for raw() and .html_safe.
+func injRubyRule(id, title, description string) Rule {
+	meta := injMeta(id, title, description, model.SeverityHigh, []string{"ruby"}, []string{"CWE-79"}, []string{"A03:2021"})
+	meta.References = append(meta.References,
+		"https://brakemanscanner.org/docs/warning_types/cross_site_scripting/",
+		"https://guides.rubyonrails.org/security.html#cross-site-scripting-xss")
+	return New(meta, func(f *File) []model.Finding {
+		if f == nil || !injRubySourceLanguage(f) {
+			return nil
+		}
+		return injFindings(f, injUniqueLines(injFindRubyRawHTML(f)), injFindingOpts{
+			severity:    model.SeverityHigh,
+			confidence:  model.ConfidenceHigh,
+			remediation: injRemediationXSS,
+			references:  meta.References,
+		})
+	})
+}
+
+// injPHPSourceLanguage accepts .php files plus the .phtml/.inc templates the
+// scanner labels as "other".
+func injPHPSourceLanguage(f *File) bool {
+	if f == nil {
+		return false
+	}
+	if f.Language == "php" {
+		return true
+	}
+	if f.Language != "other" {
+		return false
+	}
+	p := strings.ToLower(f.Path)
+	return strings.HasSuffix(p, ".phtml") || strings.HasSuffix(p, ".inc")
+}
+
+// injRubySourceLanguage accepts .rb files plus ERB templates and Rake tasks,
+// which the scanner labels as "other".
+func injRubySourceLanguage(f *File) bool {
+	if f == nil {
+		return false
+	}
+	if f.Language == "ruby" {
+		return true
+	}
+	if f.Language != "other" {
+		return false
+	}
+	p := strings.ToLower(f.Path)
+	return strings.HasSuffix(p, ".erb") || strings.HasSuffix(p, ".rhtml") || strings.HasSuffix(p, ".rake")
 }
 
 func injMeta(id, title, description string, severity model.Severity, langs, cwe, owasp []string) model.RuleMeta {
@@ -2479,4 +2606,358 @@ func injFindXPath(f *File) []int {
 		out = append(out, i+1)
 	}
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// VGL-INJ-063 — Django raw SQL APIs receive formatted SQL
+// ---------------------------------------------------------------------------
+
+// injFindDjangoRawSQL flags RawSQL(), QuerySet.extra() and QuerySet.raw() calls
+// whose SQL text is formatted or concatenated instead of bound. A literal SQL
+// string with %s placeholders and a params= binding are safe.
+func injFindDjangoRawSQL(f *File) []int {
+	if f == nil {
+		return nil
+	}
+	docstrings := PythonDocstringLines(f)
+	var out []int
+	for i, line := range f.Lines {
+		if docstrings[i] || IsCommentLine(line, f.Language) {
+			continue
+		}
+		switch {
+		case injCodeMatch(injPyDjangoRawSQLRe, line):
+			_, args := injSinkCall(f, i, injPyDjangoRawSQLRe, 3)
+			if len(args) == 0 || !injDjangoSQLArgDynamic(f, i, args[0]) {
+				continue
+			}
+			out = append(out, i+1)
+		case injCodeMatch(injPyDjangoExtraRe, line):
+			_, args := injSinkCall(f, i, injPyDjangoExtraRe, 4)
+			if !injDjangoExtraDynamic(f, i, args) {
+				continue
+			}
+			out = append(out, i+1)
+		case injCodeMatch(injPyDjangoRawRe, line):
+			_, args := injSinkCall(f, i, injPyDjangoRawRe, 4)
+			if len(args) == 0 || !injDjangoSQLArgDynamic(f, i, args[0]) {
+				continue
+			}
+			out = append(out, i+1)
+		}
+	}
+	return out
+}
+
+// injDjangoExtraDynamic reports whether extra() passes a dynamic SQL fragment
+// in where=, select=, tables= or order_by=. params= is a binding and is safe.
+func injDjangoExtraDynamic(f *File, idx int, args []string) bool {
+	for _, arg := range args {
+		name, value := injDjangoKwarg(arg)
+		switch name {
+		case "where", "select", "tables", "order_by":
+			if injDjangoSQLArgDynamic(f, idx, value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// injDjangoKwarg splits one `name=value` call argument.
+func injDjangoKwarg(arg string) (string, string) {
+	arg = strings.TrimSpace(arg)
+	eq := strings.Index(arg, "=")
+	if eq <= 0 {
+		return "", ""
+	}
+	name := strings.TrimSpace(arg[:eq])
+	if injBareIdentifier(name) == "" {
+		return "", ""
+	}
+	return strings.ToLower(name), strings.TrimSpace(arg[eq+1:])
+}
+
+// injDjangoSQLArgDynamic reports whether a raw-SQL argument is formatted from
+// variables or request data. Bare identifiers are resolved one hop through the
+// nearest assignment within ten lines; an unresolved name is not reported.
+func injDjangoSQLArgDynamic(f *File, idx int, arg string) bool {
+	return injDjangoSQLArgDynamicDepth(f, idx, arg, 0)
+}
+
+func injDjangoSQLArgDynamicDepth(f *File, idx int, arg string, depth int) bool {
+	if f == nil || depth > 2 {
+		return false
+	}
+	arg = strings.TrimSpace(arg)
+	if arg == "" || strings.HasPrefix(arg, "Q(") {
+		return false
+	}
+	if injDynamicExpr(arg) || injPyDjangoFStringRe.MatchString(arg) || injPyDjangoTaintRe.MatchString(arg) {
+		return true
+	}
+	if strings.Contains(arg, ".format(") {
+		return true
+	}
+	if injIsQuotedLiteral(arg) {
+		return false
+	}
+	if inner := injDjangoBracketInner(arg); inner != "" {
+		parts := injCallArgs("("+inner+")", 0)
+		if len(parts) == 0 {
+			return false
+		}
+		for _, part := range parts {
+			if injDjangoSQLArgDynamicDepth(f, idx, part, depth+1) {
+				return true
+			}
+		}
+		return false
+	}
+	name := injBareIdentifier(strings.Trim(arg, "()[]"))
+	if name == "" {
+		return false
+	}
+	j := injAssignmentIndex(f, idx, name, 10)
+	if j < 0 {
+		return false
+	}
+	return injDjangoSQLArgDynamicDepth(f, j, injAssignmentValue(f.Lines[j], name), depth+1)
+}
+
+// injDjangoBracketInner returns the inner text of a list or tuple argument.
+func injDjangoBracketInner(arg string) string {
+	arg = strings.TrimSpace(arg)
+	pairs := [][2]byte{{'[', ']'}, {'(', ')'}}
+	for _, pair := range pairs {
+		if len(arg) < 2 || arg[0] != pair[0] || arg[len(arg)-1] != pair[1] {
+			continue
+		}
+		return strings.TrimSpace(arg[1 : len(arg)-1])
+	}
+	return ""
+}
+
+// ---------------------------------------------------------------------------
+// VGL-INJ-064 — PHP XML parsing enables entity substitution or external DTDs
+// ---------------------------------------------------------------------------
+
+// injFindPHPXMLEntities flags PHP code that turns on entity substitution or
+// external DTD loading inside the argument list of an XML parse call. A flag
+// assigned on its own statement does not affect a later parse whose arguments
+// never receive it.
+func injFindPHPXMLEntities(f *File) []int {
+	if f == nil {
+		return nil
+	}
+	var out []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) {
+			continue
+		}
+		if injPHPEntityLoaderOffRe.MatchString(line) {
+			out = append(out, i+1)
+			continue
+		}
+		if !injPHPXMLEntityFlagRe.MatchString(line) {
+			continue
+		}
+		if injPHPXMLFlagInParseCall(f, i) {
+			out = append(out, i+1)
+		}
+	}
+	return out
+}
+
+// injPHPXMLFlagInParseCall reports whether a LIBXML entity flag on line idx sits
+// inside the balanced argument list of an XML parse call that starts on that
+// line or on one of the five lines before it. The call must not carry
+// LIBXML_NO_XXE, which neutralises the flag.
+func injPHPXMLFlagInParseCall(f *File, idx int) bool {
+	flags := injPHPXMLEntityFlagRe.FindAllStringIndex(f.Lines[idx], -1)
+	if len(flags) == 0 {
+		return false
+	}
+	start := idx - 5
+	if start < 0 {
+		start = 0
+	}
+	end := idx + 5
+	if end >= len(f.Lines) {
+		end = len(f.Lines) - 1
+	}
+	joined := strings.Join(f.Lines[start:end+1], "\n")
+	// lineOffsets[j] is the offset of line j inside joined for start <= j <= idx.
+	lineOffsets := make([]int, idx-start+1)
+	for j := start; j < idx; j++ {
+		lineOffsets[j-start+1] = lineOffsets[j-start] + len(f.Lines[j]) + 1
+	}
+	for j := start; j <= idx; j++ {
+		text := f.Lines[j]
+		for _, loc := range injPHPXMLParseCallRe.FindAllStringIndex(text, -1) {
+			if inString, inComment := codeContextAt(text, loc[0]); inString || inComment {
+				continue
+			}
+			open := strings.Index(text[loc[0]:], "(")
+			if open < 0 {
+				continue
+			}
+			open += loc[0]
+			// The parenthesis must belong to the matched call name, not to a
+			// later call on the same line.
+			if loc[1] <= open && strings.TrimSpace(text[loc[1]:open]) != "" {
+				continue
+			}
+			open += lineOffsets[j-start]
+			close := injParenEnd(joined, open)
+			if close < 0 {
+				continue
+			}
+			if injPHPNoXXERe.MatchString(joined[open:close]) {
+				continue
+			}
+			for _, flag := range flags {
+				if inString, inComment := codeContextAt(f.Lines[idx], flag[0]); inString || inComment {
+					continue
+				}
+				pos := lineOffsets[idx-start] + flag[0]
+				if pos > open && pos < close {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// injParenEnd returns the offset of the parenthesis that closes the "(" at open,
+// respecting quoted strings, or -1 when the text ends first.
+func injParenEnd(s string, open int) int {
+	if open < 0 || open >= len(s) || s[open] != '(' {
+		return -1
+	}
+	depth := 0
+	var quote byte
+	escaped := false
+	for i := open; i < len(s); i++ {
+		c := s[i]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"':
+			quote = c
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// ---------------------------------------------------------------------------
+// VGL-INJ-065 — Ruby raw/html_safe renders request data
+// ---------------------------------------------------------------------------
+
+// injFindRubyRawHTML flags raw() applied to request data and .html_safe applied
+// to a value that carries request data on the same line or through a one-hop
+// local assignment. ERB comment tags (<%# ... %>) are documentation, not
+// rendered output, and are skipped like # comments.
+func injFindRubyRawHTML(f *File) []int {
+	if f == nil {
+		return nil
+	}
+	var out []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) || injRubyERBComment(line) {
+			continue
+		}
+		if injRubySanitizeRe.MatchString(line) {
+			continue
+		}
+		if injCodeMatch(injRubyRawRequestRe, line) {
+			out = append(out, i+1)
+			continue
+		}
+		if injCodeMatch(injRubyHTMLSafeRe, line) && injRubyHTMLSafeDynamic(f, i, line) {
+			out = append(out, i+1)
+		}
+	}
+	return out
+}
+
+// injRubyERBComment reports whether the line is an ERB comment tag. `<%#` and
+// `<%#=` open a comment regardless of a leading `=` or `-`.
+func injRubyERBComment(line string) bool {
+	return strings.HasPrefix(strings.TrimSpace(line), "<%#")
+}
+
+// injRubyHTMLSafeDynamic reports whether the receiver of .html_safe holds
+// request data. Literal strings and sanitized values are safe.
+func injRubyHTMLSafeDynamic(f *File, idx int, line string) bool {
+	at := strings.Index(line, ".html_safe")
+	if at < 0 {
+		return false
+	}
+	recv := strings.TrimSpace(line[:at])
+	if recv == "" || injRubyLiteralReceiver(recv) {
+		return false
+	}
+	if injRubyRequestishRe.MatchString(recv) {
+		return true
+	}
+	name := injRubyReceiverName(recv)
+	if name == "" {
+		return false
+	}
+	for j := idx - 1; j >= 0 && j >= idx-5; j-- {
+		rhs := injAssignmentValue(f.Lines[j], name)
+		if rhs == "" {
+			continue
+		}
+		if injRubySanitizeRe.MatchString(rhs) {
+			return false
+		}
+		return injRubyRequestishRe.MatchString(rhs)
+	}
+	return false
+}
+
+// injRubyLiteralReceiver reports whether the receiver expression ends in a
+// string literal, as in "<b>hi</b>".html_safe.
+func injRubyLiteralReceiver(recv string) bool {
+	r := strings.TrimSpace(recv)
+	if r == "" {
+		return false
+	}
+	last := r[len(r)-1]
+	return last == '"' || last == '\'' || last == '`'
+}
+
+// injRubyReceiverName returns the local variable or method name of the receiver
+// expression, or "" when it is not a plain identifier.
+func injRubyReceiverName(recv string) string {
+	r := strings.TrimSpace(recv)
+	if i := strings.LastIndexAny(r, " \t(,+-*/?:;"); i >= 0 {
+		r = r[i+1:]
+	}
+	if i := strings.LastIndex(r, "."); i >= 0 {
+		r = r[i+1:]
+	}
+	return injBareIdentifier(strings.TrimSpace(r))
 }

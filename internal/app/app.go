@@ -42,6 +42,10 @@ type App struct {
 	Model *model.ModelInfo
 	// Warnings from startup (for example an LLM that could not initialise).
 	Warnings []string
+	// NoInlineSuppressions is a CLI-only override that ignores vigil:ignore
+	// directives for this App's scans. The MCP server leaves it false so
+	// inline directives stay active for MCP scans.
+	NoInlineSuppressions bool
 }
 
 // New resolves root, loads configuration and builds every component. An LLM
@@ -158,6 +162,9 @@ func (a *App) Options(req model.ScanRequest) scanner.Options {
 		BaselinePath: baseline,
 		NoBaseline:   req.NoBaseline,
 		OSV:          a.Config.Scan.OSV && !req.DisableOSV,
+		// Inline suppressions default to enabled in the config; the CLI flag
+		// is the only override that turns them off for one run.
+		NoInlineSuppressions: a.NoInlineSuppressions || !a.Config.Scan.InlineSuppressions,
 	}
 }
 

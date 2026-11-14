@@ -56,6 +56,9 @@ type Options struct {
 	BaselinePath string // relative to Root; empty uses .vigil-baseline.json
 	NoBaseline   bool
 	OSV          bool
+	// NoInlineSuppressions ignores vigil:ignore directives in comments. The
+	// zero value keeps them active, which is the documented default.
+	NoInlineSuppressions bool
 }
 
 // Scanner runs a rule registry over files.
@@ -194,8 +197,19 @@ func (s *Scanner) scanFiles(ctx context.Context, input []*rules.File, opts Optio
 	res.Errors = append(res.Errors, ruleErrs...)
 	findings = dedupeFindings(findings)
 
+	// Inline directives are applied after dedupe and before the baseline, so
+	// an ignored finding is reported as suppressed and the baseline still
+	// sees exactly the findings that were not ignored in the source.
+	var inlineSuppressed []model.Finding
+	if !opts.NoInlineSuppressions {
+		var inlineErrs []string
+		findings, inlineSuppressed, inlineErrs = applyInlineSuppressions(findings, files)
+		res.Errors = append(res.Errors, inlineErrs...)
+	}
+
 	kept, suppressed, baselineErrs := applyBaseline(findings, opts)
 	res.Errors = append(res.Errors, baselineErrs...)
+	suppressed = append(inlineSuppressed, suppressed...)
 
 	min := opts.MinSeverity
 	if min == "" {

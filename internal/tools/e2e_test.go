@@ -6,6 +6,8 @@ package tools_test
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -45,7 +47,7 @@ func (c *rpcClient) trySend(v any) error {
 
 // TestE2EHandshakeAndToolSurface walks a complete MCP session against the real
 // Vigil tool surface: every supported protocol version, the notifications, the
-// eleven tools with their JSON schemas, the resources and the prompts.
+// fourteen tools with their JSON schemas, the resources and the prompts.
 func TestE2EHandshakeAndToolSurface(t *testing.T) {
 	h := newHarness(t)
 
@@ -94,8 +96,8 @@ func TestE2EHandshakeAndToolSurface(t *testing.T) {
 	}
 
 	wantNames := tools.ToolNames()
-	if len(wantNames) != 13 {
-		t.Fatalf("tools.ToolNames() has %d entries, want 13", len(wantNames))
+	if len(wantNames) != 14 {
+		t.Fatalf("tools.ToolNames() has %d entries, want 14", len(wantNames))
 	}
 	if len(list.Tools) != len(wantNames) {
 		t.Fatalf("tools/list returned %d tools, want %d", len(list.Tools), len(wantNames))
@@ -480,5 +482,48 @@ func TestE2EOpenWorldHints(t *testing.T) {
 		if got != open[tool.Name] {
 			t.Errorf("%s openWorldHint = %v, want %v", tool.Name, got, open[tool.Name])
 		}
+		if tool.Name == "vigil_mcp_audit" {
+			if readOnly, _ := tool.Annotations["readOnlyHint"].(bool); !readOnly {
+				t.Errorf("vigil_mcp_audit readOnlyHint = %v, want true", tool.Annotations["readOnlyHint"])
+			}
+		}
+	}
+}
+
+// TestE2EMCPAudit drives vigil_mcp_audit through the real stdio surface: it
+// must read only MCP configuration text, report only VGL-MCP rules and stay
+// inside the server root.
+func TestE2EMCPAudit(t *testing.T) {
+	h := newHarness(t)
+	config := `{
+  "mcpServers": {
+    "fs": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp/work"]
+    }
+  }
+}
+`
+	if err := os.WriteFile(filepath.Join(h.repo, ".mcp.json"), []byte(config), 0o644); err != nil {
+		t.Fatalf("write .mcp.json: %v", err)
+	}
+
+	res := h.client.mustTool("vigil_mcp_audit", map[string]any{"path": "."})
+	if text := textOf(t, res); !strings.Contains(text, "VGL-MCP-001") {
+		t.Fatalf("vigil_mcp_audit did not report the unpinned package:\n%s", text)
+	}
+	audit := structuredInto[model.ScanResult](t, res)
+	if len(audit.Findings) == 0 {
+		t.Fatal("vigil_mcp_audit returned no findings")
+	}
+	for _, f := range audit.Findings {
+		if !strings.HasPrefix(f.RuleID, "VGL-MCP-") {
+			t.Errorf("vigil_mcp_audit returned a non-MCP rule %q", f.RuleID)
+		}
+	}
+
+	confined := h.client.tool("vigil_mcp_audit", map[string]any{"path": ".."})
+	if !confined.IsError {
+		t.Fatalf("vigil_mcp_audit accepted a path outside the server root: %s", textOf(t, confined))
 	}
 }

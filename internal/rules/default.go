@@ -16,5 +16,6 @@ func Default() *Registry {
 	r.Add(DependencyRules()...)
 	r.Add(PackCRules()...)
 	r.Add(AntiRERules()...)
+	r.Add(MCPRules()...)
 	return r
 }

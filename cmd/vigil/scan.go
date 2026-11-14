@@ -30,11 +30,13 @@ type scanOptions struct {
 	maxFindings int
 	noBaseline  bool
 	noOSV       bool
-	format      string
-	output      string
-	failOn      string
-	quiet       bool
-	color       string
+	// noInlineSuppressions ignores vigil:ignore comment directives.
+	noInlineSuppressions bool
+	format               string
+	output               string
+	failOn               string
+	quiet                bool
+	color                string
 }
 
 func registerScanFlags(fs *flag.FlagSet, o *scanOptions, review bool) {
@@ -56,6 +58,7 @@ func registerScanFlags(fs *flag.FlagSet, o *scanOptions, review bool) {
 	fs.IntVar(&o.maxFindings, "max-findings", 0, "cap the number of findings (0 = config default)")
 	fs.BoolVar(&o.noBaseline, "no-baseline", false, "ignore the suppression baseline")
 	fs.BoolVar(&o.noOSV, "no-osv", false, "skip the configured OSV dependency lookup for this scan")
+	fs.BoolVar(&o.noInlineSuppressions, "no-inline-suppressions", false, "ignore vigil:ignore comment directives")
 	fs.StringVar(&o.format, "format", "", "report format: md, json, sarif or html")
 	fs.StringVar(&o.output, "output", "", "write the report to a file (\"-\" for stdout)")
 	fs.StringVar(&o.failOn, "fail-on", "", "exit 2 when a finding at or above this severity exists")
@@ -101,6 +104,9 @@ func runScanLikeMode(name string, args []string, review, hardening bool, stdout,
 		return err
 	}
 	defer a.Close()
+	// Threaded here rather than through model.ScanRequest so the MCP server
+	// keeps its current arguments and keeps inline directives enabled.
+	a.NoInlineSuppressions = o.noInlineSuppressions
 	printWarnings(stderr, a.Warnings)
 
 	req, err := o.request(a.Root)
@@ -373,6 +379,7 @@ Flags:`, name, intro)
   --min-severity LEVEL   low, medium, high or critical
   --max-findings N       cap the number of findings
   --no-baseline          ignore the suppression baseline
+  --no-inline-suppressions  ignore vigil:ignore comment directives
   --format FMT           md, json, sarif or html
   --output FILE          write the report to FILE ("-" = stdout)
   --fail-on LEVEL        exit 2 when a finding at or above LEVEL exists

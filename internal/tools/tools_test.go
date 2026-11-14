@@ -323,6 +323,7 @@ func TestHandshakeAndToolList(t *testing.T) {
 		"vigil_review":       true,
 		"vigil_dependencies": true,
 		"vigil_hardening":    true,
+		"vigil_mcp_audit":    true,
 		"vigil_explain":      true,
 		"vigil_fix":          true,
 		"vigil_threat_model": true,

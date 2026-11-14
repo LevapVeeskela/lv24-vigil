@@ -19,7 +19,9 @@ vigil
 | `vigil status` | Show provider, model, rules, store and last scan. Alias: `vigil doctor`. |
 | `vigil rules` | List and filter the detection rules. |
 | `vigil hardening [path]` | Run only the anti-RE hardening rules (`VGL-ARE`) and report gaps by platform. |
+| `vigil mcp-audit [path]` | Run only the MCP configuration rules (`VGL-MCP`) over project and optionally user configs. |
 | `vigil dependencies [path]` | Read supported lockfiles and query OSV.dev for known public advisories. |
+| `vigil sbom [path]` | Build a CycloneDX 1.6 or SPDX 2.3 dependency inventory. |
 | `vigil baseline` | List, add, remove or clear the suppression baseline. |
 | `vigil report` | Render a stored scan. |
 | `vigil precheck` | Upload a SARIF report to the LV24 security control plane as a pre-check. |
@@ -70,6 +72,7 @@ These flags are shared by `vigil scan` and `vigil review`, except where noted.
 | `--min-severity LEVEL` | `info`, `low`, `medium`, `high`, `critical` | Hide findings below this level. Default from config. |
 | `--max-findings N` | integer | Cap the number of findings. `0` uses the config default. |
 | `--no-baseline` | - | Ignore the suppression baseline. |
+| `--no-inline-suppressions` | - | Ignore `vigil:ignore` comment directives. |
 | `--no-osv` | - | Skip the configured OSV dependency lookup for this scan. |
 | `--format FMT` | `md`, `json`, `sarif`, `html` | Report format. Default from config (`md`). |
 | `--output FILE` | path or `-` | Write the report to a file. `-` means stdout. |
@@ -115,6 +118,11 @@ git diff | vigil scan --diff -
 ```
 
 `--diff` takes precedence over `--changed`. `--diff` also works with `review`.
+
+Only added lines are scanned, but `vigil:ignore` directives still work: a
+directive on the unchanged context line directly above an added line applies,
+and is read from the working tree when the padded diff file lacks that line.
+Grammar, expiry and precedence: [rules.md](rules.md#inline-suppressions).
 
 ## Review
 
@@ -258,6 +266,59 @@ builds, backup and cleartext settings, plist transport exceptions, Flutter
 release obfuscation, Electron isolation, Node inspector flags and production
 source maps. It forces deterministic output and skips the configured OSV lookup.
 These are hardening gaps, not vulnerability or exploitability claims.
+
+## MCP configuration audit
+
+```bash
+vigil mcp-audit .
+vigil mcp-audit . --user --format json
+vigil mcp-audit ./services/api --format sarif --fail-on high
+vigil mcp-audit . --max-findings 50 --output mcp-audit.md
+```
+
+Runs only the `VGL-MCP` rules over MCP server configuration files:
+`.mcp.json`, `mcp.json`, `mcp-config.json`, `claude_desktop_config.json`,
+`opencode.json`, `*.mcp.json` and their YAML variants. `--user` adds known
+user-level configs under the home directory (`claude_desktop_config.json` and
+`~/.config/mcp/*.json`), which are reported with `~/`-relative paths.
+
+| Flag | Meaning |
+|---|---|
+| `--path DIR` | Directory to audit. Default `.`; a positional path also works. |
+| `--user` | Also read known user-level configs under the home directory. |
+| `--format FMT` | `md`, `json` or `sarif`. Default `md`. |
+| `--output FILE` | Write the report to a file. `-` means stdout. |
+| `--fail-on LEVEL` | Exit `2` when a finding at or above this level exists. |
+| `--max-findings N` | Cap the number of findings. `0` means no cap. |
+
+The command is deterministic and offline. It reads configuration text only: no
+configured server is started, no endpoint is contacted and no file is written
+except a report named by `--output`. Project discovery stays inside the audited
+directory, including through symlinks; `--user` is the only way it reads outside,
+and then only from the known home paths. Findings are configuration gaps, not
+proof that an MCP server is malicious or safe.
+
+## SBOM
+
+```bash
+vigil sbom .                                        # CycloneDX 1.6 JSON on stdout
+vigil sbom . --format spdx --output sbom.spdx.json  # SPDX 2.3 JSON
+vigil sbom . --include-dev                          # keep development dependencies
+```
+
+| Flag | Meaning |
+|---|---|
+| `--path DIR` | Directory to inventory. Default `.`; a positional path also works. |
+| `--format FMT` | `cyclonedx` (default) or `spdx`. |
+| `--include-dev` | Include development dependencies and mark them. |
+| `--output FILE` | Write the document to a file. `-` means stdout. |
+
+Builds the inventory from the manifests and lockfiles the OSV scanner already
+understands. It is offline, runs no package manager and does not resolve version
+ranges; a manifest that only declares ranges without a lockfile contributes no
+exact versions. The document is reproducible: the CycloneDX serial number and
+SPDX namespace derive from the inventory, and `SOURCE_DATE_EPOCH` pins the
+timestamp (default: the Unix epoch).
 
 ## Dependency advisories
 
@@ -421,6 +482,7 @@ project settings:
 | `scan.max_file_bytes` | `2 MiB` | Skip larger files; the effective limit is capped at 64 MiB |
 | `scan.follow_symlinks` | `false` | Follow symlinks during the walk (user config only) |
 | `scan.baseline` | `.vigil-baseline.json` | Suppression file; must stay inside the project root |
+| `scan.inline_suppressions` | `true` | Honour `vigil:ignore` comment directives |
 | `scan.osv` | `false` | Opt-in OSV dependency advisory lookup (network). Off by default |
 | `scan.osv_base_url` | `https://api.osv.dev` | OSV API endpoint override (self-hosted mirror or tests). User config or `VIGIL_OSV_BASE_URL` only; a project file is rejected |
 | `output.format` | `md` | Default report format |

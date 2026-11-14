@@ -1,6 +1,6 @@
 # Vigil
 
-Vigil is a local-first security auditor for source repositories. It runs 248
+Vigil is a local-first security auditor for source repositories. It runs 263
 deterministic rules, then optionally uses the model configured by the user for
 triage, deep review, fix proposals and a STRIDE-style threat model. The same
 binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud.
@@ -8,8 +8,9 @@ binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud
 Repository: https://github.com/LevapVeeskela/lv24-vigil
 License: Apache-2.0
 Binary: vigil
-Current release line: 0.8.x: 221 rules; main adds 27 unreleased rules (248
-total), the vigil_hardening tool and the vigil_dependencies tool.
+Current release line: 0.9.x: 263 rules in ten families, 14 MCP tools,
+offline `mcp-audit` and `sbom`, inline suppression, plus the
+`vigil_hardening` and `vigil_dependencies` tools.
 
 ## Canonical install
 
@@ -51,7 +52,9 @@ Install only `lv24-vigil`.
     vigil status --json                     provider, model, rules, store, last scan
     vigil rules [--json]                    authoritative rule catalog
     vigil hardening [path]                  anti-RE hardening gaps (VGL-ARE), offline
+    vigil mcp-audit [path] [--user]         MCP server config gaps (VGL-MCP), offline
     vigil dependencies [path]               known OSV advisories for declared packages
+    vigil sbom [path] [--format cyclonedx|spdx]  dependency inventory, offline
     vigil baseline list|add|remove|clear
     vigil report --format md|json|sarif|html
     vigil precheck --sarif FILE --api URL --token JWT
@@ -148,6 +151,7 @@ Read-only unless noted.
 - vigil_verify(findingId) — re-check whether a finding is still present.
 - vigil_history(limit?) — recent scans from the local store.
 - vigil_hardening(path?, minSeverity?, maxFindings?, noBaseline?) — run only the VGL-ARE hardening rules.
+- vigil_mcp_audit(path?, includeUser?, minSeverity?, maxFindings?) — run only the VGL-MCP configuration rules; reads config files only.
 - vigil_dependencies(path?, includeDev?, maxPackages?, osvBaseUrl?) — known OSV advisories for declared packages (network; osvBaseUrl must be https or loopback http).
 
 Resources: vigil://status, vigil://rules, vigil://scan/last, vigil://scan/<id>.
@@ -178,10 +182,10 @@ OLLAMA_HOST points at a non-default Ollama.
 
 ## Rules
 
-248 deterministic rules in nine families:
-VGL-SEC 37 secrets, VGL-INJ 51 injection, VGL-CRY 16 crypto, VGL-AUTH 18 auth,
-VGL-WEB 21 web, VGL-CFG 42 config/IaC, VGL-CI 20 CI, VGL-DEP 15 dependencies,
-VGL-ARE 28 anti-RE hardening.
+263 deterministic rules in ten families:
+VGL-SEC 37 secrets, VGL-INJ 54 injection, VGL-CRY 16 crypto, VGL-AUTH 19 auth,
+VGL-WEB 22 web, VGL-CFG 42 config/IaC, VGL-CI 20 CI, VGL-DEP 15 dependencies,
+VGL-ARE 28 anti-RE hardening, VGL-MCP 10 MCP server configuration.
 
 VGL-AI-001 is synthesized by the LLM deep review. VGL-OSV-<advisory> appears only
 when scan.osv is enabled. `vigil rules` is authoritative.
@@ -219,6 +223,28 @@ package name and version, then the IDs of matched advisories to fetch their
 details; it runs no package manager and writes nothing. Skipped manifests, a
 truncated package list and failed lookups are reported as warnings: any warning
 means coverage is incomplete.
+
+## MCP configuration audit
+
+`vigil_mcp_audit` / `vigil mcp-audit` runs only the VGL-MCP rules over MCP
+server configuration files: `.mcp.json`, `mcp.json`, `mcp-config.json`,
+`claude_desktop_config.json`, `opencode.json`, `*.mcp.json` and YAML variants.
+With `--user` / `includeUser` it adds known home-directory configs. It checks
+unpinned server packages, literal secrets in env/headers/args, cleartext
+endpoints, disabled TLS verification, dangerous mounts, auto-approval and
+prompt-injection surfaces. Deterministic and offline: no configured server is
+started, no endpoint is contacted and nothing is written. A clean audit does
+not prove that a server is trustworthy.
+
+## SBOM
+
+`vigil sbom [path] [--format cyclonedx|spdx] [--include-dev] [--output FILE]`
+builds a bill of materials from the manifests and lockfiles the OSV scanner
+already understands. Default is CycloneDX 1.6 JSON; SPDX 2.3 JSON is
+`--format spdx`. Development dependencies are omitted unless `--include-dev` is
+passed. The document is reproducible: the serial number and SPDX namespace are
+derived from the inventory, and `SOURCE_DATE_EPOCH` pins the timestamp. It is
+offline, runs no package manager and does not resolve version ranges.
 
 ## Safety
 

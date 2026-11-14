@@ -113,6 +113,9 @@ type ScanConfig struct {
 	MaxFileBytes int64    `yaml:"max_file_bytes"`
 	FollowLinks  bool     `yaml:"follow_symlinks"`
 	Baseline     string   `yaml:"baseline"`
+	// InlineSuppressions enables vigil:ignore comment directives. Default
+	// true; a project or user config may turn them off.
+	InlineSuppressions bool `yaml:"inline_suppressions"`
 	// OSV enables optional dependency lookups against api.osv.dev. Off by
 	// default: a security tool should not phone home unless asked.
 	OSV bool `yaml:"osv"`
@@ -165,8 +168,11 @@ type ScanFile struct {
 	MaxFileBytes *int64   `yaml:"max_file_bytes"`
 	FollowLinks  *bool    `yaml:"follow_symlinks"`
 	Baseline     *string  `yaml:"baseline"`
-	OSV          *bool    `yaml:"osv"`
-	OSVBaseURL   *string  `yaml:"osv_base_url"`
+	// InlineSuppressions is a pointer so an explicit false in a config file
+	// is distinguishable from the built-in true default.
+	InlineSuppressions *bool   `yaml:"inline_suppressions"`
+	OSV                *bool   `yaml:"osv"`
+	OSVBaseURL         *string `yaml:"osv_base_url"`
 }
 
 type OutputFile struct {
@@ -189,13 +195,14 @@ func Defaults() Config {
 		CommandOutput:         CommandOutputAuto,
 		CommandMaxOutputBytes: DefaultCommandMaxOutputBytes,
 		Scan: ScanConfig{
-			Mode:         "standard",
-			MinSeverity:  string(model.SeverityLow),
-			MaxFindings:  200,
-			Concurrency:  defaultConcurrency(),
-			Exclude:      defaultExcludes(),
-			MaxFileBytes: 2 << 20,
-			Baseline:     ".vigil-baseline.json",
+			Mode:               "standard",
+			MinSeverity:        string(model.SeverityLow),
+			MaxFindings:        200,
+			Concurrency:        defaultConcurrency(),
+			Exclude:            defaultExcludes(),
+			MaxFileBytes:       2 << 20,
+			Baseline:           ".vigil-baseline.json",
+			InlineSuppressions: true,
 		},
 		Output: OutputConfig{
 			Format:  "md",
@@ -426,6 +433,10 @@ func mergeFile(cfg *Config, path string, allowSecret bool) error {
 		if s.Baseline != nil {
 			cfg.Scan.Baseline = *s.Baseline
 			cfg.Sources["scan.baseline"] = path
+		}
+		if s.InlineSuppressions != nil {
+			cfg.Scan.InlineSuppressions = *s.InlineSuppressions
+			cfg.Sources["scan.inline_suppressions"] = path
 		}
 		if s.OSV != nil {
 			cfg.Scan.OSV = *s.OSV

@@ -87,6 +87,8 @@ or the `npx` form above. The transport is stdio; no URL or port is needed.
 
 ## Tools
 
+The server exposes 14 tools:
+
 | Tool | Purpose | Side effects |
 |---|---|---|
 | `vigil_scan` | Scan the repository or a directory. Runs deterministic rules first, then optional LLM analysis. | scan history; network to the configured model, and to OSV when `scan.osv` is on |
@@ -97,6 +99,7 @@ or the `npx` form above. The transport is stdio; no URL or port is needed.
 | `vigil_status` | Report provider, model, engine and store status. | none |
 | `vigil_rules` | List the rule catalog with IDs, severities and categories. | none |
 | `vigil_hardening` | Run only the `VGL-ARE` anti-RE hardening rules and group gaps by platform. Maps each gap to the REA reverse-engineering surface it raises the cost against in [anti-re-hardening.md](anti-re-hardening.md). | scan history only |
+| `vigil_mcp_audit` | Run only the `VGL-MCP` rules over MCP server configuration files. With `includeUser=true` it also reads known home-directory configs. | none |
 | `vigil_dependencies` | Read supported manifests and query OSV.dev for known public advisories. | network request to OSV |
 | `vigil_baseline` | List, add, remove or clear accepted findings in the baseline. | baseline file only |
 | `vigil_report` | Render a stored scan as Markdown, JSON, SARIF or HTML. | only when `path` is supplied |
@@ -105,8 +108,10 @@ or the `npx` form above. The transport is stdio; no URL or port is needed.
 
 Tools that can leave the machine (a configured model or OSV) declare
 `openWorldHint: true`: `vigil_scan`, `vigil_review`, `vigil_explain`,
-`vigil_fix`, `vigil_threat_model` and `vigil_dependencies`. `vigil_hardening`
-and `vigil_verify` are always offline.
+`vigil_fix`, `vigil_threat_model` and `vigil_dependencies`. `vigil_hardening`,
+`vigil_mcp_audit` and `vigil_verify` are always offline. The MCP audit reads
+configuration text only: no configured server is started and no endpoint is
+contacted.
 
 The deterministic result is returned even when no model is configured. If the
 model fails, the tool returns the findings it has and a warning, not an empty
