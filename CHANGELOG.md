@@ -4,6 +4,32 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## Unreleased
+
+### Added
+
+- 27 deterministic rules from the security-tool research pass: provider-specific
+  secrets (1Password, age, Docker Hub, Discord, Stripe webhook secrets, PyPI,
+  RubyGems, Terraform Cloud), LDAP/XPath injection, unsafe SnakeYAML, Jinja2
+  `autoescape=False`, zip-slip and upload path traversal, SSH host-key
+  verification, five mobile/desktop anti-RE checks, five Terraform/Kubernetes/
+  Compose checks and a CI scanner-gate check. Catalog: **248 rules**.
+- Python dependency collection covers `requirements*.txt`, `-r` includes and
+  PEP 621 `pyproject.toml` dependencies.
+
+### Fixed
+
+- OSV advisories that the source withdrew are no longer reported; `MAL-*`
+  records are critical malware findings with remove/rotate remediation.
+- The pre-commit hook scans the staged diff (`git diff --cached`) instead of the
+  working tree, so a staged-then-reverted secret is still caught.
+- `VGL-WEB-002` covers Java and PHP traversal sinks; `VGL-WEB-003` covers Java
+  `sendRedirect` and Spring `redirect:`.
+
+### Changed
+
+- Documentation counts and family tables now report 248 rules.
+
 ## 0.8.0 - 2026-11-11
 
 Upgrade from 0.7.x if you use `vigil dependencies` or `scan.osv`: 0.7.x

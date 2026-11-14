@@ -1,6 +1,6 @@
 # Detection rules
 
-Vigil ships 160+ deterministic rules. They are pure: they read a file, never
+Vigil ships 248 deterministic rules. They are pure: they read a file, never
 write, never execute scanned code and never make a network call. The CLI is the
 authoritative catalog:
 
@@ -15,17 +15,17 @@ a complete list and will lag behind the code.
 
 | Family | Prefix | Rules | Focus |
 |---|---|---:|---|
-| Secrets | `VGL-SEC` | 29 | Credentials committed to the repository |
-| Injection | `VGL-INJ` | 47 | Sinks that turn untrusted input into code, SQL, shell or markup |
+| Secrets | `VGL-SEC` | 37 | Credentials committed to the repository |
+| Injection | `VGL-INJ` | 51 | Sinks that turn untrusted input into code, SQL, shell or markup |
 | Crypto | `VGL-CRY` | 16 | Broken algorithms, weak parameters and disabled verification |
-| Auth | `VGL-AUTH` | 17 | JWT, cookies, CORS, CSRF and default credentials |
-| Web | `VGL-WEB` | 18 | SSRF, traversal, redirects, headers, debug surfaces |
-| Config / IaC | `VGL-CFG` | 37 | Docker, Compose, Kubernetes, Terraform, nginx, env files |
-| CI | `VGL-CI` | 19 | Workflow permissions, untrusted checkouts and shell injection |
+| Auth | `VGL-AUTH` | 18 | JWT, cookies, CORS, CSRF and default credentials |
+| Web | `VGL-WEB` | 21 | SSRF, traversal, redirects, headers, debug surfaces |
+| Config / IaC | `VGL-CFG` | 42 | Docker, Compose, Kubernetes, Terraform, nginx, env files |
+| CI | `VGL-CI` | 20 | Workflow permissions, untrusted checkouts and shell injection |
 | Dependencies | `VGL-DEP` | 15 | Lockfiles, version ranges, install sources and TLS |
-| Anti-RE | `VGL-ARE` | 23 | Missing mobile/desktop hardening: release obfuscation, debug signing, debuggable builds, backup/cleartext, plist exceptions, inspector flags, source maps, plus Rust/.NET/iOS debug symbols, iOS testability, Electron fuses/ASAR, JS minification, WebView debugging and Hermes. Mapping: [anti-re-hardening.md](anti-re-hardening.md) |
+| Anti-RE | `VGL-ARE` | 28 | Missing mobile/desktop hardening: release obfuscation, debug signing, debuggable builds, backup/cleartext, plist exceptions, inspector flags, source maps, plus Rust/.NET/iOS debug symbols, iOS testability, Electron fuses/ASAR, JS minification, WebView debugging, Hermes, user-CA trust, Gradle debuggable releases, ProGuard obfuscation, Electron remote debugging and iOS optimization. Mapping: [anti-re-hardening.md](anti-re-hardening.md) |
 
-The table counts the 221 deterministic rules in 0.8.x; `vigil rules` is always
+The table counts the 248 deterministic rules in the current catalog; `vigil rules` is always
 current. `VGL-AI-001` is synthesized by the LLM deep review and is not part of
 the deterministic catalog, so it does not appear in `vigil rules`. OSV findings
 use `VGL-OSV-<advisory>` and only appear when `scan.osv` is enabled or when the

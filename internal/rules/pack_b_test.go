@@ -752,7 +752,9 @@ func TestPackBRuleMetadata(t *testing.T) {
 		{"dependencies", "VGL-DEP-", 7, DependencyRules()},
 	}
 	seen := map[string]bool{}
+	counts := map[string]int{}
 	for _, g := range groups {
+		counts[g.prefix] += len(g.rules)
 		if len(g.rules) < g.min {
 			t.Errorf("%s: got %d rules, want at least %d", g.name, len(g.rules), g.min)
 		}
@@ -774,6 +776,21 @@ func TestPackBRuleMetadata(t *testing.T) {
 			if m.Category == "" {
 				t.Errorf("%s: rule %s has no category", g.name, m.ID)
 			}
+		}
+	}
+	for _, r := range PackCRules() {
+		id := r.Meta().ID
+		switch {
+		case strings.HasPrefix(id, "VGL-WEB-"):
+			counts["VGL-WEB-"]++
+		case strings.HasPrefix(id, "VGL-AUTH-"):
+			counts["VGL-AUTH-"]++
+		}
+	}
+	exact := map[string]int{"VGL-WEB-": 21, "VGL-AUTH-": 18}
+	for prefix, want := range exact {
+		if counts[prefix] != want {
+			t.Errorf("%s: got %d rules in total, want exactly %d", prefix, counts[prefix], want)
 		}
 	}
 }

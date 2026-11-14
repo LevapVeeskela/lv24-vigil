@@ -184,6 +184,30 @@ var (
 	// EF Core raw SQL.
 	injCSEFRawSQLRe       = regexp.MustCompile(`\b(?:FromSqlRaw|ExecuteSqlRawAsync|ExecuteSqlRaw)\s*\(`)
 	injCSEFInterpolatedRe = regexp.MustCompile(`\$@?"|@\$"|string\.Format\s*\(`)
+
+	// Wave-1 SAST pack (VGL-INJ-049, VGL-INJ-060..062).
+	injJavaSnakeYAMLNewRe    = regexp.MustCompile(`\bnew\s+Yaml\s*\(`)
+	injJavaSnakeYAMLSafeRe   = regexp.MustCompile(`\bSafeConstructor\b`)
+	injJavaSnakeYAMLUnsafeRe = regexp.MustCompile(`\bnew\s+Constructor\s*\(`)
+	injJavaSnakeYAMLLoadRe   = regexp.MustCompile(`\.(?:load|loadAs|loadAll|loadFromReader)\s*\(`)
+	injJavaSnakeYAMLAssignRe = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\s+Yaml\b`)
+	injLDAPSinkRe            = regexp.MustCompile(`(?i)\b(?:ldap\.search(?:_s|_st|_ext)?|ldap_search|ldap_list|ldap_read)\s*\(|\.search\s*\(|\.Filter\s*=`)
+	injLDAPFilterAssignRe    = regexp.MustCompile(`(?i)\.Filter\s*=\s*(.+)$`)
+	// Only a library filter encoder escapes LDAP metacharacters. A variable or
+	// constant merely named escape (or a Base64.Encoder) does not.
+	injLDAPEscapeRe       = regexp.MustCompile(`(?i)\b(?:filterEncode|escape_filter_chars|LdapEncoder)\b`)
+	injLDAPEscapeVarRe    = regexp.MustCompile(`^\s*(?:(?:final|var|let|const|String|string|val)\s+)*(\$?[A-Za-z_][A-Za-z0-9_]*)\s*(?::=|\+=|=)`)
+	injPyAutoescapeOffRe  = regexp.MustCompile(`\bautoescape\s*=\s*False\b`)
+	injJinjaEnvironmentRe = regexp.MustCompile(`\bEnvironment\s*\(|jinja2`)
+	injXPathContextRe     = regexp.MustCompile(`(?i)xpath|selectnodes|document\.evaluate`)
+	// injXPathCallRe names a known XPath receiver or API. A bare .compile() or
+	// ->query() is not enough: Pattern.compile and PDO::query look identical
+	// without the receiver.
+	injXPathCallRe     = regexp.MustCompile(`(?i)\bXPath\w*\s*\.\s*(?:compile|evaluate)\s*\(|\.xpath\s*\(|\bXPathSelect\w*\s*\(|\bXPathEvaluate\s*\(|\bSelectNodes?\s*\(|\bSelectSingleNode\s*\(|\bdocument\.evaluate\s*\(|\$xpath\s*->\s*(?:query|evaluate)\s*\(`)
+	injXPathBindingsRe = regexp.MustCompile(`(?i)XPathVariableResolver|VariableResolver|variables\s*=`)
+	// injTaintAccessRe covers request/parameter accessors that read client
+	// input without a local assignment.
+	injTaintAccessRe = regexp.MustCompile(`(?i)\b(?:request|req)\s*\.\s*(?:GET|POST|FILES|COOKIES|args|form|values|json|params|query|body|headers)\b|\.(?:getParameter|getHeader|getQueryString|getInputStream)\s*\(|\b(?:params|args|form|query)\s*\.\s*get\s*\(`)
 )
 
 const (
@@ -214,6 +238,14 @@ const (
 	injRemediationVariableExtraction = "Do not extract request arrays into local scope. Read explicit keys ($_POST['name']) and validate each value; if extract is unavoidable, use EXTR_SKIP with a prefix."
 
 	injRemediationModelLoad = "Load models and arrays only from trusted, integrity-checked artifacts. Pass weights_only=True to torch.load, keep allow_pickle=False for numpy, and prefer safetensors; never unpickle uploads or shared caches."
+
+	injRemediationSnakeYAML = "Construct SnakeYAML with new Yaml(new SafeConstructor(new LoaderOptions())) and never deserialize untrusted YAML with the default Constructor. On SnakeYAML 2.0+ the default is safe, but an explicit SafeConstructor keeps the guarantee across upgrades."
+
+	injRemediationLDAP = "Never concatenate request data into an LDAP filter or search base. Escape every value with the directory library's filter encoder (for example ldap.filter.escape_filter_chars), or bind a fixed, parameterized filter and validate the DN against an allowlist."
+
+	injRemediationAutoescape = "Keep Jinja2 autoescaping enabled. Create the environment with autoescape=True or select_autoescape(), and never disable it for templates that render request data."
+
+	injRemediationXPath = "Never build an XPath expression from request data. Select from a fixed set of expressions, or bind values with XPathVariableResolver (Java) or XPath variables (lxml) instead of concatenating them into the query."
 )
 
 // injFindingOpts configures how line hits become findings.
@@ -1195,6 +1227,70 @@ func InjectionRules() []Rule {
 				return injFindEFRawSQL(f)
 			},
 		}.rule(),
+
+		injFindRule(
+			injMeta(
+				"VGL-INJ-049",
+				"SnakeYAML constructed without SafeConstructor",
+				"new Yaml() and new Yaml(new Constructor(...)) deserialize arbitrary Java types (CVE-2022-1471), so a crafted YAML document can reach ScriptEngineManager or URLClassLoader gadget chains. Construct the parser with new SafeConstructor(new LoaderOptions()) instead.",
+				model.SeverityHigh,
+				[]string{"java"},
+				[]string{"CWE-502"},
+				[]string{"A08:2021 - Software and Data Integrity Failures"},
+			),
+			injFindJavaSnakeYAML,
+		),
+
+		injSpec{
+			meta: injMeta(
+				"VGL-INJ-060",
+				"LDAP injection through a dynamically built filter",
+				"Passing request data concatenated, formatted or interpolated into an LDAP search filter or DirectorySearcher.Filter lets an attacker change the query with metacharacters such as )(uid=*). Escape values with the library filter encoder or use a fixed, parameterized filter.",
+				model.SeverityHigh,
+				[]string{"java", "python", "csharp", "php"},
+				[]string{"CWE-90"},
+				nil,
+			),
+			remediation: injRemediationLDAP,
+			confidence:  model.ConfidenceMedium,
+			find: func(f *File) []int {
+				return injFindLDAP(f)
+			},
+		}.rule(),
+
+		injSpec{
+			meta: injMeta(
+				"VGL-INJ-061",
+				"Jinja2 autoescaping disabled",
+				"Creating the Jinja2 environment with autoescape=False turns off HTML escaping for every template it renders, so request data reaches the browser as markup. Keep autoescaping enabled (autoescape=True or select_autoescape()).",
+				model.SeverityMedium,
+				[]string{"python"},
+				[]string{"CWE-79"},
+				nil,
+			),
+			remediation: injRemediationAutoescape,
+			confidence:  model.ConfidenceMedium,
+			find: func(f *File) []int {
+				return injFindPyAutoescapeOff(f)
+			},
+		}.rule(),
+
+		injSpec{
+			meta: injMeta(
+				"VGL-INJ-062",
+				"XPath injection through a dynamically built expression",
+				"Concatenating, formatting or interpolating request data into an XPath expression lets an attacker rewrite the predicate and select nodes the application never intended to expose. Use a fixed expression or bind values through XPath variables instead.",
+				model.SeverityHigh,
+				[]string{"java", "python", "csharp", "php", "javascript"},
+				[]string{"CWE-643"},
+				nil,
+			),
+			remediation: injRemediationXPath,
+			confidence:  model.ConfidenceMedium,
+			find: func(f *File) []int {
+				return injFindXPath(f)
+			},
+		}.rule(),
 	}
 }
 
@@ -2071,6 +2167,316 @@ func injFindEFRawSQL(f *File) []int {
 		if injCSEFInterpolatedRe.MatchString(arg) || injConcatRe.MatchString(arg) {
 			out = append(out, i+1)
 		}
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Wave-1 SAST helpers (VGL-INJ-049, VGL-INJ-060..062)
+// ---------------------------------------------------------------------------
+
+// injDynamicExpr reports whether s builds a value from concatenation,
+// formatting or string interpolation rather than a single literal.
+func injDynamicExpr(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	if injConcatRe.MatchString(s) || injPHPConcatRe.MatchString(s) ||
+		strings.Contains(s, "${") || strings.Contains(s, "#{") ||
+		strings.Contains(s, "String.format") || strings.Contains(s, "String.Format") ||
+		strings.Contains(s, ".format(") || injPyPercentFormatRe.MatchString(s) ||
+		strings.HasPrefix(s, "f\"") || strings.HasPrefix(s, "f'") ||
+		strings.HasPrefix(s, "$\"") || strings.HasPrefix(s, "@$\"") {
+		return true
+	}
+	return false
+}
+
+// injPHPDynamicString reports whether a PHP string literal interpolates a
+// variable. Single-quoted strings and escaped dollars are literal; double
+// quoted strings and heredocs interpolate.
+func injPHPDynamicString(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	if strings.HasPrefix(s, "<<<") {
+		return injPHPUnescapedDollar(s)
+	}
+	if s[0] != '"' {
+		return false
+	}
+	return injPHPUnescapedDollar(s[1:])
+}
+
+// injPHPUnescapedDollar reports whether s contains a $ that starts a variable
+// and is not escaped with a backslash.
+func injPHPUnescapedDollar(s string) bool {
+	escaped := false
+	for i := 0; i < len(s); i++ {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if s[i] == '\\' {
+			escaped = true
+			continue
+		}
+		if s[i] != '$' || i+1 >= len(s) {
+			continue
+		}
+		c := s[i+1]
+		if c == '_' || c == '{' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+			return true
+		}
+	}
+	return false
+}
+
+// injDynamicArg reports whether one call argument is built from variables or
+// interpolation rather than a literal or a plainly assigned constant. The
+// assignment lookup is deliberately shallow (six lines) and evidence-based.
+func injDynamicArg(f *File, idx int, arg string) bool {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		return false
+	}
+	if injDynamicExpr(arg) {
+		return true
+	}
+	if injCodeMatch(pbUserSourceRe, arg) || injCodeMatch(injTaintAccessRe, arg) {
+		return true
+	}
+	if injIsQuotedLiteral(arg) {
+		// PHP interpolates $name inside double-quoted strings and heredocs.
+		return f != nil && f.Language == "php" && injPHPDynamicString(arg)
+	}
+	if f != nil && f.Language == "php" && strings.HasPrefix(strings.TrimSpace(arg), "<<<") {
+		return injPHPDynamicString(arg)
+	}
+	name := injBareIdentifier(arg)
+	if name == "" && strings.HasPrefix(arg, "$") {
+		if bare := injBareIdentifier(arg[1:]); bare != "" {
+			name = "$" + bare
+		}
+	}
+	if name == "" || f == nil {
+		return false
+	}
+	lookup := name
+	if strings.HasPrefix(lookup, "$") {
+		lookup = lookup[1:]
+	}
+	for j := idx - 1; j >= 0 && j >= idx-6; j-- {
+		line := f.Lines[j]
+		if IsCommentLine(line, f.Language) {
+			continue
+		}
+		for _, op := range []string{name + " +=", name + " .="} {
+			if i := strings.Index(line, op); i >= 0 {
+				return injDynamicExpr(line[i+len(op):])
+			}
+		}
+		if value := injAssignmentValue(line, lookup); value != "" {
+			if injCodeMatch(pbUserSourceRe, value) || injCodeMatch(injTaintAccessRe, value) {
+				return true
+			}
+			return injDynamicExpr(value)
+		}
+	}
+	// No assignment in the lookback window: a bare identifier reaching a sink
+	// is a function or method parameter and therefore client-controlled.
+	return true
+}
+
+// injFindJavaSnakeYAML flags a Yaml instance created without SafeConstructor.
+// A later load call is required for medium confidence; an explicit
+// new Constructor(...) argument is high confidence on every SnakeYAML version.
+func injFindJavaSnakeYAML(f *File) []model.Finding {
+	var high, medium []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) || !injCodeMatch(injJavaSnakeYAMLNewRe, line) {
+			continue
+		}
+		_, args := injSinkCall(f, i, injJavaSnakeYAMLNewRe, 3)
+		joined := strings.Join(args, ",")
+		if injJavaSnakeYAMLSafeRe.MatchString(joined) {
+			continue
+		}
+		if injJavaSnakeYAMLUnsafeRe.MatchString(joined) {
+			high = append(high, i+1)
+			continue
+		}
+		if injSnakeYAMLLoadNear(f, i) {
+			medium = append(medium, i+1)
+		}
+	}
+	return injFindingsByConfidence(f, injFindingOpts{
+		severity:    model.SeverityHigh,
+		remediation: injRemediationSnakeYAML,
+		references: []string{
+			"https://www.cve.org/CVERecord?id=CVE-2022-1471",
+			"https://github.com/google/security-research/security/advisories/GHSA-mjmj-j48q-9wg2",
+			"https://cwe.mitre.org/data/definitions/502.html",
+		},
+	}, high, medium)
+}
+
+// injSnakeYAMLLoadNear reports whether a Yaml.load* call with a non-literal
+// argument appears within 20 lines of the constructor. When the constructor
+// line assigns an instance to a variable, only that receiver counts; a chained
+// new Yaml().load(...) has to be on the same line.
+func injSnakeYAMLLoadNear(f *File, idx int) bool {
+	receiver := ""
+	if m := injJavaSnakeYAMLAssignRe.FindStringSubmatch(f.Lines[idx]); m != nil {
+		receiver = m[1]
+	}
+	for j := idx - 20; j <= idx+20; j++ {
+		if j < 0 || j >= len(f.Lines) {
+			continue
+		}
+		if receiver == "" && j != idx {
+			continue
+		}
+		line := f.Lines[j]
+		if IsCommentLine(line, f.Language) || !injCodeMatch(injJavaSnakeYAMLLoadRe, line) {
+			continue
+		}
+		if receiver != "" && !strings.Contains(line, receiver+".") {
+			continue
+		}
+		arg := injFirstArg(f, j, injJavaSnakeYAMLLoadRe, 2)
+		if arg == "" || injIsQuotedLiteral(arg) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// injFindLDAP flags LDAP search sinks whose filter argument is built from
+// dynamic input. Constant filters, escaped values and JNDI lookup calls are
+// deliberately out of scope (VGL-INJ-040 owns lookup).
+func injFindLDAP(f *File) []int {
+	javaCtx := strings.Contains(string(f.Content), "DirContext") ||
+		strings.Contains(string(f.Content), "LdapContext")
+	var out []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) || !injLDAPSinkRe.MatchString(line) {
+			continue
+		}
+		if injLDAPEscapeRe.MatchString(line) {
+			continue
+		}
+		if injLDAPEscapeNear(f, i) {
+			continue
+		}
+		if m := injLDAPFilterAssignRe.FindStringSubmatch(line); m != nil {
+			if f.Language == "csharp" && injDynamicExpr(m[1]) {
+				out = append(out, i+1)
+			}
+			continue
+		}
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, ".search") && !strings.Contains(lower, "ldap.") {
+			// A bare .search() is a JNDI directory sink only in Java code that
+			// actually creates a DirContext.
+			if f.Language != "java" || !javaCtx {
+				continue
+			}
+		}
+		_, args := injSinkCall(f, i, injLDAPSinkRe, 2)
+		for _, arg := range args {
+			if injDynamicArg(f, i, arg) {
+				out = append(out, i+1)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// injLDAPEscapeNear reports whether the filter itself was assembled through a
+// library-provided escaper. Only the sink line and the assignment of a variable
+// that the sink uses count: a variable or encoder named escape elsewhere in the
+// function does not make the filter safe.
+func injLDAPEscapeNear(f *File, idx int) bool {
+	if idx < 0 || idx >= len(f.Lines) {
+		return false
+	}
+	sinkLine := f.Lines[idx]
+	for j := idx; j >= 0 && j >= idx-6; j-- {
+		if j >= len(f.Lines) {
+			continue
+		}
+		line := f.Lines[j]
+		if IsCommentLine(line, f.Language) || !injLDAPEscapeRe.MatchString(line) {
+			continue
+		}
+		if j == idx {
+			return true
+		}
+		name := ""
+		if m := injLDAPEscapeVarRe.FindStringSubmatch(line); m != nil {
+			name = strings.TrimPrefix(m[1], "$")
+		}
+		if name == "" {
+			continue
+		}
+		if regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\b`).MatchString(sinkLine) {
+			return true
+		}
+	}
+	return false
+}
+
+// injFindPyAutoescapeOff flags autoescape=False on a Jinja2 Environment.
+// Comments, documentation and test fixtures are not production template
+// configuration, so they are skipped entirely.
+func injFindPyAutoescapeOff(f *File) []int {
+	p := strings.ToLower(strings.ReplaceAll(f.Path, "\\", "/"))
+	if isDocsPath(p) || isTestPath(p) {
+		return nil
+	}
+	var out []int
+	docstrings := PythonDocstringLines(f)
+	for i, line := range f.Lines {
+		if docstrings[i] || IsCommentLine(line, f.Language) {
+			continue
+		}
+		code := StripInlineHashComment(line, f.Language)
+		if !injCodeMatch(injPyAutoescapeOffRe, code) {
+			continue
+		}
+		if !injJinjaEnvironmentRe.MatchString(f.Window(i+1, 3)) {
+			continue
+		}
+		out = append(out, i+1)
+	}
+	return out
+}
+
+// injFindXPath flags XPath calls whose expression argument is dynamic. The call
+// itself must name a known XPath receiver; a generic Pattern.compile or
+// PDO::query is not evidence of XPath.
+func injFindXPath(f *File) []int {
+	if !injXPathContextRe.MatchString(string(f.Content)) {
+		return nil
+	}
+	var out []int
+	for i, line := range f.Lines {
+		if IsCommentLine(line, f.Language) || !injXPathCallRe.MatchString(line) {
+			continue
+		}
+		if injXPathBindingsRe.MatchString(line) {
+			continue
+		}
+		_, args := injSinkCall(f, i, injXPathCallRe, 3)
+		if len(args) == 0 || !injDynamicArg(f, i, args[0]) {
+			continue
+		}
+		out = append(out, i+1)
 	}
 	return out
 }

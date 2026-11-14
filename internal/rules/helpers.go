@@ -99,6 +99,99 @@ func IsCommentLine(line, language string) bool {
 	}
 }
 
+// StripInlineHashComment removes a # comment from a line in the languages
+// where # starts one (Python, Ruby, PHP and shell). The marker is ignored
+// inside single- or double-quoted strings and when escaped. Callers keep the
+// original line for evidence; only the code portion is returned here.
+func StripInlineHashComment(line, language string) string {
+	switch language {
+	case "python", "ruby", "php", "shell":
+	default:
+		return line
+	}
+	var quote byte
+	escaped := false
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"':
+			quote = c
+		case '#':
+			return line[:i]
+		}
+	}
+	return line
+}
+
+// PythonDocstringLines marks the 0-based lines that are part of a Python
+// triple-quoted string. Docstring prose is documentation, not executable
+// configuration, so rules that look for code tokens can skip those lines.
+func PythonDocstringLines(f *File) map[int]bool {
+	if f == nil || f.Language != "python" {
+		return nil
+	}
+	out := make(map[int]bool)
+	var triple byte
+	for i, line := range f.Lines {
+		active := triple != 0
+		for j := 0; j < len(line); j++ {
+			c := line[j]
+			if triple != 0 {
+				active = true
+				if c == '\\' {
+					j++
+					continue
+				}
+				if c == triple && j+2 < len(line) && line[j+1] == triple && line[j+2] == triple {
+					triple = 0
+					j += 2
+				}
+				continue
+			}
+			if c == '#' {
+				break
+			}
+			if c != '\'' && c != '"' {
+				continue
+			}
+			if j+2 < len(line) && line[j+1] == c && line[j+2] == c {
+				triple = c
+				active = true
+				j += 2
+				continue
+			}
+			q := c
+			for j++; j < len(line); j++ {
+				if line[j] == '\\' {
+					j++
+					continue
+				}
+				if line[j] == q {
+					break
+				}
+			}
+		}
+		if active {
+			out[i] = true
+		}
+	}
+	return out
+}
+
 // SeverityForLanguage caps a base severity for non-production paths. Test
 // fixtures and documentation are still reported, but a hardcoded key in
 // `docs/` is not the same emergency as one in `src/`.

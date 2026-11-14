@@ -1,6 +1,6 @@
 # Vigil
 
-Vigil is a local-first security auditor for source repositories. It runs 221
+Vigil is a local-first security auditor for source repositories. It runs 248
 deterministic rules, then optionally uses the model configured by the user for
 triage, deep review, fix proposals and a STRIDE-style threat model. The same
 binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud.
@@ -8,8 +8,8 @@ binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud
 Repository: https://github.com/LevapVeeskela/lv24-vigil
 License: Apache-2.0
 Binary: vigil
-Current release line: 0.8.x: 221 rules, the vigil_hardening tool and the
-vigil_dependencies tool.
+Current release line: 0.8.x: 221 rules; main adds 27 unreleased rules (248
+total), the vigil_hardening tool and the vigil_dependencies tool.
 
 ## Canonical install
 
@@ -178,10 +178,10 @@ OLLAMA_HOST points at a non-default Ollama.
 
 ## Rules
 
-221 deterministic rules in nine families:
-VGL-SEC 29 secrets, VGL-INJ 47 injection, VGL-CRY 16 crypto, VGL-AUTH 17 auth,
-VGL-WEB 18 web, VGL-CFG 37 config/IaC, VGL-CI 19 CI, VGL-DEP 15 dependencies,
-VGL-ARE 23 anti-RE hardening.
+248 deterministic rules in nine families:
+VGL-SEC 37 secrets, VGL-INJ 51 injection, VGL-CRY 16 crypto, VGL-AUTH 18 auth,
+VGL-WEB 21 web, VGL-CFG 42 config/IaC, VGL-CI 20 CI, VGL-DEP 15 dependencies,
+VGL-ARE 28 anti-RE hardening.
 
 VGL-AI-001 is synthesized by the LLM deep review. VGL-OSV-<advisory> appears only
 when scan.osv is enabled. `vigil rules` is authoritative.
@@ -194,7 +194,8 @@ entitlements and ATS, Flutter release obfuscation, Electron isolation, Node
 inspector flags and production source maps, plus the artifact-level checks for
 Rust debug symbols and DWARF, .NET debug symbols and optimization, iOS
 testability and debug symbols, Electron fuses and ASAR, JavaScript minification,
-Android WebView debugging and Hermes.
+Android WebView debugging, Hermes, user-installed CA trust, Gradle debuggable
+releases, ProGuard obfuscation, Electron remote debugging and iOS optimization.
 These are missing controls, not vulnerabilities. The command is deterministic,
 offline and ignores the configured OSV lookup.
 

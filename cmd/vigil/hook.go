@@ -307,7 +307,7 @@ func hookTargetCommand(mode, failOn string) string {
 	if mode == "pre-push" {
 		return fmt.Sprintf("vigil scan --changed --base @{upstream} (fallback HEAD~1) --no-llm --fail-on %s --quiet", failOn)
 	}
-	return fmt.Sprintf("vigil scan --changed --base HEAD --no-llm --fail-on %s --quiet", failOn)
+	return fmt.Sprintf("git diff --cached --unified=0 --no-color | vigil scan --diff - --no-llm --fail-on %s --quiet", failOn)
 }
 
 func hookTargetFromScript(data []byte, mode string) string {
@@ -319,22 +319,40 @@ func hookTargetFromScript(data []byte, mode string) string {
 	return hookTargetCommand(mode, hookDefaultFailOn)
 }
 
-// hookScript generates a POSIX sh hook. The pre-push variant diffs against the
-// upstream branch; a repository without an upstream (or with a single commit)
-// still gets a usable base instead of a hard failure.
-func hookScript(mode, failOn string) string {
-	base := "HEAD"
-	upstream := ""
-	if mode == "pre-push" {
-		base = "@{upstream}"
-		upstream = `
+// preCommitHookBody scans the index, not the working tree. --diff - rejects
+// empty stdin, so the guard exits cleanly when nothing is staged.
+const preCommitHookBody = `
+# Scan the staged diff (the index), not the working tree: unstaged edits must
+# not pollute the result, and a secret that was staged and then reverted on
+# disk still belongs to the commit being created.
+if git diff --cached --quiet; then
+  exit 0
+fi
+
+git diff --cached --unified=0 --no-color | "$VIGIL_BIN" scan --diff - --no-llm --fail-on '%s' --quiet
+`
+
+// prePushHookBody keeps the upstream comparison with a usable fallback for a
+// repository without an upstream or with a single commit.
+const prePushHookBody = `
+base='@{upstream}'
+
 if ! git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
   base='HEAD~1'
 fi
 if ! git rev-parse --verify --quiet 'HEAD~1' >/dev/null 2>&1; then
   base='HEAD'
 fi
+
+"$VIGIL_BIN" scan --changed --base "$base" --no-llm --fail-on '%s' --quiet
 `
+
+// hookScript generates a POSIX sh hook. The pre-commit variant scans the
+// staged diff; the pre-push variant diffs against the upstream branch.
+func hookScript(mode, failOn string) string {
+	body := fmt.Sprintf(preCommitHookBody, failOn)
+	if mode == "pre-push" {
+		body = fmt.Sprintf(prePushHookBody, failOn)
 	}
 	return fmt.Sprintf(`#!/bin/sh
 %s
@@ -353,11 +371,7 @@ if ! command -v "$VIGIL_BIN" >/dev/null 2>&1; then
   echo "vigil: refusing to skip the security check." >&2
   exit 1
 fi
-
-base='%s'
-%s
-"$VIGIL_BIN" scan --changed --base "$base" --no-llm --fail-on '%s' --quiet
-`, hookMarker, mode, hookTargetCommand(mode, failOn), base, upstream, failOn)
+%s`, hookMarker, mode, hookTargetCommand(mode, failOn), body)
 }
 
 // copyHookFile preserves the original mode so restoring a backup leaves the
@@ -398,8 +412,9 @@ Options:
   --fail-on LEVEL   low, medium, high or critical (default high)
   --no-llm          accepted for clarity; hook scans are always deterministic
 
-The pre-commit hook runs:
-  vigil scan --changed --base HEAD --no-llm --fail-on LEVEL --quiet
+The pre-commit hook scans the staged diff only, and exits 0 when nothing is
+staged:
+  git diff --cached --unified=0 --no-color | vigil scan --diff - --no-llm --fail-on LEVEL --quiet
 The pre-push hook uses --base @{upstream}, falling back to HEAD~1.
 
 Environment:

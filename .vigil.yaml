@@ -59,6 +59,8 @@ scan:
     # text the rules detect (regex literals, "verify=False", "SYS_ADMIN"), so
     # they match themselves. Helper scripts, prose and examples are not
     # product code.
+    # Local research checkouts (gitignored); not product code.
+    - ideas/**
     - internal/rules/**
     - scripts/**
     - docs/**

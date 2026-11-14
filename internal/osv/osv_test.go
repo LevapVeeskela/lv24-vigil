@@ -704,3 +704,206 @@ func TestDescriptionFor(t *testing.T) {
 		t.Fatalf("description should not repeat the summary: %q", duplicate)
 	}
 }
+
+func TestScanSkipsWithdrawnAdvisories(t *testing.T) {
+	// Arrange: querybatch returns IDs; the detail endpoint revokes one record
+	// and keeps the other, which is how a withdrawal reaches a client.
+	details := map[string]string{
+		"GHSA-withdrawn-0001": `{"id":"GHSA-withdrawn-0001","summary":"revoked advisory",
+			"withdrawn":"2024-05-01T00:00:00Z","severity":[{"type":"CVSS_V3","score":"9.8"}]}`,
+		"GHSA-live-0002": `{"id":"GHSA-live-0002","summary":"live advisory",
+			"database_specific":{"severity":"HIGH"}}`,
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v1/vulns/") {
+			body, ok := details[strings.TrimPrefix(r.URL.Path, "/v1/vulns/")]
+			if !ok {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(queryBatchResponse{Results: []queryResult{
+			{Vulns: []vulnerability{{ID: "GHSA-withdrawn-0001"}, {ID: "GHSA-live-0002"}}},
+		}})
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "requests==2.31.0\n")
+
+	// Act
+	findings, err := Scan(context.Background(), dir, Options{BaseURL: srv.URL, HTTPClient: srv.Client(), IncludeDev: true})
+
+	// Assert: only the live advisory is reported.
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1: %+v", len(findings), findings)
+	}
+	if findings[0].RuleID != "VGL-OSV-GHSA-LIVE-0002" {
+		t.Errorf("rule id = %q, want the live advisory", findings[0].RuleID)
+	}
+	if findings[0].Severity != model.SeverityHigh {
+		t.Errorf("severity = %q, want high", findings[0].Severity)
+	}
+}
+
+func TestScanDropsWithdrawnAdvisoryFromQueryBatchPage(t *testing.T) {
+	// Arrange: the live advisory is on the first page; the second page returns
+	// the ID of a revoked advisory, which only the detail endpoint marks as
+	// withdrawn.
+	details := map[string]string{
+		"GHSA-live-paged-0001":      `{"id":"GHSA-live-paged-0001","summary":"live advisory","database_specific":{"severity":"HIGH"}}`,
+		"GHSA-withdrawn-paged-0002": `{"id":"GHSA-withdrawn-paged-0002","summary":"revoked advisory","withdrawn":"2024-05-01T00:00:00Z","database_specific":{"severity":"CRITICAL"}}`,
+	}
+	var pageRequests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v1/vulns/") {
+			body, ok := details[strings.TrimPrefix(r.URL.Path, "/v1/vulns/")]
+			if !ok {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		var payload queryBatchRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || len(payload.Queries) != 1 {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if payload.Queries[0].PageToken == "page-2" {
+			pageRequests.Add(1)
+			_ = json.NewEncoder(w).Encode(queryBatchResponse{Results: []queryResult{
+				{Vulns: []vulnerability{{ID: "GHSA-withdrawn-paged-0002"}}},
+			}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(queryBatchResponse{Results: []queryResult{
+			{Vulns: []vulnerability{{ID: "GHSA-live-paged-0001"}}, NextPageToken: "page-2"},
+		}})
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "requests==2.31.0\n")
+
+	// Act
+	findings, err := Scan(context.Background(), dir, Options{BaseURL: srv.URL, HTTPClient: srv.Client(), IncludeDev: true})
+
+	// Assert: the page was read and its withdrawn advisory was dropped.
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if pageRequests.Load() != 1 {
+		t.Errorf("page requests = %d, want 1", pageRequests.Load())
+	}
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1: %+v", len(findings), findings)
+	}
+	if findings[0].RuleID != "VGL-OSV-GHSA-LIVE-PAGED-0001" {
+		t.Errorf("rule id = %q, want the live advisory", findings[0].RuleID)
+	}
+}
+
+func TestFindingForMaliciousRecordWithCVECompatAlias(t *testing.T) {
+	pkg := Package{Name: "demo-pkg", Version: "1.0.0", Ecosystem: ecosystemNPM, Manifest: "package-lock.json", Line: 5}
+
+	// A MAL- record may carry a CVE compatibility alias; the classification
+	// must follow the MAL id, not the alias.
+	malicious, ok := findingFor(pkg, vulnerability{
+		ID:               "MAL-2025-0001",
+		Aliases:          []string{"CVE-2025-9999"},
+		Summary:          "Malicious code in demo-pkg",
+		DatabaseSpecific: databaseSpecific{Severity: "LOW"},
+	})
+	if !ok {
+		t.Fatal("findingFor returned false for a MAL- record with a CVE alias")
+	}
+	if malicious.Severity != model.SeverityCritical {
+		t.Errorf("severity = %q, want critical", malicious.Severity)
+	}
+	if malicious.RuleID != "VGL-OSV-MAL-2025-0001" {
+		t.Errorf("rule id = %q, want the MAL id", malicious.RuleID)
+	}
+	if !strings.Contains(malicious.Title, "Malicious package") {
+		t.Errorf("title = %q, want the malicious-package title", malicious.Title)
+	}
+	if strings.Contains(malicious.Title, "CVE-2025-9999") {
+		t.Errorf("title = %q, must identify the MAL id", malicious.Title)
+	}
+	if !strings.HasPrefix(malicious.Remediation, "Remove the package") {
+		t.Errorf("remediation = %q, want removal, not an upgrade", malicious.Remediation)
+	}
+
+	// When the id is missing, a MAL alias must still win over a CVE alias.
+	aliasOnly, ok := findingFor(pkg, vulnerability{Aliases: []string{"MAL-2025-0002", "CVE-2025-8888"}})
+	if !ok {
+		t.Fatal("findingFor returned false for a MAL alias")
+	}
+	if aliasOnly.Severity != model.SeverityCritical || aliasOnly.RuleID != "VGL-OSV-MAL-2025-0002" {
+		t.Errorf("alias-only MAL record = %+v, want critical with the MAL rule id", aliasOnly)
+	}
+}
+
+func TestFindingForMaliciousPackage(t *testing.T) {
+	pkg := Package{Name: "event-stream", Version: "3.3.6", Ecosystem: ecosystemNPM, Manifest: "package-lock.json", Line: 7}
+
+	malicious, ok := findingFor(pkg, vulnerability{
+		ID:         "MAL-2024-1234",
+		Summary:    "Malicious code in event-stream",
+		Severity:   []severityEntry{{Type: "CVSS_V3", Score: "0"}},
+		References: []reference{{Type: "WEB", URL: "https://example.test/mal"}},
+	})
+	if !ok {
+		t.Fatal("findingFor returned false for a MAL- record")
+	}
+	if malicious.Severity != model.SeverityCritical {
+		t.Errorf("severity = %q, want critical regardless of the advisory score", malicious.Severity)
+	}
+	if malicious.RuleID != "VGL-OSV-MAL-2024-1234" {
+		t.Errorf("rule id = %q", malicious.RuleID)
+	}
+	if !strings.Contains(malicious.Title, "Malicious package") {
+		t.Errorf("title = %q, want a malicious-package title", malicious.Title)
+	}
+	if strings.Contains(malicious.Title, "Vulnerable dependency") {
+		t.Errorf("a MAL- record must not use the vulnerability title: %q", malicious.Title)
+	}
+	lowerRemediation := strings.ToLower(malicious.Remediation)
+	for _, want := range []string{"remove the package", "rotate credentials", "rebuild"} {
+		if !strings.Contains(lowerRemediation, want) {
+			t.Errorf("remediation %q missing %q", malicious.Remediation, want)
+		}
+	}
+	if !strings.Contains(strings.ToLower(malicious.Description), "malware") {
+		t.Errorf("description should identify malware: %q", malicious.Description)
+	}
+	if !containsString(malicious.References, "https://osv.dev/vulnerability/MAL-2024-1234") {
+		t.Errorf("references missing the OSV permalink: %v", malicious.References)
+	}
+
+	normal, ok := findingFor(pkg, vulnerability{
+		ID:               "GHSA-normal-0001",
+		Summary:          "normal advisory",
+		DatabaseSpecific: databaseSpecific{Severity: "LOW"},
+	})
+	if !ok {
+		t.Fatal("findingFor returned false for a GHSA record")
+	}
+	if normal.Severity != model.SeverityLow {
+		t.Errorf("severity = %q, want low for the normal advisory", normal.Severity)
+	}
+	if !strings.Contains(normal.Title, "Vulnerable dependency") {
+		t.Errorf("title = %q, want the vulnerability title", normal.Title)
+	}
+	if strings.Contains(strings.ToLower(normal.Title), "malicious") {
+		t.Errorf("a GHSA record must not be classified as malicious: %q", normal.Title)
+	}
+	if !strings.HasPrefix(normal.Remediation, "Upgrade event-stream") {
+		t.Errorf("remediation = %q, want the upgrade path", normal.Remediation)
+	}
+}

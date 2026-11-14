@@ -54,6 +54,10 @@ const (
 	ruleIDMaxLen = 80
 	// osvVulnURL is the human-readable permalink prefix.
 	osvVulnURL = "https://osv.dev/vulnerability/"
+	// maliciousIDPrefix marks records from the OSV malicious-package dataset.
+	// Those records describe malware, not a vulnerable release, so they need
+	// different remediation and must never be reported as an upgrade target.
+	maliciousIDPrefix = "MAL-"
 )
 
 // Options controls one OSV scan. The zero value is usable, but note the
@@ -175,6 +179,9 @@ func Audit(ctx context.Context, root string, opts Options) (*AuditResult, error)
 				pending = append(pending, pageRequest{pkg: batch[i], token: token})
 			}
 			for _, vuln := range result.Vulns {
+				if vuln.isWithdrawn() {
+					continue
+				}
 				matches = append(matches, packageVuln{pkg: batch[i], vuln: vuln})
 			}
 		}
@@ -362,6 +369,9 @@ func fetchMorePages(ctx context.Context, client *http.Client, baseURL string, ti
 			token = ""
 			for _, r := range results {
 				for _, v := range r.Vulns {
+					if v.isWithdrawn() {
+						continue
+					}
 					out = append(out, packageVuln{pkg: pr.pkg, vuln: v})
 				}
 				token = strings.TrimSpace(r.NextPageToken)
@@ -395,6 +405,19 @@ const (
 func (v vulnerability) sparse() bool {
 	return v.Summary == "" && v.Details == "" && len(v.Severity) == 0 &&
 		len(v.Affected) == 0 && v.DatabaseSpecific.Severity == ""
+}
+
+// isWithdrawn reports whether the advisory source revoked the record. A
+// withdrawn advisory must not produce a finding: the source has stated that it
+// no longer applies, and querybatch may keep returning its ID for a while.
+func (v vulnerability) isWithdrawn() bool {
+	return strings.TrimSpace(v.Withdrawn) != ""
+}
+
+// isMaliciousID reports whether an advisory belongs to the OSV malicious
+// package dataset.
+func isMaliciousID(id string) bool {
+	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(id)), maliciousIDPrefix)
 }
 
 // hydrateVulns replaces ID-only records in matches with the full advisory
@@ -557,8 +580,12 @@ func summarizeBody(data []byte) string {
 	return s
 }
 
-// findingFor converts one advisory into a finding for pkg.
+// findingFor converts one advisory into a finding for pkg. Withdrawn
+// advisories are dropped: their source has revoked them.
 func findingFor(pkg Package, vuln vulnerability) (model.Finding, bool) {
+	if vuln.isWithdrawn() {
+		return model.Finding{}, false
+	}
 	id := strings.TrimSpace(vuln.ID)
 	if id == "" && len(vuln.Aliases) > 0 {
 		id = strings.TrimSpace(vuln.Aliases[0])
@@ -567,6 +594,7 @@ func findingFor(pkg Package, vuln vulnerability) (model.Finding, bool) {
 	if ruleID == "" {
 		return model.Finding{}, false
 	}
+	malicious := isMaliciousID(id)
 
 	line := pkg.Line
 	if line <= 0 {
@@ -586,8 +614,49 @@ func findingFor(pkg Package, vuln vulnerability) (model.Finding, bool) {
 		References:  referencesFor(vuln),
 		Source:      model.SourceRule,
 	}
+	if malicious {
+		// A MAL- record identifies the package itself as malware. It is not
+		// an upgradeable vulnerability: the severity is always critical and
+		// the only safe remediation is removal plus credential rotation.
+		f.Title = fmt.Sprintf("Malicious package %s@%s (%s)", pkg.Name, pkg.Version, id)
+		f.Description = maliciousDescriptionFor(vuln)
+		f.Severity = model.SeverityCritical
+		f.Remediation = maliciousRemediationFor(pkg, vuln)
+	}
 	f.Normalize()
 	return f, true
+}
+
+// maliciousDescriptionFor leads with the malware classification so a reader
+// cannot mistake the finding for a patched vulnerability, then keeps the
+// advisory text.
+func maliciousDescriptionFor(vuln vulnerability) string {
+	const lead = "This package is flagged as malicious in the OSV database; it is malware, not a vulnerable release. Installing or running it may compromise the host and any credentials it can reach."
+	details := descriptionFor(vuln)
+	if details == "" {
+		return lead
+	}
+	return lead + "\n\n" + details
+}
+
+// maliciousRemediationFor never suggests an upgrade: a MAL- advisory applies
+// to the package itself.
+func maliciousRemediationFor(pkg Package, vuln vulnerability) string {
+	msg := fmt.Sprintf("Remove the package and rotate credentials/rebuild: %s@%s is malware, and a version upgrade does not make it safe.", pkg.Name, pkg.Version)
+	if ref := firstReferenceURL(vuln); ref != "" {
+		msg += " See " + ref + "."
+	}
+	return msg
+}
+
+// firstReferenceURL returns the first non-empty advisory reference.
+func firstReferenceURL(vuln vulnerability) string {
+	for _, r := range vuln.References {
+		if u := strings.TrimSpace(r.URL); u != "" {
+			return u
+		}
+	}
+	return ""
 }
 
 // ruleIDFor derives a stable rule id from an advisory id. Characters that are
@@ -853,6 +922,7 @@ type vulnerability struct {
 	References       []reference      `json:"references"`
 	Published        string           `json:"published"`
 	Modified         string           `json:"modified"`
+	Withdrawn        string           `json:"withdrawn"`
 }
 
 type severityEntry struct {

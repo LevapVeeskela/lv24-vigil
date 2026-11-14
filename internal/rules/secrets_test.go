@@ -15,6 +15,22 @@ func secJoin(parts ...string) string {
 	return strings.Join(parts, "")
 }
 
+// Wave-1 secret fixtures are assembled at runtime so the test source never
+// contains a contiguous live-looking credential.
+var (
+	secTestOnePasswordToken   = secJoin("ops_eyJ", strings.Repeat("Ab3dEf6hIj9kLm2nOp5qRs8tUv", 10))
+	secTestOnePasswordKey     = secJoin("A3-AB3DEF-", "GH9JKL-MN5PQ-RST7U-VWXY9-ZABCD")
+	secTestAgeSecretKey       = secJoin("AGE-SECRET-KEY-1", "QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L", "QPZRY9X8GF2TVDW0S3JN54KHCE")
+	secTestDockerHubPAT       = secJoin("dckr_pat_", "Ab3dEf6hIj9kLm2nOp5qRs8tUvW")
+	secTestDiscordBotToken    = secJoin("MAb3dEf6hIj9kLm2nOp5qRs8", ".", "tUvWxY", ".", "Za1Bc2De3Fg4Hi5Jk6Lm7No8Pq9")
+	secTestDiscordWebhook     = secJoin("https://discord.com/api/webhooks/", "872341905672318945", "/", "Ab3dEf6hIj9kLm2nOp5qRs8tUvWxYz1Bc2De3Fg4Hi5Jk6Lm7No8Pq9Rs0TuVwXyZ")
+	secTestStripeWebhook      = secJoin("whsec_", "Ab3dEf6hIj9kLm2nOp5qRs8tUvWxYz1")
+	secTestPyPIToken          = secJoin("pypi-AgEIcHlwaS5vcmc", "Ab3dEf6hIj9kLm2nOp5qRs8tUvWxYz1Bc2De3Fg4Hi5Jk6Lm7No8Pq9Rs0TuVw")
+	secTestRubyGemsKey        = secJoin("rubygems_", "9f3c2a917b4d4e6a9c1d2f5b8a3e7d109f3c2a917b4d4e6a")
+	secTestTerraformCloud     = secJoin("Ab3dEf6hIj9kLm", ".atlasv1.", "Ab3dEf6hIj9kLm2nOp5qRs8tUvWxYz1Bc2De3Fg4Hi5Jk6Lm7No8Pq9Rs0TuVwXy")
+	secTestDiscordWebhookBody = secJoin("https://discord.com/api/webhooks/", "872341905672318945", "/")
+)
+
 func secTestFile(p, content string) *File {
 	content = strings.ReplaceAll(content, "\r\n", "\n")
 	lines := strings.Split(content, "\n")
@@ -88,8 +104,8 @@ func secRulesByID(t *testing.T) map[string]Rule {
 
 func TestSecretsRuleMetadata(t *testing.T) {
 	rules := SecretsRules()
-	if len(rules) != 29 {
-		t.Fatalf("SecretsRules() = %d rules, want 29", len(rules))
+	if len(rules) != 37 {
+		t.Fatalf("SecretsRules() = %d rules, want 37", len(rules))
 	}
 	idRe := regexp.MustCompile(`^VGL-SEC-\d{3}$`)
 	seen := make(map[string]bool, len(rules))
@@ -121,8 +137,16 @@ func TestSecretsRuleMetadata(t *testing.T) {
 			t.Errorf("%s: no references", m.ID)
 		}
 	}
-	for i := 1; i <= 24; i++ {
+	for i := 1; i <= 31; i++ {
 		id := fmt.Sprintf("VGL-SEC-%03d", i)
+		if !seen[id] {
+			t.Errorf("missing rule id %q", id)
+		}
+	}
+	for _, id := range []string{
+		"VGL-SEC-035", "VGL-SEC-036", "VGL-SEC-037",
+		"VGL-SEC-038", "VGL-SEC-039", "VGL-SEC-040",
+	} {
 		if !seen[id] {
 			t.Errorf("missing rule id %q", id)
 		}
@@ -351,6 +375,86 @@ func TestSecretsRulesPositive(t *testing.T) {
 			wantLines: []int{4},
 			secret:    secJoin("c3ZjX3VzZXI6UjdrTDltTjJwUTRzVDZ2Vw", "=="),
 		},
+		{
+			name:      "1password service account token",
+			ruleID:    "VGL-SEC-027",
+			path:      "src/deploy.sh",
+			content:   "export OP_SERVICE_ACCOUNT_TOKEN=" + secTestOnePasswordToken,
+			wantLines: []int{1},
+			secret:    secTestOnePasswordToken,
+		},
+		{
+			name:      "1password secret key",
+			ruleID:    "VGL-SEC-027",
+			path:      "src/onepassword.yaml",
+			content:   "op_secret_key: " + secTestOnePasswordKey,
+			wantLines: []int{1},
+			secret:    secTestOnePasswordKey,
+		},
+		{
+			name:      "age secret key",
+			ruleID:    "VGL-SEC-031",
+			path:      "keys/age.txt",
+			content:   "identity = " + secTestAgeSecretKey,
+			wantLines: []int{1},
+			secret:    secTestAgeSecretKey,
+		},
+		{
+			name:      "docker hub personal access token",
+			ruleID:    "VGL-SEC-035",
+			path:      "scripts/publish.sh",
+			content:   "DOCKER_TOKEN=" + secTestDockerHubPAT,
+			wantLines: []int{1},
+			secret:    secTestDockerHubPAT,
+		},
+		{
+			name:      "discord bot token",
+			ruleID:    "VGL-SEC-036",
+			path:      "src/notify.py",
+			content:   "DISCORD_BOT_TOKEN=" + secTestDiscordBotToken,
+			wantLines: []int{1},
+			secret:    secTestDiscordBotToken,
+		},
+		{
+			name:      "discord webhook url",
+			ruleID:    "VGL-SEC-036",
+			path:      "src/notify.ts",
+			content:   `const DISCORD_WEBHOOK = "` + secTestDiscordWebhook + `";`,
+			wantLines: []int{1},
+			secret:    secTestDiscordWebhook,
+		},
+		{
+			name:      "stripe webhook signing secret",
+			ruleID:    "VGL-SEC-037",
+			path:      "src/billing.py",
+			content:   "STRIPE_WEBHOOK_SECRET=" + secTestStripeWebhook,
+			wantLines: []int{1},
+			secret:    secTestStripeWebhook,
+		},
+		{
+			name:      "pypi api token",
+			ruleID:    "VGL-SEC-038",
+			path:      "scripts/publish.sh",
+			content:   "TWINE_PASSWORD=" + secTestPyPIToken,
+			wantLines: []int{1},
+			secret:    secTestPyPIToken,
+		},
+		{
+			name:      "rubygems api key",
+			ruleID:    "VGL-SEC-039",
+			path:      "gem/publish.rb",
+			content:   "GEM_API_KEY=" + secTestRubyGemsKey,
+			wantLines: []int{1},
+			secret:    secTestRubyGemsKey,
+		},
+		{
+			name:      "terraform cloud api token",
+			ruleID:    "VGL-SEC-040",
+			path:      "infra/terraform.auto.tfvars",
+			content:   `tfc_token = "` + secTestTerraformCloud + `"`,
+			wantLines: []int{1},
+			secret:    secTestTerraformCloud,
+		},
 	}
 
 	for _, tc := range cases {
@@ -407,6 +511,53 @@ func TestSecretsRulesPositive(t *testing.T) {
 						t.Errorf("raw secret leaked in snippet: %q", fd.Location.Snippet)
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestSecretsWaveOneMasked(t *testing.T) {
+	byID := secRulesByID(t)
+	cases := []struct {
+		name    string
+		ruleID  string
+		path    string
+		content string
+		secret  string
+	}{
+		{"1password token", "VGL-SEC-027", "src/deploy.sh", "OP_SERVICE_ACCOUNT_TOKEN=" + secTestOnePasswordToken, secTestOnePasswordToken},
+		{"1password account key", "VGL-SEC-027", "src/deploy.sh", "OP_SERVICE_ACCOUNT_KEY=" + secTestOnePasswordKey, secTestOnePasswordKey},
+		{"age key", "VGL-SEC-031", "keys/age.txt", secTestAgeSecretKey, secTestAgeSecretKey},
+		{"docker hub pat", "VGL-SEC-035", "scripts/publish.sh", "DOCKER_TOKEN=" + secTestDockerHubPAT, secTestDockerHubPAT},
+		{"discord bot", "VGL-SEC-036", "src/notify.py", "DISCORD_BOT_TOKEN=" + secTestDiscordBotToken, secTestDiscordBotToken},
+		{"discord webhook", "VGL-SEC-036", "src/notify.ts", `const W = "` + secTestDiscordWebhook + `"`, secTestDiscordWebhook},
+		{"stripe webhook", "VGL-SEC-037", "src/billing.py", "STRIPE_WEBHOOK_SECRET=" + secTestStripeWebhook, secTestStripeWebhook},
+		{"pypi token", "VGL-SEC-038", "scripts/publish.sh", "TWINE_PASSWORD=" + secTestPyPIToken, secTestPyPIToken},
+		{"rubygems key", "VGL-SEC-039", "gem/publish.rb", "GEM_API_KEY=" + secTestRubyGemsKey, secTestRubyGemsKey},
+		{"terraform cloud token", "VGL-SEC-040", "infra/x.tfvars", `token = "` + secTestTerraformCloud + `"`, secTestTerraformCloud},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rule := byID[tc.ruleID]
+			if rule == nil {
+				t.Fatalf("rule %s not registered", tc.ruleID)
+			}
+			got := rule.Check(secTestFile(tc.path, tc.content))
+			if len(got) != 1 {
+				t.Fatalf("findings = %+v, want 1", got)
+			}
+			fd := got[0]
+			visible := fd.Evidence + "\n" + fd.Location.Snippet
+			if strings.Contains(visible, tc.secret) {
+				t.Errorf("raw secret leaked: %q", visible)
+			}
+			if len(tc.secret) > 24 {
+				if mid := tc.secret[8:24]; strings.Contains(visible, mid) {
+					t.Errorf("secret body leaked: %q", visible)
+				}
+			}
+			if !strings.Contains(fd.Evidence, "*") {
+				t.Errorf("evidence is not masked: %q", fd.Evidence)
 			}
 		})
 	}
@@ -480,6 +631,60 @@ func TestSecretsNegatives(t *testing.T) {
 			ruleID:  "VGL-SEC-014",
 			path:    "docs/setup.md",
 			content: `password = "example-password-123"`,
+		},
+		{
+			name:    "1password placeholder token",
+			ruleID:  "VGL-SEC-027",
+			path:    "docs/onepassword.md",
+			content: "OPS_TOKEN=ops_eyJ" + strings.Repeat("example", 36),
+		},
+		{
+			name:    "age public recipient in docs",
+			ruleID:  "VGL-SEC-031",
+			path:    "docs/encryption.md",
+			content: `recipient: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p`,
+		},
+		{
+			name:    "docker hub token in comment",
+			ruleID:  "VGL-SEC-035",
+			path:    "scripts/publish.sh",
+			content: "# DOCKER_TOKEN=" + secTestDockerHubPAT,
+		},
+		{
+			name:    "discord bot token short lookalike",
+			ruleID:  "VGL-SEC-036",
+			path:    "internal/rules/secrets_test.go",
+			content: "DISCORD_TOKEN=" + secJoin("MAb3dEf6hIj9kLm2nOp5qRs8", ".", "tUvWxY"),
+		},
+		{
+			name:    "discord webhook short lookalike",
+			ruleID:  "VGL-SEC-036",
+			path:    "src/notify.py",
+			content: `WEBHOOK = "` + secTestDiscordWebhookBody + `short"`,
+		},
+		{
+			name:    "stripe webhook placeholder",
+			ruleID:  "VGL-SEC-037",
+			path:    "src/billing.py",
+			content: "STRIPE_WEBHOOK_SECRET=whsec_exampleAb3dEf6hIj9kLm2nOp5q",
+		},
+		{
+			name:    "pypi token short lookalike",
+			ruleID:  "VGL-SEC-038",
+			path:    "scripts/publish.sh",
+			content: "TWINE_PASSWORD=pypi-AgEIcHlwaS5vcmcshort",
+		},
+		{
+			name:    "rubygems placeholder key",
+			ruleID:  "VGL-SEC-039",
+			path:    "gem/publish.rb",
+			content: "GEM_API_KEY=" + secJoin("rubygems_", strings.Repeat("0", 48)),
+		},
+		{
+			name:    "terraform cloud short lookalike",
+			ruleID:  "VGL-SEC-040",
+			path:    "infra/terraform.auto.tfvars",
+			content: `tfc_token = "Ab3dEf6hIj9kLm.atlasv1.short"`,
 		},
 	}
 	for _, tc := range cases {

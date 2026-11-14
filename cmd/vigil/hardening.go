@@ -142,6 +142,12 @@ func hardeningPlatformFor(ruleID string) string {
 		return "Electron"
 	case 59:
 		return "Web"
+	case 60, 61, 62:
+		return "Android"
+	case 63:
+		return "Electron"
+	case 64:
+		return "iOS"
 	}
 	switch n / 10 {
 	case 0:

@@ -30,6 +30,12 @@ var (
 
 	// VGL-CI-019: values expanded before the github-script JavaScript engine.
 	pbGitHubScriptInjectionRe = regexp.MustCompile(`(?i)\$\{\{[^}]*\bgithub\.(?:event\.(?:pull_request|issue|comment|discussion|review)\.(?:title|body|head\.ref|head\.label|user\.login)|head_ref|event\.workflow_run\.head_branch)\b[^}]*\}\}`)
+
+	// VGL-CI-023: security scan steps that are allowed to fail.
+	pbW1CiContinueOnErrorRe = regexp.MustCompile(`(?i)^\s*-?\s*continue-on-error\s*:\s*["']?true\b`)
+	pbW1CiSecurityScannerRe = regexp.MustCompile(`(?i)\b(?:trivy|grype|snyk|semgrep|codeql|gosec|bandit|osv-scanner|checkov|kics|tfsec|vigil|dependency-check|npm\s+audit|gitleaks|trufflehog|detect-secrets|anchore/scan-action|sonar(?:cloud|-scanner|qube)?)\b`)
+	pbW1CiUsesLineRe        = regexp.MustCompile(`(?i)^(?:-\s*)?uses\s*:\s*["']?([^"'\s]+)`)
+	pbW1CiRunLineRe         = regexp.MustCompile(`(?i)^(?:-\s*)?run\s*:\s*(.*)$`)
 )
 
 // CIRules returns the CI/CD pipeline rules.
@@ -189,6 +195,22 @@ func CIRules() []Rule {
 			OWASP:       []string{"A03:2021"},
 			Tags:        []string{"github-actions", "injection"},
 		}, pbGitHubScriptInjectionRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-CI-023",
+			Title:       "GitHub Actions security scan is allowed to fail",
+			Description: "continue-on-error:true on a security scanner step or job lets the workflow pass even when the scan fails or reports findings. Remove it for blocking scanners or route the result to a required approval.",
+			Severity:    model.SeverityMedium,
+			Category:    model.CategoryCI,
+			Languages:   []string{"yaml"},
+			CWE:         []string{"CWE-693"},
+			OWASP:       []string{"A08:2021"},
+			Tags:        []string{"github-actions", "ci", "security-scan"},
+			References: []string{
+				"https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepscontinue-on-error",
+				"https://cwe.mitre.org/data/definitions/693.html",
+			},
+		}, pbW1CiScanAllowedToFailRule),
 	}
 }
 
@@ -671,6 +693,233 @@ func pbGitHubScriptInjectionRule(f *File) []model.Finding {
 			}
 			break
 		}
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// VGL-CI-023: security scan steps allowed to fail
+// ---------------------------------------------------------------------------
+
+// pbW1CiStepWindow bounds the step or job that owns lines[idx]. The kind is
+// "step" or "job" and is used only in the finding evidence.
+func pbW1CiStepWindow(lines []string, idx int) (int, int, string) {
+	curIndent := pbLineIndent(lines[idx])
+	stepStart := -1
+	for j := idx - 1; j >= 0 && j >= idx-40; j-- {
+		line := lines[j]
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		if pbLineIndent(line) < curIndent && strings.HasPrefix(t, "- ") {
+			stepStart = j
+			break
+		}
+	}
+	if stepStart >= 0 {
+		stepIndent := pbLineIndent(lines[stepStart])
+		end := len(lines)
+		for j := stepStart + 1; j < len(lines); j++ {
+			t := strings.TrimSpace(lines[j])
+			if t == "" || strings.HasPrefix(t, "#") {
+				continue
+			}
+			if pbLineIndent(lines[j]) <= stepIndent && strings.HasPrefix(t, "- ") {
+				end = j
+				break
+			}
+		}
+		if end-stepStart > 60 {
+			end = stepStart + 60
+		}
+		return stepStart, end, "step"
+	}
+	// Job-level continue-on-error: bound the job block by its two-space key.
+	jobStart := -1
+	for j := idx - 1; j >= 0 && j >= idx-80; j-- {
+		line := lines[j]
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		if pbLineIndent(line) == 2 && !strings.HasPrefix(t, "- ") {
+			jobStart = j
+			break
+		}
+	}
+	if jobStart < 0 {
+		jobStart = idx
+	}
+	end := len(lines)
+	for j := jobStart + 1; j < len(lines); j++ {
+		t := strings.TrimSpace(lines[j])
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		if pbLineIndent(lines[j]) == 2 && !strings.HasPrefix(t, "- ") {
+			end = j
+			break
+		}
+	}
+	if end-jobStart > 200 {
+		end = jobStart + 200
+	}
+	return jobStart, end, "job"
+}
+
+// pbW1CiInvokesScanner reports whether the step or job window actually runs a
+// security scanner. A scanner name inside echo/printf output, a comment or an
+// unrelated argument is only a mention; job-level continue-on-error must not be
+// reported for it.
+func pbW1CiInvokesScanner(lines []string) bool {
+	runIndent := -1
+	for _, raw := range lines {
+		t := strings.TrimSpace(raw)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		indent := pbLineIndent(raw)
+		if runIndent >= 0 {
+			if indent > runIndent {
+				if pbW1CiScannerCommand(t) {
+					return true
+				}
+				continue
+			}
+			runIndent = -1
+		}
+		if m := pbW1CiUsesLineRe.FindStringSubmatch(t); m != nil {
+			if pbW1CiScannerToken(m[1]) {
+				return true
+			}
+			continue
+		}
+		m := pbW1CiRunLineRe.FindStringSubmatch(t)
+		if m == nil {
+			continue
+		}
+		cmd := strings.TrimSpace(m[1])
+		if cmd == "" || strings.HasPrefix(cmd, "|") || strings.HasPrefix(cmd, ">") {
+			runIndent = indent
+			continue
+		}
+		if pbW1CiScannerCommand(cmd) {
+			return true
+		}
+	}
+	return false
+}
+
+// pbW1CiScannerCommand reports whether a shell command runs a scanner. Each
+// command segment is checked so "npm ci && npm audit" still counts.
+func pbW1CiScannerCommand(cmd string) bool {
+	segments := strings.FieldsFunc(cmd, func(r rune) bool {
+		return r == ';' || r == '&' || r == '|'
+	})
+	for _, segment := range segments {
+		if pbW1CiSegmentScanner(segment) {
+			return true
+		}
+	}
+	return false
+}
+
+// pbW1CiSegmentScanner inspects one command segment. Leading wrappers, flags and
+// environment assignments are skipped; the first real executable decides.
+func pbW1CiSegmentScanner(segment string) bool {
+	fields := strings.Fields(segment)
+	idx := -1
+	for i, raw := range fields {
+		w := strings.Trim(raw, `"'();,`)
+		if w == "" || strings.HasPrefix(w, "-") {
+			continue
+		}
+		if strings.HasPrefix(w, "#") {
+			return false
+		}
+		if strings.Contains(w, "=") || pbW1CiCommandWrapper(w) {
+			continue
+		}
+		idx = i
+		break
+	}
+	if idx < 0 {
+		return false
+	}
+	first := strings.ToLower(strings.Trim(fields[idx], `"'();,`))
+	switch first {
+	case "npm", "pnpm", "yarn", "bun":
+		return pbW1CiAuditCommand(fields[idx+1:])
+	case "npx", "pnpx", "bunx", "pipx", "uvx":
+		for _, raw := range fields[idx+1:] {
+			w := strings.Trim(raw, `"'();,`)
+			if w == "" || strings.HasPrefix(w, "-") || strings.Contains(w, "=") {
+				continue
+			}
+			return pbW1CiScannerToken(w)
+		}
+		return false
+	case "docker", "podman":
+		for _, raw := range fields[idx+1:] {
+			if pbW1CiScannerToken(raw) {
+				return true
+			}
+		}
+		return false
+	}
+	return pbW1CiScannerToken(first)
+}
+
+// pbW1CiAuditCommand reports the package-manager audit subcommand.
+func pbW1CiAuditCommand(fields []string) bool {
+	for _, raw := range fields {
+		w := strings.ToLower(strings.Trim(raw, `"'();,`))
+		if w == "" || strings.HasPrefix(w, "-") || strings.Contains(w, "=") || w == "run" {
+			continue
+		}
+		return w == "audit"
+	}
+	return false
+}
+
+// pbW1CiCommandWrapper reports shell words that prefix the real executable.
+func pbW1CiCommandWrapper(word string) bool {
+	switch strings.ToLower(strings.Trim(word, `"'();,`)) {
+	case "sudo", "doas", "env", "time", "exec", "command", "nohup", "nice", "xvfb-run",
+		"bash", "sh", "zsh", "pwsh", "powershell", "cmd":
+		return true
+	}
+	return false
+}
+
+// pbW1CiScannerToken reports whether a single shell word names a scanner.
+func pbW1CiScannerToken(word string) bool {
+	w := strings.Trim(word, `"'();,`)
+	return w != "" && pbW1CiSecurityScannerRe.MatchString(w)
+}
+
+func pbW1CiScanAllowedToFailRule(f *File) []model.Finding {
+	if f == nil || !pbIsGitHubWorkflow(f) {
+		return nil
+	}
+	if pbW1IacSkipPath(f.Path) {
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbComment(f, line) || !pbW1CiContinueOnErrorRe.MatchString(line) {
+			continue
+		}
+		start, end, kind := pbW1CiStepWindow(f.Lines, i)
+		if !pbW1CiInvokesScanner(f.Lines[start:end]) {
+			continue
+		}
+		fd := pbFinding(f, i+1, kind+" allows a security scan to fail: "+strings.TrimSpace(line))
+		fd.Severity = pbSev(f, model.SeverityMedium)
+		fd.Confidence = model.ConfidenceHigh
+		fd.Remediation = "Remove continue-on-error so a failed security scan blocks the workflow, or make the scan a required check and route findings to review."
+		out = append(out, fd)
 	}
 	return out
 }

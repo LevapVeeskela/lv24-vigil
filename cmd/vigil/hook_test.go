@@ -59,11 +59,18 @@ func TestHookInstallStatusUninstall(t *testing.T) {
 		hookMarker,
 		`VIGIL_BIN="${VIGIL_BIN:-vigil}"`,
 		`command -v "$VIGIL_BIN"`,
-		`"$VIGIL_BIN" scan --changed --base "$base" --no-llm --fail-on 'high' --quiet`,
+		"git diff --cached --quiet",
+		"git diff --cached --unified=0 --no-color",
+		`git diff --cached --unified=0 --no-color | "$VIGIL_BIN" scan --diff - --no-llm --fail-on 'high' --quiet`,
 		"refusing to skip the security check",
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("generated hook missing %q\n%s", want, script)
+		}
+	}
+	for _, unwanted := range []string{"--changed", "--base HEAD"} {
+		if strings.Contains(script, unwanted) {
+			t.Errorf("pre-commit hook still contains %q\n%s", unwanted, script)
 		}
 	}
 	if runtime.GOOS != "windows" {
@@ -80,10 +87,13 @@ func TestHookInstallStatusUninstall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hook status: %v", err)
 	}
-	for _, want := range []string{"pre-commit", "installed", hookMarker, "vigil scan --changed --base HEAD"} {
+	for _, want := range []string{"pre-commit", "installed", hookMarker, "vigil scan --diff -"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status output missing %q\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "--changed --base HEAD") {
+		t.Errorf("status output still advertises the working-tree scan:\n%s", out)
 	}
 
 	out, _, err = runCLI(t, "hook", "uninstall")
@@ -213,11 +223,15 @@ func TestHookPrePushScriptUsesUpstreamWithFallback(t *testing.T) {
 		"@{upstream}",
 		"base='HEAD~1'",
 		"base='HEAD'",
+		`"$VIGIL_BIN" scan --changed --base "$base" --no-llm --fail-on 'critical' --quiet`,
 		"--fail-on 'critical'",
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("pre-push hook missing %q\n%s", want, script)
 		}
+	}
+	if strings.Contains(script, "--diff -") || strings.Contains(script, "git diff --cached") {
+		t.Errorf("pre-push hook scans the index instead of the pushed range:\n%s", script)
 	}
 
 	out, _, err := runCLI(t, "hook", "status")
@@ -243,9 +257,11 @@ func TestHookInstallRejectsBadInput(t *testing.T) {
 	}
 }
 
-// TestHookScriptExecutesDeterministicScan runs the generated script with a fake
-// vigil binary and asserts the exact argv. It is POSIX-only: the hook is sh.
-func TestHookScriptExecutesDeterministicScan(t *testing.T) {
+// TestHookPreCommitScriptScansStagedDiff runs the generated hook with a fake
+// vigil binary. An empty index must exit 0 without invoking the scanner, and a
+// staged secret must reach the scanner's stdin even after the working tree is
+// reverted. It is POSIX-only: the hook is sh.
+func TestHookPreCommitScriptScansStagedDiff(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the generated hook is a POSIX sh script")
 	}
@@ -258,26 +274,56 @@ func TestHookScriptExecutesDeterministicScan(t *testing.T) {
 	}
 
 	argsFile := filepath.Join(dir, "args.txt")
+	diffFile := filepath.Join(dir, "stdin.diff")
 	fake := filepath.Join(dir, "fake-vigil")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + argsFile + "\n"
+	script := "#!/bin/sh\ncat > " + diffFile + "\nprintf '%s\\n' \"$@\" > " + argsFile + "\n"
 	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(hookBinaryEnv, fake)
 
-	cmd := exec.Command("sh", hookPath(dir, "pre-commit"))
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("hook execution: %v\n%s", err, out)
+	runHook := func(t *testing.T) {
+		t.Helper()
+		cmd := exec.Command("sh", hookPath(dir, "pre-commit"))
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("hook execution: %v\n%s", err, out)
+		}
 	}
+
+	runHook(t)
+	if _, err := os.Stat(argsFile); !os.IsNotExist(err) {
+		t.Fatalf("empty index still invoked the scanner: %v", err)
+	}
+
+	writeTestFile(t, dir, "app.env", "TOKEN=staged\n")
+	cmd := exec.Command("git", "add", "app.env")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	// A secret staged and then reverted in the working tree still belongs to
+	// the commit, so it must be scanned.
+	writeTestFile(t, dir, "app.env", "TOKEN=clean\n")
+
+	runHook(t)
 	data, err := os.ReadFile(argsFile)
 	if err != nil {
 		t.Fatalf("read fake argv: %v", err)
 	}
-	want := "scan\n--changed\n--base\nHEAD\n--no-llm\n--fail-on\nhigh\n--quiet\n"
+	want := "scan\n--diff\n-\n--no-llm\n--fail-on\nhigh\n--quiet\n"
 	if got := string(data); got != want {
 		t.Fatalf("hook argv = %q, want %q", got, want)
+	}
+	staged, err := os.ReadFile(diffFile)
+	if err != nil {
+		t.Fatalf("read scanner stdin: %v", err)
+	}
+	if !strings.Contains(string(staged), "+TOKEN=staged") {
+		t.Fatalf("scanner stdin does not contain the staged secret:\n%s", staged)
+	}
+	if strings.Contains(string(staged), "TOKEN=clean") {
+		t.Fatalf("scanner stdin contains working-tree content:\n%s", staged)
 	}
 }
 

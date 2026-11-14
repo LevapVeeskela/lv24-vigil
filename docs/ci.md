@@ -8,7 +8,7 @@ locally and in CI:
 vigil scan . --no-llm --format sarif --output vigil.sarif --fail-on high
 ```
 
-`--no-llm` runs all 221 rules with no model, no key and no network. `--fail-on`
+`--no-llm` runs all 248 rules with no model, no key and no network. `--fail-on`
 changes the exit code, not the report: the SARIF file is written before the
 process exits `2`, so an upload step with `if: always()` still runs.
 
@@ -35,7 +35,7 @@ What the generated hook does:
 
 | Mode | Command |
 | --- | --- |
-| `pre-commit` | `vigil scan --changed --base HEAD --no-llm --fail-on high --quiet` |
+| `pre-commit` | `git diff --cached --unified=0 --no-color \| vigil scan --diff - --no-llm --fail-on high --quiet`; skipped when the index is empty |
 | `pre-push` | `vigil scan --changed --base @{upstream} --no-llm --fail-on high --quiet`; falls back to `HEAD~1`, then `HEAD` on a single-commit branch |
 
 The file starts with `#!/bin/sh`, is executable, and contains the exact marker

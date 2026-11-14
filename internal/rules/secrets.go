@@ -85,11 +85,27 @@ var (
 
 	secAzureSBAccessKeyRe = regexp.MustCompile(`(?i)\bSharedAccessKey\s*=\s*([A-Za-z0-9+/=]{30,})`)
 
+	secOnePasswordRe = regexp.MustCompile(`\b(?:ops_eyJ[A-Za-z0-9+/]{250,}={0,3}|A3-[A-Z0-9]{6}-(?:[A-Z0-9]{11}|[A-Z0-9]{6}-[A-Z0-9]{5})-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5})\b`)
+
+	secAgeSecretKeyRe = regexp.MustCompile(`\bAGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}\b`)
+
+	secDockerHubPATRe = regexp.MustCompile(`\bdckr_pat_[A-Za-z0-9_-]{27,}\b`)
+
+	secDiscordRe = regexp.MustCompile(`(?:\b[MNO][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}\b|https://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/\d{17,20}/[\w-]{60,})`)
+
+	secStripeWebhookRe = regexp.MustCompile(`\bwhsec_[A-Za-z0-9]{24,}\b`)
+
+	secPyPITokenRe = regexp.MustCompile(`\bpypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,1000}\b`)
+
+	secRubyGemsKeyRe = regexp.MustCompile(`\brubygems_[a-f0-9]{48}\b`)
+
+	secTerraformCloudRe = regexp.MustCompile(`\b[A-Za-z0-9]{14}\.atlasv1\.[A-Za-z0-9_\-=]{60,70}\b`)
+
 	secEnvLineRe = regexp.MustCompile(`^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$`)
 
 	secEnvKeyRe = regexp.MustCompile(`(?i)(password|passwd|secret|token|api_?key|apikey|auth|credential|private_?key|access_?key|client_?secret|dsn|connection_?string)`)
 
-	secProviderUnionRe = regexp.MustCompile(`^(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|glpat-[A-Za-z0-9_\-]{20,}|(?:glrtr?|gldt|glptt|gloas|glcbt|glft|glimt|glsoat|glagent|glwt)-[A-Za-z0-9_\-]{20,}|x(?:ox[abposr]|app)-[A-Za-z0-9\-]{10,}|sk_live_[0-9A-Za-z]{20,}|AIza[0-9A-Za-z_\-]{35}|sk-ant-[A-Za-z0-9_\-]{20,}|sk-[A-Za-z0-9_\-]{20,}|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}|eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}|dop_v1_[a-f0-9]{64}|hvs\.[A-Za-z0-9_-]{90,120}|hvb\.[A-Za-z0-9_-]{138,300}|npm_[A-Za-z0-9]{36}|\d{8,10}:[A-Za-z0-9_-]{35})$`)
+	secProviderUnionRe = regexp.MustCompile(`^(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|glpat-[A-Za-z0-9_\-]{20,}|(?:glrtr?|gldt|glptt|gloas|glcbt|glft|glimt|glsoat|glagent|glwt)-[A-Za-z0-9_\-]{20,}|x(?:ox[abposr]|app)-[A-Za-z0-9\-]{10,}|sk_live_[0-9A-Za-z]{20,}|AIza[0-9A-Za-z_\-]{35}|sk-ant-[A-Za-z0-9_\-]{20,}|sk-[A-Za-z0-9_\-]{20,}|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}|eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}|dop_v1_[a-f0-9]{64}|hvs\.[A-Za-z0-9_-]{90,120}|hvb\.[A-Za-z0-9_-]{138,300}|npm_[A-Za-z0-9]{36}|\d{8,10}:[A-Za-z0-9_-]{35}|ops_eyJ[A-Za-z0-9+/]{250,}={0,3}|A3-[A-Z0-9]{6}-(?:[A-Z0-9]{11}|[A-Z0-9]{6}-[A-Z0-9]{5})-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}|AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}|dckr_pat_[A-Za-z0-9_-]{27,}|[MNO][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}|https://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/\d{17,20}/[\w-]{60,}|whsec_[A-Za-z0-9]{24,}|pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,1000}|rubygems_[a-f0-9]{48}|[A-Za-z0-9]{14}\.atlasv1\.[A-Za-z0-9_\-=]{60,70})$`)
 
 	// secEnvNameRe matches an environment-variable name such as
 	// TELEGRAM_BOT_TOKEN: a mapping target, never a credential value.
@@ -101,7 +117,7 @@ var (
 
 	// secHardRedactor masks well-known credential shapes that may appear on a
 	// neighbouring line inside a snippet window.
-	secHardRedactor = regexp.MustCompile(`(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|glpat-[A-Za-z0-9_\-]{20,}|(?:glrtr?|gldt|glptt|gloas|glcbt|glft|glimt|glsoat|glagent|glwt)-[A-Za-z0-9_\-]{20,}|x(?:ox[abposr]|app)-[A-Za-z0-9\-]{10,}|sk_live_[0-9A-Za-z]{20,}|AIza[0-9A-Za-z_\-]{35}|sk-ant-[A-Za-z0-9_\-]{20,}|sk-[A-Za-z0-9_\-]{20,}|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}|eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}|dop_v1_[a-f0-9]{64}|HRKU-[A-Za-z0-9_\-]{20,}|hvs\.[A-Za-z0-9_-]{90,120}|hvb\.[A-Za-z0-9_-]{138,300}|npm_[A-Za-z0-9]{36}|\d{8,10}:[A-Za-z0-9_-]{35})`)
+	secHardRedactor = regexp.MustCompile(`(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|glpat-[A-Za-z0-9_\-]{20,}|(?:glrtr?|gldt|glptt|gloas|glcbt|glft|glimt|glsoat|glagent|glwt)-[A-Za-z0-9_\-]{20,}|x(?:ox[abposr]|app)-[A-Za-z0-9\-]{10,}|sk_live_[0-9A-Za-z]{20,}|AIza[0-9A-Za-z_\-]{35}|sk-ant-[A-Za-z0-9_\-]{20,}|sk-[A-Za-z0-9_\-]{20,}|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}|eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}|dop_v1_[a-f0-9]{64}|HRKU-[A-Za-z0-9_\-]{20,}|hvs\.[A-Za-z0-9_-]{90,120}|hvb\.[A-Za-z0-9_-]{138,300}|npm_[A-Za-z0-9]{36}|\d{8,10}:[A-Za-z0-9_-]{35}|ops_eyJ[A-Za-z0-9+/]{250,}={0,3}|A3-[A-Z0-9]{6}-(?:[A-Z0-9]{11}|[A-Z0-9]{6}-[A-Z0-9]{5})-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}|AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}|dckr_pat_[A-Za-z0-9_-]{27,}|[MNO][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}|https://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/\d{17,20}/[\w-]{60,}|whsec_[A-Za-z0-9]{24,}|pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,1000}|rubygems_[a-f0-9]{48}|[A-Za-z0-9]{14}\.atlasv1\.[A-Za-z0-9_\-=]{60,70})`)
 )
 
 const (
@@ -679,6 +695,142 @@ func SecretsRules() []Rule {
 		}.rule(),
 
 		secAzureServiceBusRule(),
+
+		secPattern{
+			meta: secMeta(
+				"VGL-SEC-027",
+				"1Password service-account token or secret key hardcoded in source",
+				"A 1Password service-account token or account secret key is committed. The service-account token grants programmatic access to every vault the service account can read, while the secret key is the second factor of the account unlock chain.",
+				model.SeverityCritical,
+				[]string{"CWE-798"},
+				[]string{"1password", "secret-manager"},
+				[]string{"https://developer.1password.com/docs/service-accounts/"},
+			),
+			re:           secOnePasswordRe,
+			skipComments: true,
+			opts: secFindingOpts{
+				confidence:  model.ConfidenceHigh,
+				remediation: "Revoke the service-account token in 1Password and issue a replacement scoped to the minimum vaults. If the account secret key was exposed, rotate it and review account activity. Purge the value from git history.",
+				label:       "1Password credential",
+			},
+		}.rule(),
+
+		secAgeKeyRule(),
+
+		secPattern{
+			meta: secMeta(
+				"VGL-SEC-035",
+				"Docker Hub personal access token hardcoded in source",
+				"A Docker Hub personal access token is committed. It can push or delete images, change repository visibility and read private repositories under the account, which makes it a direct supply-chain credential.",
+				model.SeverityHigh,
+				[]string{"CWE-798"},
+				[]string{"docker", "registry"},
+				[]string{"https://docs.docker.com/security/for-developers/access-tokens/"},
+			),
+			re:           secDockerHubPATRe,
+			skipComments: true,
+			opts: secFindingOpts{
+				confidence:  model.ConfidenceHigh,
+				remediation: "Revoke the token in Docker Hub, issue a replacement with read-only or repository-scoped permissions, and inject it from CI secrets. Purge the value from git history.",
+				label:       "Docker Hub access token",
+			},
+		}.rule(),
+
+		secPattern{
+			meta: secMeta(
+				"VGL-SEC-036",
+				"Discord bot token or webhook URL hardcoded in source",
+				"A Discord bot token or webhook URL is committed. A bot token grants full control over the bot, including reading messages and managing guilds, while a webhook URL lets anyone post arbitrary messages into the channel.",
+				model.SeverityCritical,
+				[]string{"CWE-798"},
+				[]string{"discord", "messaging"},
+				[]string{"https://discord.com/developers/docs/reference#authentication", "https://discord.com/developers/docs/resources/webhook"},
+			),
+			re:           secDiscordRe,
+			skipComments: true,
+			opts: secFindingOpts{
+				confidence:  model.ConfidenceHigh,
+				remediation: "Reset the bot token in the Discord developer portal or delete and recreate the webhook, then load the replacement from a secret manager. Review the bot's guilds and recent webhook messages for abuse.",
+				label:       "Discord credential",
+				maskURL:     true,
+			},
+		}.rule(),
+
+		secPattern{
+			meta: secMeta(
+				"VGL-SEC-037",
+				"Stripe webhook signing secret hardcoded in source",
+				"A Stripe webhook signing secret is committed. Anyone with it can forge signed webhook events, so an attacker can mark orders as paid, unlock entitlements or trigger fulfillment without a real payment.",
+				model.SeverityHigh,
+				[]string{"CWE-798"},
+				[]string{"stripe", "payments", "webhook"},
+				[]string{"https://docs.stripe.com/webhooks/signatures"},
+			),
+			re:           secStripeWebhookRe,
+			skipComments: true,
+			opts: secFindingOpts{
+				confidence:  model.ConfidenceHigh,
+				remediation: "Roll the endpoint's signing secret in the Stripe dashboard, deploy the new value from a secret manager, and verify that webhook handlers reject signatures made with the old secret.",
+				label:       "Stripe webhook signing secret",
+			},
+		}.rule(),
+
+		secPattern{
+			meta: secMeta(
+				"VGL-SEC-038",
+				"PyPI API token hardcoded in source",
+				"A PyPI upload token is committed. It can publish new releases and yank existing ones for every project the token owner can manage, so a leak allows publishing malware under a trusted package name.",
+				model.SeverityCritical,
+				[]string{"CWE-798"},
+				[]string{"pypi", "supply-chain"},
+				[]string{"https://pypi.org/help/#apitoken"},
+			),
+			re:           secPyPITokenRe,
+			skipComments: true,
+			opts: secFindingOpts{
+				confidence:  model.ConfidenceHigh,
+				remediation: "Revoke the token at pypi.org/manage/account/token/, issue a replacement scoped to the required projects, and inject it from CI secrets with trusted publishing where possible. Purge the value from git history.",
+				label:       "PyPI API token",
+			},
+		}.rule(),
+
+		secPattern{
+			meta: secMeta(
+				"VGL-SEC-039",
+				"RubyGems API key hardcoded in source",
+				"A RubyGems API key is committed. It can push new gem versions and change ownership metadata for the account's gems, so a leak allows publishing malicious releases under a trusted gem name.",
+				model.SeverityHigh,
+				[]string{"CWE-798"},
+				[]string{"rubygems", "supply-chain"},
+				[]string{"https://guides.rubygems.org/api-key-scopes/"},
+			),
+			re:           secRubyGemsKeyRe,
+			skipComments: true,
+			opts: secFindingOpts{
+				confidence:  model.ConfidenceHigh,
+				remediation: "Revoke the API key in the RubyGems account settings, issue a replacement with the narrowest scope, and load it from a secret manager or CI secret. Purge the value from git history.",
+				label:       "RubyGems API key",
+			},
+		}.rule(),
+
+		secPattern{
+			meta: secMeta(
+				"VGL-SEC-040",
+				"Terraform Cloud API token hardcoded in source",
+				"A Terraform Cloud user, team or organization API token is committed. It can read and modify workspaces, variables and state, which often exposes further cloud credentials and lets an attacker change what gets deployed.",
+				model.SeverityHigh,
+				[]string{"CWE-798"},
+				[]string{"terraform", "cloud"},
+				[]string{"https://developer.hashicorp.com/terraform/cloud-docs/users-teams-organizations/api-tokens"},
+			),
+			re:           secTerraformCloudRe,
+			skipComments: true,
+			opts: secFindingOpts{
+				confidence:  model.ConfidenceHigh,
+				remediation: "Revoke the token in Terraform Cloud user or organization settings, issue a replacement with the minimum permissions, and load it from a secret manager. Review workspace variables and audit logs for unauthorized changes.",
+				label:       "Terraform Cloud API token",
+			},
+		}.rule(),
 	}
 }
 
@@ -1135,6 +1287,29 @@ func secAzureServiceBusRule() Rule {
 			label:       "Azure SharedAccessKey",
 		})
 	})
+}
+
+func secAgeKeyRule() Rule {
+	meta := secMeta(
+		"VGL-SEC-031",
+		"age secret key hardcoded in source",
+		"An age secret key is committed. The identity decrypts every file encrypted to its public recipient, so anyone with the repository can read backups, secrets and release artifacts that were meant to stay confidential.",
+		model.SeverityCritical,
+		[]string{"CWE-321", "CWE-798"},
+		[]string{"age", "encryption"},
+		[]string{"https://github.com/FiloSottile/age"},
+	)
+	meta.OWASP = []string{"A02:2021 - Cryptographic Failures"}
+	return secPattern{
+		meta:         meta,
+		re:           secAgeSecretKeyRe,
+		skipComments: true,
+		opts: secFindingOpts{
+			confidence:  model.ConfidenceHigh,
+			remediation: "Generate a new age identity, re-encrypt every affected file to the new recipient, and remove the old secret key from the repository and from git history. Store identities in a secret manager or an encrypted key file outside the tree.",
+			label:       "age secret key",
+		},
+	}.rule()
 }
 
 // secAzureSBContext reports whether the surrounding lines still look like a

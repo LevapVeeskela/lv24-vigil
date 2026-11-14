@@ -3,6 +3,7 @@ package rules
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/levapveeskela/lv24-vigil/internal/model"
@@ -68,6 +69,48 @@ var (
 
 	// nginx upstream TLS verification (CFG-045).
 	pbCfgNginxProxySSLVerifyOffRe = regexp.MustCompile(`(?i)^\s*proxy_ssl_verify\s+["']?off["']?\s*;\s*(?:#.*)?$`)
+
+	// Wave-1 IaC rules (CFG-046..CFG-050). Bounded line and block matching
+	// only; no HCL or YAML parser is involved.
+	pbW1IacPrincipalWildcardRe = regexp.MustCompile(`(?i)^\s*["']?principal[s]?["']?\s*[:=]\s*(?:\[\s*)?["']\*["']`)
+	pbW1IacPrincipalInlineRe   = regexp.MustCompile(`(?i)["']?principal[s]?["']?\s*[:=]\s*\{[^}]*["']?aws["']?\s*[:=]\s*(?:\[\s*)?["']\*["']`)
+	pbW1IacAWSWildcardRe       = regexp.MustCompile(`(?i)^\s*["']?aws["']?\s*[:=]\s*(?:\[\s*)?["']\*["']`)
+	pbW1IacIDsWildcardRe       = regexp.MustCompile(`(?i)^\s*identifiers\s*=\s*\[\s*["']\*["']`)
+	pbW1IacPrincipalKeyRe      = regexp.MustCompile(`(?i)["']?principal[s]?["']?\s*(?::|=|\{)`)
+	pbW1IacActionKeyRe         = regexp.MustCompile(`(?i)["']?(?:action|actions|not_?action)["']?\s*[:=]`)
+	pbW1IacEffectKeyRe         = regexp.MustCompile(`(?i)["']?effect["']?\s*[:=]`)
+	// aws:Referer is client-supplied and spoofable, so it is deliberately not
+	// in this list: only conditions the caller cannot forge restrict a policy.
+	pbW1IacRestrictiveCondRe = regexp.MustCompile(`(?i)aws:principalarn|aws:sourcearn|aws:sourceaccount|sts:externalid|aws:principalorgid|aws:sourcevpce|aws:sourceip`)
+	pbW1IacAssumeRoleRe      = regexp.MustCompile(`(?i)sts:assumerole`)
+	pbW1IacS3ActionRe        = regexp.MustCompile(`(?i)\bs3:|\barn:aws:s3`)
+	pbW1IacTrustGateRe       = regexp.MustCompile(`(?i)assume_role_policy`)
+	pbW1IacCFNTrustGateRe    = regexp.MustCompile(`(?i)assumerolepolicydocument`)
+	pbW1IacS3PolicyGateRe    = regexp.MustCompile(`(?i)^\s*resource\s+"aws_s3_bucket_policy"`)
+	pbW1IacTFS3BucketBlockRe = regexp.MustCompile(`(?i)^\s*resource\s+"aws_s3_bucket"`)
+	pbW1IacTFInlinePolicyRe  = regexp.MustCompile(`(?i)^\s*policy\s*=\s*\S`)
+	// An environment label is the word plus optional digits and short
+	// separator-delimited suffixes: production2, development_2 and staging-eu
+	// are labels, not credentials.
+	pbW1IacEnvWordRe        = regexp.MustCompile(`(?i)^(?:production|development|staging|testing|local|default|example|sample|changeme|placeholder|password|secret)(?:[0-9]{1,4})?(?:[-_.][0-9a-z]{0,4})*$`)
+	pbW1IacBPAHeaderRe      = regexp.MustCompile(`(?i)^\s*resource\s+"aws_s3_bucket_public_access_block"`)
+	pbW1IacTFS3BPAPolicyRe  = regexp.MustCompile(`(?i)^\s*block_public_policy\s*=\s*true\b`)
+	pbW1IacCFNS3BPAPolicyRe = regexp.MustCompile(`(?i)["']?block_?public_?policy["']?\s*:\s*["']?true\b`)
+	pbW1IacS3BackendRe      = regexp.MustCompile(`(?i)^\s*backend\s+"s3"\s*\{`)
+	pbW1IacEncryptFalseRe   = regexp.MustCompile(`(?i)^\s*encrypt\s*=\s*false\b`)
+
+	pbW1IacControlPlaneBinRe = regexp.MustCompile(`(?i)(kube-apiserver|kube-controller-manager|kube-scheduler|kubelet|etcd)`)
+	pbW1IacAnonAuthRe        = regexp.MustCompile(`(?i)--anonymous-auth(?:=|\s+)["']?true\b`)
+	pbW1IacAuthModeRe        = regexp.MustCompile(`(?i)--authorization-mode(?:=|\s+)["']?([A-Za-z0-9,_-]+)`)
+	pbW1IacInsecurePortRe    = regexp.MustCompile(`(?i)--insecure-port(?:=|\s+)["']?([0-9]+)\b`)
+	pbW1IacProfilingRe       = regexp.MustCompile(`(?i)--profiling(?:=|\s+)["']?true\b`)
+	pbW1IacStaticAuthFileRe  = regexp.MustCompile(`(?i)--(?:token-auth-file|basic-auth-file)(?:=|\s+)["']?[^\s"'#]+`)
+	pbW1IacEtcdClientCertRe  = regexp.MustCompile(`(?i)--client-cert-auth(?:=|\s+)["']?false\b`)
+	pbW1IacEtcdAutoTLSRe     = regexp.MustCompile(`(?i)--(auto-tls|peer-auto-tls)(?:=|\s+)["']?true\b`)
+
+	pbW1IacComposeListRe = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.+)$`)
+	pbW1IacComposeMapRe  = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.-]*)\s*:\s*(.+)$`)
+	pbW1IacSecretKeyRe   = regexp.MustCompile(`(?i)(?:password|passwd|pwd|secret|token|credential|apikey|api[_-]key|private[_-]key|access[_-]key|signing[_-]key)|(?:^|[_-])key(?:$|[_-])`)
 )
 
 // ConfigRules returns the container, orchestration and infrastructure rules.
@@ -376,6 +419,86 @@ func ConfigRules() []Rule {
 			OWASP:       []string{"A02:2021"},
 			Tags:        []string{"nginx", "tls"},
 		}, pbCfgNginxProxySSLVerifyRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-CFG-046",
+			Title:       "IAM trust policy allows every principal",
+			Description: "A trust policy that allows Principal \"*\" lets any AWS account assume the role. Without a Condition that restricts the caller, an attacker who knows the role ARN can obtain its credentials. Restrict the principal to known accounts, roles or federated identities.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryConfig,
+			Languages:   []string{"terraform", "yaml", "json"},
+			CWE:         []string{"CWE-269", "CWE-732"},
+			OWASP:       []string{"A01:2021"},
+			Tags:        []string{"aws", "iam", "terraform", "cloudformation"},
+			References: []string{
+				"https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_principal.html",
+				"https://cwe.mitre.org/data/definitions/269.html",
+			},
+		}, pbW1IacIAMTrustRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-CFG-047",
+			Title:       "S3 bucket policy grants public access",
+			Description: "A bucket policy that allows Principal \"*\" without a restrictive Condition exposes the bucket to every AWS account and anonymous caller. Grant access to named principals or add a source restriction, and keep Block Public Policy enabled.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryConfig,
+			Languages:   []string{"terraform", "yaml", "json"},
+			CWE:         []string{"CWE-284", "CWE-732"},
+			OWASP:       []string{"A01:2021"},
+			Tags:        []string{"aws", "storage", "terraform", "cloudformation"},
+			References: []string{
+				"https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html",
+				"https://cwe.mitre.org/data/definitions/284.html",
+			},
+		}, pbW1IacS3BucketPolicyRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-CFG-048",
+			Title:       "Kubernetes control-plane component uses insecure flags",
+			Description: "Static pod and kubelet manifests that enable anonymous authentication, AlwaysAllow authorization, a non-zero insecure port, profiling, static token files or etcd plaintext peer TLS remove control-plane security controls. Follow the CIS Kubernetes benchmark flags.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryConfig,
+			Languages:   []string{"yaml"},
+			CWE:         []string{"CWE-306", "CWE-284"},
+			OWASP:       []string{"A01:2021", "A05:2021"},
+			Tags:        []string{"kubernetes", "control-plane", "hardening"},
+			References: []string{
+				"https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+				"https://www.cisecurity.org/benchmark/kubernetes",
+			},
+		}, pbW1IacControlPlaneRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-CFG-049",
+			Title:       "Docker Compose service embeds a secret in environment or build args",
+			Description: "A literal password, token, key or credential in a Compose environment or build.args value is committed to the repository and baked into build metadata. Interpolate it from the shell or an env_file and pass it at runtime.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryConfig,
+			Languages:   []string{"yaml"},
+			CWE:         []string{"CWE-798", "CWE-522"},
+			OWASP:       []string{"A02:2021"},
+			Tags:        []string{"docker", "compose", "secret"},
+			References: []string{
+				"https://docs.docker.com/compose/environment-variables/set-environment-variables/",
+				"https://cwe.mitre.org/data/definitions/798.html",
+			},
+		}, pbW1IacComposeSecretRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-CFG-050",
+			Title:       "Terraform S3 backend stores state without encryption",
+			Description: "The S3 backend can hold Terraform state with plaintext secrets. Setting encrypt = false disables SSE for the state object. Leave encryption enabled (or omit the attribute so the SSE-S3 default applies).",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryConfig,
+			Languages:   []string{"terraform"},
+			CWE:         []string{"CWE-311", "CWE-522"},
+			OWASP:       []string{"A02:2021"},
+			Tags:        []string{"terraform", "aws", "storage", "secret"},
+			References: []string{
+				"https://developer.hashicorp.com/terraform/language/settings/backends/s3",
+				"https://cwe.mitre.org/data/definitions/311.html",
+			},
+		}, pbW1IacS3BackendRule),
 	}
 }
 
@@ -1742,4 +1865,707 @@ func pbIacMetadataOptionsAbove(f *File, idx int) bool {
 		return pbHasAnyFold(line, "metadataoptions")
 	}
 	return false
+}
+
+// ---------------------------------------------------------------------------
+// Wave-1 IaC rules (CFG-046, CFG-047, CFG-048, CFG-049, CFG-050)
+// ---------------------------------------------------------------------------
+
+// pbW1IacSkipPath reports whether the file is documentation, a test fixture or
+// an example. Those files describe flags and secrets rather than run them.
+func pbW1IacSkipPath(path string) bool {
+	p := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
+	return isDocsPath(p) || isTestPath(p)
+}
+
+// pbW1IacComment reports whether line is a comment in a wave-1 IaC file. The
+// shared IsCommentLine knows "#" for terraform but not HCL's "//" line
+// comments, so those are skipped here without changing the shared helper for
+// every other rule family.
+func pbW1IacComment(f *File, line string) bool {
+	if pbComment(f, line) {
+		return true
+	}
+	return pbIsTerraform(f) && strings.HasPrefix(strings.TrimSpace(line), "//")
+}
+
+// pbW1IacAnyCodeLineMatch applies re to non-comment lines of window.
+func pbW1IacAnyCodeLineMatch(f *File, window []string, re *regexp.Regexp) bool {
+	for _, line := range window {
+		if pbW1IacComment(f, line) {
+			continue
+		}
+		if re.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
+// pbW1IacPolicyWindow bounds the policy statement that contains lines[idx]. It
+// prefers the enclosing brace block that carries the statement keywords, then
+// an indentation-based YAML list item, and finally a small line window so inline
+// JSON stays inspectable.
+func pbW1IacPolicyWindow(f *File, idx int) (int, int) {
+	lines := f.Lines
+	if open, close, ok := pbW1IacBraceWindow(f, idx); ok {
+		return open, close
+	}
+	if start, end, ok := pbW1IacListItemWindow(f, idx); ok {
+		return start, end
+	}
+	start, end := pbIacYAMLItemWindow(lines, idx)
+	if end-start > 40 {
+		start = idx - 12
+		if start < 0 {
+			start = 0
+		}
+		end = idx + 13
+		if end > len(lines) {
+			end = len(lines)
+		}
+	}
+	return start, end
+}
+
+// pbW1IacBraceWindow expands the innermost brace block until it either opens a
+// Statement block or contains both Effect and Action keys. That covers nested
+// Principal objects in HCL and pretty-printed CloudFormation JSON.
+func pbW1IacBraceWindow(f *File, idx int) (int, int, bool) {
+	lines := f.Lines
+	open, close, ok := pbIacBraceBlock(lines, idx)
+	if !ok {
+		return 0, 0, false
+	}
+	for depth := 0; depth < 4; depth++ {
+		window := lines[open : close+1]
+		if pbHasAnyFold(lines[open], "statement") || pbW1IacPolicyKeywords(f, window) {
+			return open, close + 1, true
+		}
+		parentOpen, parentClose, ok := pbW1IacParentBraceBlock(lines, open, close)
+		if !ok {
+			break
+		}
+		open, close = parentOpen, parentClose
+	}
+	return 0, 0, false
+}
+
+func pbW1IacParentBraceBlock(lines []string, open, close int) (int, int, bool) {
+	openIndent := pbLineIndent(lines[open])
+	for j := open - 1; j >= 0 && j >= open-15; j-- {
+		if !strings.Contains(lines[j], "{") || pbLineIndent(lines[j]) >= openIndent {
+			continue
+		}
+		if o, c, ok := pbIacBraceBlock(lines, j); ok && o <= open && c >= close {
+			return o, c, true
+		}
+	}
+	return 0, 0, false
+}
+
+func pbW1IacPolicyKeywords(f *File, window []string) bool {
+	hasEffect, hasAction := false, false
+	for _, line := range window {
+		if pbW1IacComment(f, line) {
+			continue
+		}
+		if pbW1IacEffectKeyRe.MatchString(line) {
+			hasEffect = true
+		}
+		if pbW1IacActionKeyRe.MatchString(line) {
+			hasAction = true
+		}
+	}
+	return hasEffect && hasAction
+}
+
+// pbW1IacListItemWindow bounds the YAML list item that contains lines[idx]. It
+// keeps a nested Principal: mapping attached to its statement item.
+func pbW1IacListItemWindow(f *File, idx int) (int, int, bool) {
+	lines := f.Lines
+	curIndent := pbLineIndent(lines[idx])
+	for j := idx; j >= 0 && j >= idx-30; j-- {
+		line := lines[j]
+		t := strings.TrimSpace(line)
+		if t == "" || pbW1IacComment(f, line) {
+			continue
+		}
+		if pbLineIndent(line) >= curIndent || !strings.HasPrefix(t, "- ") {
+			continue
+		}
+		base := pbLineIndent(line)
+		end := len(lines)
+		for k := j + 1; k < len(lines); k++ {
+			kt := strings.TrimSpace(lines[k])
+			if kt == "" || pbW1IacComment(f, lines[k]) {
+				continue
+			}
+			if pbLineIndent(lines[k]) <= base {
+				end = k
+				break
+			}
+		}
+		if end-j > 40 {
+			end = j + 40
+		}
+		return j, end, true
+	}
+	return 0, 0, false
+}
+
+// pbW1IacPublicStatement reports whether the statement around idx grants a
+// wildcard principal, has no Deny effect and has no restrictive Condition.
+func pbW1IacPublicStatement(f *File, idx int) bool {
+	start, end := pbW1IacPolicyWindow(f, idx)
+	window := f.Lines[start:end]
+	if !pbW1IacAnyCodeLineMatch(f, window, pbW1IacPrincipalKeyRe) {
+		return false
+	}
+	if pbW1IacAnyCodeLineMatch(f, window, pbIacDenyEffectRe) {
+		return false
+	}
+	return !pbW1IacAnyCodeLineMatch(f, window, pbW1IacRestrictiveCondRe)
+}
+
+func pbW1IacWildcardPrincipalLine(line string) bool {
+	return pbW1IacPrincipalWildcardRe.MatchString(line) ||
+		pbW1IacPrincipalInlineRe.MatchString(line) ||
+		pbW1IacAWSWildcardRe.MatchString(line) ||
+		pbW1IacIDsWildcardRe.MatchString(line)
+}
+
+func pbW1IacIAMTrustRule(f *File) []model.Finding {
+	if f == nil || pbW1IacSkipPath(f.Path) {
+		return nil
+	}
+	isTF := pbIsTerraform(f)
+	isCFN := pbIacIsCloudFormation(f)
+	if !isTF && !isCFN {
+		return nil
+	}
+	content := string(f.Content)
+	if isTF && !pbW1IacTrustGateRe.MatchString(content) {
+		return nil
+	}
+	if isCFN && !pbW1IacCFNTrustGateRe.MatchString(content) {
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbW1IacComment(f, line) || !pbW1IacWildcardPrincipalLine(line) {
+			continue
+		}
+		if !pbW1IacPublicStatement(f, i) {
+			continue
+		}
+		start, end := pbW1IacPolicyWindow(f, i)
+		if !pbW1IacAnyCodeLineMatch(f, f.Lines[start:end], pbW1IacAssumeRoleRe) {
+			continue
+		}
+		if isTF && pbIacTerraformCountZero(f.Lines, i) {
+			continue
+		}
+		fd := pbFinding(f, i+1, "IAM trust policy allows every principal: "+strings.TrimSpace(line))
+		fd.Severity = pbSev(f, model.SeverityHigh)
+		fd.Confidence = model.ConfidenceHigh
+		fd.Remediation = "Replace the wildcard principal with the accounts, roles or federated identities that need to assume the role, and add a Condition such as aws:PrincipalArn or sts:ExternalId."
+		out = append(out, fd)
+	}
+	return out
+}
+
+// pbW1IacTerraformS3PolicyContext reports whether the Terraform file actually
+// carries an S3 bucket policy. A bare aws_s3_bucket resource, an attribute
+// reference such as bucket = aws_s3_bucket.logs.id, or a generic aws_iam_policy
+// that happens to grant an S3 action is not a bucket policy and must not title
+// CFG-047. Only an aws_s3_bucket_policy resource or an inline policy attribute
+// inside an aws_s3_bucket block qualifies.
+func pbW1IacTerraformS3PolicyContext(f *File) bool {
+	for _, line := range f.Lines {
+		if pbW1IacComment(f, line) {
+			continue
+		}
+		if pbW1IacS3PolicyGateRe.MatchString(line) {
+			return true
+		}
+	}
+	return pbW1IacInlineS3BucketPolicy(f)
+}
+
+// pbW1IacInlineS3BucketPolicy reports whether an inline policy attribute belongs
+// to an aws_s3_bucket block (the deprecated inline bucket policy form). The same
+// attribute on aws_iam_policy or aws_iam_role is not a bucket policy.
+func pbW1IacInlineS3BucketPolicy(f *File) bool {
+	for i, line := range f.Lines {
+		if pbW1IacComment(f, line) || !pbW1IacTFInlinePolicyRe.MatchString(line) {
+			continue
+		}
+		open, _, ok := pbIacResourceBlock(f.Lines, i)
+		if ok && pbW1IacTFS3BucketBlockRe.MatchString(f.Lines[open]) {
+			return true
+		}
+	}
+	return false
+}
+
+func pbW1IacS3BucketPolicyRule(f *File) []model.Finding {
+	if f == nil || pbW1IacSkipPath(f.Path) {
+		return nil
+	}
+	isTF := pbIsTerraform(f)
+	isCFN := pbIacIsCloudFormation(f)
+	if !isTF && !isCFN {
+		return nil
+	}
+	content := string(f.Content)
+	if isTF {
+		if !pbW1IacTerraformS3PolicyContext(f) {
+			return nil
+		}
+		if pbW1IacTerraformS3BlockSuppressed(f) {
+			return nil
+		}
+	} else {
+		if !pbHasAnyFold(content, "aws::s3::bucketpolicy") {
+			return nil
+		}
+		if pbW1IacCFNS3BlockSuppressed(f) {
+			return nil
+		}
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbW1IacComment(f, line) || !pbW1IacWildcardPrincipalLine(line) {
+			continue
+		}
+		if !pbW1IacPublicStatement(f, i) {
+			continue
+		}
+		start, end := pbW1IacPolicyWindow(f, i)
+		if !pbW1IacAnyCodeLineMatch(f, f.Lines[start:end], pbW1IacS3ActionRe) {
+			continue
+		}
+		if isTF && pbIacTerraformCountZero(f.Lines, i) {
+			continue
+		}
+		fd := pbFinding(f, i+1, "S3 bucket policy allows every principal: "+strings.TrimSpace(line))
+		fd.Severity = pbSev(f, model.SeverityHigh)
+		fd.Confidence = model.ConfidenceHigh
+		fd.Remediation = "Replace the wildcard principal with the accounts, roles or CloudFront identity that need access, add a Condition, and keep Block Public Policy enabled."
+		out = append(out, fd)
+	}
+	return out
+}
+
+func pbW1IacTerraformS3BlockSuppressed(f *File) bool {
+	for i, line := range f.Lines {
+		if pbW1IacComment(f, line) || !pbW1IacBPAHeaderRe.MatchString(line) {
+			continue
+		}
+		open, close, ok := pbIacBraceBlock(f.Lines, i)
+		if !ok {
+			open, close = i, len(f.Lines)-1
+		}
+		for j := open; j <= close && j < len(f.Lines); j++ {
+			if pbW1IacComment(f, f.Lines[j]) {
+				continue
+			}
+			if pbW1IacTFS3BPAPolicyRe.MatchString(f.Lines[j]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func pbW1IacCFNS3BlockSuppressed(f *File) bool {
+	for _, line := range f.Lines {
+		if pbW1IacComment(f, line) {
+			continue
+		}
+		if pbW1IacCFNS3BPAPolicyRe.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
+func pbW1IacS3BackendRule(f *File) []model.Finding {
+	if f == nil || !pbIsTerraform(f) || pbW1IacSkipPath(f.Path) {
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbW1IacComment(f, line) || !pbW1IacS3BackendRe.MatchString(line) {
+			continue
+		}
+		_, close, ok := pbIacBraceBlock(f.Lines, i)
+		if !ok {
+			continue
+		}
+		for j := i; j <= close && j < len(f.Lines); j++ {
+			if pbW1IacComment(f, f.Lines[j]) || !pbW1IacEncryptFalseRe.MatchString(f.Lines[j]) {
+				continue
+			}
+			fd := pbFinding(f, j+1, "Terraform S3 backend disables state encryption: "+strings.TrimSpace(f.Lines[j]))
+			fd.Severity = pbSev(f, model.SeverityHigh)
+			fd.Confidence = model.ConfidenceHigh
+			fd.Remediation = "Remove encrypt = false or set it to true; Terraform state commonly contains plaintext secrets. Use SSE-S3 or an SSE-KMS key."
+			out = append(out, fd)
+			break
+		}
+	}
+	return out
+}
+
+// pbW1IacBinaryFromName maps a static pod or config filename to a component.
+func pbW1IacBinaryFromName(base string) string {
+	switch {
+	case strings.Contains(base, "kube-apiserver"):
+		return "apiserver"
+	case strings.Contains(base, "kube-controller-manager"):
+		return "controller-manager"
+	case strings.Contains(base, "kube-scheduler"):
+		return "scheduler"
+	case strings.Contains(base, "kubelet"):
+		return "kubelet"
+	case strings.Contains(base, "etcd"):
+		return "etcd"
+	}
+	return ""
+}
+
+func pbW1IacBinaryToken(line string) string {
+	m := pbW1IacControlPlaneBinRe.FindStringSubmatch(line)
+	if m == nil {
+		return ""
+	}
+	return pbW1IacBinaryFromName(strings.ToLower(m[1]))
+}
+
+// pbW1IacBinaryFromCommand returns the component only from a command or YAML
+// list line; an image reference does not run the binary.
+func pbW1IacBinaryFromCommand(line string) string {
+	if pbHasAnyFold(line, "image:") {
+		return ""
+	}
+	t := strings.TrimSpace(line)
+	lower := strings.ToLower(t)
+	if !strings.HasPrefix(lower, "command:") && !strings.HasPrefix(lower, "args:") &&
+		!strings.HasPrefix(lower, "- ") && !strings.Contains(lower, "command: [") {
+		return ""
+	}
+	return pbW1IacBinaryToken(line)
+}
+
+func pbW1IacBinaryForLine(f *File, idx int, fileBin string) string {
+	if fileBin != "" {
+		return fileBin
+	}
+	if b := pbW1IacBinaryToken(f.Lines[idx]); b != "" {
+		return b
+	}
+	for j := idx - 1; j >= 0 && j >= idx-15; j-- {
+		line := f.Lines[j]
+		if pbComment(f, line) {
+			continue
+		}
+		if b := pbW1IacBinaryFromCommand(line); b != "" {
+			return b
+		}
+	}
+	return ""
+}
+
+type pbW1IacFlagHit struct {
+	evidence    string
+	severity    model.Severity
+	remediation string
+}
+
+func pbW1IacFlagIssues(line, bin string) []pbW1IacFlagHit {
+	var out []pbW1IacFlagHit
+	add := func(sev model.Severity, flag, remediation string) {
+		out = append(out, pbW1IacFlagHit{
+			evidence:    bin + " uses insecure flag " + flag + ": " + strings.TrimSpace(line),
+			severity:    sev,
+			remediation: remediation,
+		})
+	}
+	if bin == "apiserver" || bin == "kubelet" {
+		if pbW1IacAnonAuthRe.MatchString(line) {
+			add(model.SeverityHigh, "--anonymous-auth=true",
+				"Set --anonymous-auth=false so unauthenticated requests are rejected.")
+		}
+	}
+	if bin == "apiserver" {
+		if m := pbW1IacInsecurePortRe.FindStringSubmatch(line); m != nil {
+			if port, err := strconv.Atoi(m[1]); err == nil && port > 0 {
+				add(model.SeverityHigh, "--insecure-port="+m[1],
+					"Set --insecure-port=0 and expose the API server only over TLS.")
+			}
+		}
+		if pbW1IacStaticAuthFileRe.MatchString(line) {
+			for _, match := range pbW1IacStaticAuthFileRe.FindAllString(line, -1) {
+				flag := "--token-auth-file"
+				if strings.Contains(strings.ToLower(match), "basic-auth-file") {
+					flag = "--basic-auth-file"
+				}
+				add(model.SeverityHigh, flag,
+					"Remove --token-auth-file and --basic-auth-file; use a supported authenticator such as OIDC or webhook.")
+			}
+		}
+	}
+	if bin == "apiserver" || bin == "controller-manager" || bin == "scheduler" || bin == "kubelet" {
+		if pbW1IacProfilingRe.MatchString(line) {
+			add(model.SeverityMedium, "--profiling=true",
+				"Set --profiling=false to keep CPU and memory profiles off the network.")
+		}
+	}
+	if bin == "apiserver" || bin == "kubelet" {
+		if m := pbW1IacAuthModeRe.FindStringSubmatch(line); m != nil {
+			if reason, sev, bad := pbW1IacAuthModeIssue(m[1], bin); bad {
+				add(sev, "--authorization-mode="+m[1], reason)
+			}
+		}
+	}
+	if bin == "etcd" {
+		if pbW1IacEtcdClientCertRe.MatchString(line) {
+			add(model.SeverityHigh, "--client-cert-auth=false",
+				"Enable --client-cert-auth so etcd requires a client certificate.")
+		}
+		seenTLS := map[string]bool{}
+		for _, m := range pbW1IacEtcdAutoTLSRe.FindAllStringSubmatch(line, -1) {
+			flag := "--" + strings.ToLower(m[1]) + "=true"
+			if seenTLS[flag] {
+				continue
+			}
+			seenTLS[flag] = true
+			add(model.SeverityHigh, flag,
+				"Issue explicit server and peer certificates instead of enabling auto TLS.")
+		}
+	}
+	return out
+}
+
+func pbW1IacAuthModeIssue(mode, bin string) (string, model.Severity, bool) {
+	parts := map[string]bool{}
+	for _, p := range strings.Split(strings.ToUpper(mode), ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			parts[p] = true
+		}
+	}
+	if parts["ALWAYSALLOW"] {
+		return "AlwaysAllow disables authorization; enable RBAC and Node authorization.", model.SeverityHigh, true
+	}
+	if bin == "kubelet" {
+		return "", "", false
+	}
+	if !parts["RBAC"] || !parts["NODE"] {
+		return "Authorization mode does not enable both RBAC and Node.", model.SeverityMedium, true
+	}
+	return "", "", false
+}
+
+func pbW1IacControlPlaneRule(f *File) []model.Finding {
+	if f == nil || pbW1IacSkipPath(f.Path) {
+		return nil
+	}
+	if f.Language != "yaml" && f.Language != "json" {
+		return nil
+	}
+	fileBin := pbW1IacBinaryFromName(pbBaseLower(f.Path))
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbComment(f, line) {
+			continue
+		}
+		bin := pbW1IacBinaryForLine(f, i, fileBin)
+		if bin == "" {
+			continue
+		}
+		for _, hit := range pbW1IacFlagIssues(line, bin) {
+			fd := pbFinding(f, i+1, hit.evidence)
+			fd.Severity = pbSev(f, hit.severity)
+			fd.Confidence = model.ConfidenceHigh
+			fd.Remediation = hit.remediation
+			out = append(out, fd)
+		}
+	}
+	return out
+}
+
+// pbW1IacComposeEntry parses an unquoted environment or args entry. Quoted
+// values are left to VGL-SEC-014 so one literal secret is not reported twice.
+func pbW1IacComposeEntry(line string) (string, string, bool) {
+	t := strings.TrimSpace(line)
+	if strings.HasPrefix(t, "- ") {
+		t = strings.TrimSpace(t[2:])
+	}
+	if strings.HasPrefix(t, `"`) || strings.HasPrefix(t, `'`) {
+		return "", "", false
+	}
+	if m := pbW1IacComposeListRe.FindStringSubmatch(t); m != nil {
+		if pbW1IacComposeQuotedValue(m[2]) {
+			return "", "", false
+		}
+		return m[1], m[2], true
+	}
+	if m := pbW1IacComposeMapRe.FindStringSubmatch(t); m != nil {
+		if pbW1IacComposeQuotedValue(m[2]) {
+			return "", "", false
+		}
+		return m[1], m[2], true
+	}
+	return "", "", false
+}
+
+// pbW1IacComposeQuotedValue reports a quoted literal. VGL-SEC-014 already
+// reports those values, so CFG-049 must stay quiet to avoid double reporting.
+func pbW1IacComposeQuotedValue(v string) bool {
+	v = strings.TrimSpace(v)
+	return strings.HasPrefix(v, `"`) || strings.HasPrefix(v, `'`)
+}
+
+// pbW1IacComposeSecretContext returns "environment" or "build.args" when the
+// entry at idx belongs to one of those Compose blocks.
+func pbW1IacComposeSecretContext(f *File, idx int) (string, bool) {
+	curIndent := pbLineIndent(f.Lines[idx])
+	for j := idx - 1; j >= 0 && j >= idx-40; j-- {
+		line := f.Lines[j]
+		t := strings.TrimSpace(line)
+		if t == "" || pbComment(f, line) {
+			continue
+		}
+		indent := pbLineIndent(line)
+		if indent >= curIndent {
+			continue
+		}
+		lower := strings.ToLower(t)
+		switch {
+		case strings.HasPrefix(lower, "environment:"):
+			return "environment", true
+		case strings.HasPrefix(lower, "args:"):
+			if pbW1IacArgsUnderBuild(f, j, indent) {
+				return "build.args", true
+			}
+			return "", false
+		default:
+			if indent == 0 {
+				return "", false
+			}
+		}
+	}
+	return "", false
+}
+
+func pbW1IacArgsUnderBuild(f *File, idx, indent int) bool {
+	for j := idx - 1; j >= 0 && j >= idx-15; j-- {
+		line := f.Lines[j]
+		t := strings.TrimSpace(line)
+		if t == "" || pbComment(f, line) {
+			continue
+		}
+		if pbLineIndent(line) < indent {
+			return strings.HasPrefix(strings.ToLower(t), "build:")
+		}
+	}
+	return false
+}
+
+func pbW1IacComposeSecretKeyExcluded(key string) bool {
+	lower := strings.ToLower(key)
+	if strings.HasSuffix(lower, "_file") || strings.HasSuffix(lower, "_path") ||
+		strings.HasSuffix(lower, ".file") || strings.HasSuffix(lower, ".path") {
+		return true
+	}
+	return strings.Contains(lower, "public")
+}
+
+func pbW1IacComposeValue(v string) string {
+	v = strings.TrimSpace(v)
+	if i := strings.Index(v, " #"); i >= 0 {
+		v = strings.TrimSpace(v[:i])
+	}
+	return strings.TrimSpace(strings.Trim(v, `"'`))
+}
+
+func pbW1IacLiteralSecret(v string) bool {
+	if len(v) < 8 || LooksLikePlaceholder(v) || pbW1IacEnvWordRe.MatchString(v) {
+		return false
+	}
+	if strings.Contains(v, "${") || strings.Contains(v, "{{") || strings.Contains(v, "$(") ||
+		strings.HasPrefix(v, "$") || strings.Contains(v, "://") {
+		return false
+	}
+	if strings.HasPrefix(v, "/") || strings.HasPrefix(v, "./") || strings.HasPrefix(v, "../") {
+		return false
+	}
+	digits := true
+	hasStrong, hasLower, hasUpper := false, false, false
+	for _, r := range v {
+		switch {
+		case r >= '0' && r <= '9':
+			hasStrong = true
+		case r >= 'a' && r <= 'z':
+			digits = false
+			hasLower = true
+		case r >= 'A' && r <= 'Z':
+			digits = false
+			hasUpper = true
+		default:
+			digits = false
+			// Hyphens, underscores, dots and spaces separate words; they add
+			// no secret material to an otherwise dictionary-shaped value.
+			if r != '-' && r != '_' && r != '.' && r != ' ' {
+				hasStrong = true
+			}
+		}
+	}
+	if digits {
+		return false
+	}
+	// A plain word carries no secret material: environment labels such as
+	// "production" or "development" reach this point without a digit or symbol.
+	// Require a digit/symbol, or a long mixed-case token that is not a word.
+	if !hasStrong && (len(v) < 12 || !hasLower || !hasUpper) {
+		return false
+	}
+	return Entropy(v) >= 3.0
+}
+
+func pbW1IacComposeSecretRule(f *File) []model.Finding {
+	if f == nil || !pbIsCompose(f) || pbW1IacSkipPath(f.Path) {
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if pbComment(f, line) {
+			continue
+		}
+		key, value, ok := pbW1IacComposeEntry(line)
+		if !ok || !pbW1IacSecretKeyRe.MatchString(key) || pbW1IacComposeSecretKeyExcluded(key) {
+			continue
+		}
+		context, ok := pbW1IacComposeSecretContext(f, i)
+		if !ok {
+			continue
+		}
+		value = pbW1IacComposeValue(value)
+		if !pbW1IacLiteralSecret(value) {
+			continue
+		}
+		fd := pbFinding(f, i+1, "compose "+context+" contains a literal secret for "+key+": "+key+"="+MaskSecret(value))
+		// pbFinding uses a radius-1 snippet, which would copy the neighbouring
+		// environment entry into reports verbatim. Keep a single redacted line so
+		// neither this value nor a neighbouring credential reaches JSON/SARIF.
+		fd.Location.Snippet = secRedactSnippet(f, i+1, value)
+		fd.Severity = pbSev(f, model.SeverityHigh)
+		fd.Confidence = model.ConfidenceMedium
+		fd.Remediation = "Remove the literal value, interpolate it from the shell (${VAR}) or an env_file that is not committed, and rotate the exposed credential."
+		out = append(out, fd)
+	}
+	return out
 }

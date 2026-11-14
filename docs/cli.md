@@ -39,7 +39,7 @@ vigil hook uninstall
 ```
 
 `pre-commit` (default) runs
-`vigil scan --changed --base HEAD --no-llm --fail-on high --quiet`; `pre-push`
+`git diff --cached --unified=0 --no-color | vigil scan --diff - --no-llm --fail-on high --quiet`; `pre-push`
 uses `@{upstream}` and falls back to `HEAD~1` (then `HEAD` on a single-commit
 branch). The generated script is `#!/bin/sh`, executable and marked
 `# managed by lv24-vigil`. It honours `VIGIL_BIN` (default `vigil`) and fails

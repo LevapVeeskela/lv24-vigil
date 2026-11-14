@@ -2,10 +2,12 @@ package osv
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeFixture(t *testing.T, dir, name, content string) string {
@@ -157,6 +159,465 @@ weird==1.*
 	for _, name := range []string{"flask", "weird"} {
 		if _, ok := idx[name]; ok {
 			t.Errorf("%q must be skipped", name)
+		}
+	}
+}
+
+func TestCollectPackagesRequirementsVariants(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "requests==2.31.0\n")
+	writeFixture(t, dir, "requirements-dev.txt", "pytest==7.4.0\n")
+	writeFixture(t, dir, "requirements_prod.txt", "gunicorn==21.2.0\n")
+	writeFixture(t, dir, "services/api/requirements-prod.txt", "fastapi==0.110.0\n")
+	writeFixture(t, dir, "vendor/requirements-dev.txt", "vendored==1.0.0\n")
+	writeFixture(t, dir, ".venv/requirements-dev.txt", "installed==1.0.0\n")
+
+	idx := indexPackages(collectForTest(t, dir, true))
+	requirePackage(t, idx, "requests", "2.31.0")
+	requirePackage(t, idx, "pytest", "7.4.0")
+	requirePackage(t, idx, "gunicorn", "21.2.0")
+	nested := requirePackage(t, idx, "fastapi", "0.110.0")
+	if nested.Manifest != "services/api/requirements-prod.txt" {
+		t.Errorf("nested manifest = %q", nested.Manifest)
+	}
+	for _, name := range []string{"vendored", "installed"} {
+		if _, ok := idx[name]; ok {
+			t.Errorf("%q is in a skipped directory and must not be collected", name)
+		}
+	}
+}
+
+func TestCollectPackagesRequirementsIncludes(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "-r requirements/base.txt\nflask==3.0.0\n")
+	writeFixture(t, dir, "requirements/base.txt", "--requirement=base-extra.txt\nrequests==2.31.0\n")
+	writeFixture(t, dir, "requirements/base-extra.txt", "-rbase-more.txt\nurllib3==2.2.0\n")
+	writeFixture(t, dir, "requirements/base-more.txt", "certifi==2024.2.2\n")
+
+	pkgs := collectForTest(t, dir, true)
+	idx := indexPackages(pkgs)
+	requirePackage(t, idx, "flask", "3.0.0")
+	requests := requirePackage(t, idx, "requests", "2.31.0")
+	requirePackage(t, idx, "urllib3", "2.2.0")
+	certifi := requirePackage(t, idx, "certifi", "2024.2.2")
+
+	if requests.Manifest != "requirements/base.txt" || requests.Line != 2 {
+		t.Errorf("requests location = %s:%d, want the included file and line", requests.Manifest, requests.Line)
+	}
+	if certifi.Manifest != "requirements/base-more.txt" {
+		t.Errorf("certifi manifest = %q, want the transitive include", certifi.Manifest)
+	}
+}
+
+func TestCollectPackagesRequirementsIncludeCycle(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "-r a.txt\nroot-pkg==1.0.0\n")
+	writeFixture(t, dir, "a.txt", "-r b.txt\na-pkg==1.0.0\n")
+	writeFixture(t, dir, "b.txt", "-r a.txt\nb-pkg==2.0.0\n")
+
+	// The walk never discovers a.txt/b.txt, so only the include chain reaches
+	// them. A cycle must terminate instead of recursing forever.
+	pkgs := collectForTest(t, dir, true)
+	if len(pkgs) != 3 {
+		t.Fatalf("got %d packages, want 3 (cycle parsed once): %v", len(pkgs), packageNames(indexPackages(pkgs)))
+	}
+	idx := indexPackages(pkgs)
+	for _, name := range []string{"root-pkg", "a-pkg", "b-pkg"} {
+		if _, ok := idx[name]; !ok {
+			t.Errorf("package %q missing from the include cycle result", name)
+		}
+	}
+}
+
+func TestCollectPackagesRequirementsMissingIncludeWarns(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "-r does-not-exist.txt\nkept==1.0.0\n")
+
+	pkgs, warnings, err := collectPackages(context.Background(), dir, true, DefaultMaxPackages)
+	if err != nil {
+		t.Fatalf("collectPackages: %v", err)
+	}
+	requirePackage(t, indexPackages(pkgs), "kept", "1.0.0")
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, "does-not-exist.txt") {
+		t.Fatalf("warnings do not mention the unreadable include: %v", warnings)
+	}
+}
+
+func TestCollectPackagesRequirementsDevFromFilename(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "requests==2.31.0\n")
+	writeFixture(t, dir, "requirements-dev.txt", "-r dev-base.txt\npytest==7.4.0\n")
+	writeFixture(t, dir, "dev-base.txt", "mock==5.1.0\n")
+	writeFixture(t, dir, "requirements_test.txt", "coverage==7.4.0\n")
+	writeFixture(t, dir, "requirements-test.txt", "tox==4.11.0\n")
+	writeFixture(t, dir, "requirements-prod.txt", "gunicorn==21.2.0\n")
+
+	// Arrange/Act: a dev or test suffix marks the whole include tree as dev.
+	withDev := indexPackages(collectForTest(t, dir, true))
+	for _, name := range []string{"pytest", "coverage", "tox", "mock"} {
+		if !withDev[name].Dev {
+			t.Errorf("%q should be marked as a dev dependency", name)
+		}
+	}
+	for _, name := range []string{"requests", "gunicorn"} {
+		if withDev[name].Dev {
+			t.Errorf("%q should stay a production dependency", name)
+		}
+	}
+
+	withoutDev := indexPackages(collectForTest(t, dir, false))
+	for _, name := range []string{"pytest", "coverage", "tox", "mock"} {
+		if _, ok := withoutDev[name]; ok {
+			t.Errorf("%q must be excluded when IncludeDev is false", name)
+		}
+	}
+	requirePackage(t, withoutDev, "requests", "2.31.0")
+	requirePackage(t, withoutDev, "gunicorn", "21.2.0")
+}
+
+func TestCollectPackagesRequirementsSharedIncludeStaysProduction(t *testing.T) {
+	dir := t.TempDir()
+	// requirements-dev.txt sorts before requirements.txt, so it is parsed first.
+	writeFixture(t, dir, "requirements.txt", "-r shared.txt\nbase==1.0.0\n")
+	writeFixture(t, dir, "requirements-dev.txt", "-r shared.txt\ntestonly==1.0.0\n")
+	writeFixture(t, dir, "shared.txt", "shared==1.0.0\n")
+
+	prod := indexPackages(collectForTest(t, dir, false))
+	requirePackage(t, prod, "shared", "1.0.0")
+	if prod["shared"].Dev {
+		t.Error("an include reachable from a production root must stay production")
+	}
+	if _, ok := prod["testonly"]; ok {
+		t.Error("dev-only packages must be excluded when IncludeDev is false")
+	}
+}
+
+func TestCollectPackagesRequirementsIncludeSkipsIgnoredDirs(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "-r .venv/requirements.txt\n-r vendor/pkg/requirements.txt\n-r services/requirements.txt\nkept==1.0.0\n")
+	writeFixture(t, dir, ".venv/requirements.txt", "installed==1.0.0\n")
+	writeFixture(t, dir, "vendor/pkg/requirements.txt", "vendored==1.0.0\n")
+	writeFixture(t, dir, "services/requirements.txt", "services==1.0.0\n")
+
+	pkgs, warnings, err := collectPackages(context.Background(), dir, true, DefaultMaxPackages)
+	if err != nil {
+		t.Fatalf("collectPackages: %v", err)
+	}
+	idx := indexPackages(pkgs)
+	requirePackage(t, idx, "kept", "1.0.0")
+	requirePackage(t, idx, "services", "1.0.0")
+	for _, name := range []string{"installed", "vendored"} {
+		if _, ok := idx[name]; ok {
+			t.Errorf("%q comes from an include inside a skipped directory and must not be collected", name)
+		}
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, "skipped directory") {
+		t.Fatalf("warnings do not mention the skipped directory include: %v", warnings)
+	}
+}
+
+func TestCollectPackagesRequirementsIncludeDepthCap(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "-r depth0.txt\nroot==1.0.0\n")
+	for i := 0; i < maxRequirementsIncludeDepth+3; i++ {
+		next := fmt.Sprintf("depth%d.txt", i+1)
+		writeFixture(t, dir, fmt.Sprintf("depth%d.txt", i),
+			fmt.Sprintf("-r %s\ndepth-pkg-%d==1.0.0\n", next, i))
+	}
+
+	pkgs, warnings, err := collectPackages(context.Background(), dir, true, DefaultMaxPackages)
+	if err != nil {
+		t.Fatalf("collectPackages: %v", err)
+	}
+	idx := indexPackages(pkgs)
+	requirePackage(t, idx, "root", "1.0.0")
+	if _, ok := idx["depth-pkg-0"]; !ok {
+		t.Error("the first include level should be parsed")
+	}
+	deepest := fmt.Sprintf("depth-pkg-%d", maxRequirementsIncludeDepth+1)
+	if _, ok := idx[deepest]; ok {
+		t.Errorf("%q is beyond the depth limit and must not be parsed", deepest)
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, "exceeds the depth limit") {
+		t.Fatalf("warnings do not mention the depth limit: %v", warnings)
+	}
+	if len(pkgs) > maxRequirementsIncludeDepth+1 {
+		t.Errorf("got %d packages, want at most %d parsed files", len(pkgs), maxRequirementsIncludeDepth+1)
+	}
+}
+
+func TestCollectPackagesRequirementsIncludesShareBudget(t *testing.T) {
+	dir := t.TempDir()
+	const perRoot = 120
+	writeRoot := func(root, prefix string) {
+		var b strings.Builder
+		fmt.Fprintf(&b, "root-%s==1.0.0\n", prefix)
+		for i := 0; i < perRoot; i++ {
+			name := fmt.Sprintf("include-%s-%03d.txt", prefix, i)
+			fmt.Fprintf(&b, "-r %s\n", name)
+			writeFixture(t, dir, name, fmt.Sprintf("pkg-%s-%03d==1.0.0\n", prefix, i))
+		}
+		writeFixture(t, dir, root, b.String())
+	}
+	// Two discovered roots attempting 240 includes in total: the budget must be
+	// shared, so only the first maxRequirementsIncludes are read.
+	writeRoot("requirements-a.txt", "a")
+	writeRoot("requirements-b.txt", "b")
+
+	pkgs, warnings, err := collectPackages(context.Background(), dir, true, DefaultMaxPackages)
+	if err != nil {
+		t.Fatalf("collectPackages: %v", err)
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, fmt.Sprintf("includes stopped after %d files", maxRequirementsIncludes)) {
+		t.Fatalf("warnings do not mention the shared include budget: %v", warnings)
+	}
+	wantMax := maxRequirementsIncludes + 2 // two root packages
+	if len(pkgs) > wantMax {
+		t.Fatalf("got %d packages, want at most %d: the include budget was not shared", len(pkgs), wantMax)
+	}
+	if len(pkgs) < maxRequirementsIncludes {
+		t.Fatalf("got %d packages, want most of the shared budget to be used", len(pkgs))
+	}
+}
+
+func TestRequirementsParseStopsAtPackageCap(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "-r a.txt\n-r b.txt\nroot==1.0.0\n")
+	writeFixture(t, dir, "a.txt", "a1==1.0.0\na2==1.0.0\n")
+	writeFixture(t, dir, "b.txt", "b1==1.0.0\nb2==1.0.0\n")
+	abs := filepath.Join(dir, "requirements.txt")
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	budget := newRequirementsParseBudget(context.Background(), dir)
+	budget.maxPackages = 3
+	f := manifestFile{abs: abs, rel: "requirements.txt", kind: kindRequirements}
+	pkgs, warnings := parseRequirementsFile(dir, f, data, budget)
+
+	if len(pkgs) != 3 {
+		t.Fatalf("got %d packages, want the cap of 3: %v", len(pkgs), packageNames(indexPackages(pkgs)))
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, "stopped after 3 packages") {
+		t.Fatalf("warnings do not mention the package cap: %v", warnings)
+	}
+}
+
+func TestRequirementsParseStopsOnCancelledContext(t *testing.T) {
+	dir := t.TempDir()
+	var b strings.Builder
+	for i := 0; i < 5000; i++ {
+		fmt.Fprintf(&b, "pkg%05d==1.0.0\n", i)
+	}
+	b.WriteString("-r child.txt\n")
+	writeFixture(t, dir, "requirements.txt", b.String())
+	writeFixture(t, dir, "child.txt", "child==1.0.0\n")
+	abs := filepath.Join(dir, "requirements.txt")
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	budget := newRequirementsParseBudget(ctx, dir)
+	f := manifestFile{abs: abs, rel: "requirements.txt", kind: kindRequirements}
+
+	start := time.Now()
+	pkgs, warnings := parseRequirementsFile(dir, f, data, budget)
+	elapsed := time.Since(start)
+
+	if elapsed > 2*time.Second {
+		t.Fatalf("cancelled parse took %s; the context was not enforced", elapsed)
+	}
+	if len(pkgs) != 0 {
+		t.Fatalf("cancelled parse collected %d packages, want 0", len(pkgs))
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, "context canceled") {
+		t.Fatalf("warnings do not mention the cancellation: %v", warnings)
+	}
+}
+
+func TestCollectPackagesRequirementsIncludeRemote(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "-r https://example.test/requirements.txt\n--requirement=git+https://example.test/repo#egg=x\nkept==1.0.0\n")
+
+	pkgs, warnings, err := collectPackages(context.Background(), dir, true, DefaultMaxPackages)
+	if err != nil {
+		t.Fatalf("collectPackages: %v", err)
+	}
+	requirePackage(t, indexPackages(pkgs), "kept", "1.0.0")
+	joined := strings.Join(warnings, "\n")
+	if strings.Count(joined, "remote requirements include") != 2 {
+		t.Fatalf("want a warning per remote include, got: %v", warnings)
+	}
+}
+
+func TestCollectPackagesRequirementsIncludeOutsideRoot(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "root")
+	writeFixture(t, root, "requirements.txt", "-r ../outside.txt\nkept==1.0.0\n")
+	if err := os.WriteFile(filepath.Join(parent, "outside.txt"), []byte("escaped==9.9.9\n"), 0o644); err != nil {
+		t.Fatalf("write outside fixture: %v", err)
+	}
+
+	pkgs, warnings, err := collectPackages(context.Background(), root, true, DefaultMaxPackages)
+	if err != nil {
+		t.Fatalf("collectPackages: %v", err)
+	}
+	idx := indexPackages(pkgs)
+	requirePackage(t, idx, "kept", "1.0.0")
+	if _, ok := idx["escaped"]; ok {
+		t.Error("an include outside the scan root must not be read")
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, "outside the scan root") {
+		t.Fatalf("warnings do not mention the outside include: %v", warnings)
+	}
+}
+
+func TestCollectPackagesRequirementsIncludeNonRegularFile(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "requirements.txt", "-r reqs\nkept==1.0.0\n")
+	if err := os.MkdirAll(filepath.Join(dir, "reqs"), 0o755); err != nil {
+		t.Fatalf("mkdir include target: %v", err)
+	}
+
+	pkgs, warnings, err := collectPackages(context.Background(), dir, true, DefaultMaxPackages)
+	if err != nil {
+		t.Fatalf("collectPackages: %v", err)
+	}
+	requirePackage(t, indexPackages(pkgs), "kept", "1.0.0")
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, "not a regular file") {
+		t.Fatalf("warnings do not mention the non-regular include: %v", warnings)
+	}
+}
+
+func TestCollectPackagesPyProjectDependencies(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "pyproject.toml", `[build-system]
+requires = ["setuptools>=77"]
+
+[project]
+name = "demo"
+dependencies = [
+  "requests==2.31.0",
+  'Django[bcrypt]==3.2.4 ; python_version >= "3.8"',
+  "unpinned>=1.0",
+  "kept==1.0.0 # inline comment",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==7.4.0"]
+
+[tool.poetry.dependencies]
+flask = "3.0.0"
+`)
+
+	idx := indexPackages(collectForTest(t, dir, true))
+	requests := requirePackage(t, idx, "requests", "2.31.0")
+	requirePackage(t, idx, "django", "3.2.4")
+	requirePackage(t, idx, "kept", "1.0.0")
+
+	if requests.Manifest != "pyproject.toml" || requests.Line != 7 {
+		t.Errorf("requests location = %s:%d, want pyproject.toml:7", requests.Manifest, requests.Line)
+	}
+	for _, name := range []string{"unpinned", "pytest", "flask"} {
+		if _, ok := idx[name]; ok {
+			t.Errorf("%q must not be collected from [project].dependencies", name)
+		}
+	}
+}
+
+func TestCollectPackagesPyProjectDynamicDependenciesSkipped(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "pyproject.toml", `[project]
+name = "demo"
+dynamic = ["dependencies"]
+dependencies = ["requests==2.31.0"]
+`)
+
+	pkgs := collectForTest(t, dir, true)
+	if len(pkgs) != 0 {
+		t.Fatalf("dynamic dependencies must not be guessed, got %v", packageNames(indexPackages(pkgs)))
+	}
+}
+
+func TestCollectPackagesPyProjectStripsBOM(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "pyproject.toml", "\ufeff[project]\nname = \"demo\"\ndependencies = [\"requests==2.31.0\"]\n")
+
+	idx := indexPackages(collectForTest(t, dir, true))
+	requests := requirePackage(t, idx, "requests", "2.31.0")
+	if requests.Line != 3 {
+		t.Errorf("requests line = %d, want 3 (the BOM must not shift lines)", requests.Line)
+	}
+}
+
+func TestCollectPackagesPyProjectSkipsTripleQuotedDependencies(t *testing.T) {
+	tests := map[string]string{
+		"basic multi-line": `[project]
+name = "demo"
+dependencies = [
+  """requests==2.31.0""",
+  "flask==3.0.0",
+]
+
+[tool.unrelated]
+versions = ["pytest==7.4.0"]
+`,
+		"literal single-line": `[project]
+name = "demo"
+dependencies = ['''requests==2.31.0''', "flask==3.0.0"]
+`,
+	}
+	for name, content := range tests {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFixture(t, dir, "pyproject.toml", content)
+
+			pkgs, warnings, err := collectPackages(context.Background(), dir, true, DefaultMaxPackages)
+			if err != nil {
+				t.Fatalf("collectPackages: %v", err)
+			}
+			if len(pkgs) != 0 {
+				t.Fatalf("a triple-quoted dependency array must be skipped, got %v", packageNames(indexPackages(pkgs)))
+			}
+			joined := strings.Join(warnings, "\n")
+			if !strings.Contains(joined, "triple-quoted") {
+				t.Fatalf("warnings do not mention the skipped array: %v", warnings)
+			}
+		})
+	}
+}
+
+func TestManifestKindForPython(t *testing.T) {
+	tests := []struct {
+		name string
+		kind manifestKind
+		ok   bool
+	}{
+		{"requirements.txt", kindRequirements, true},
+		{"REQUIREMENTS.TXT", kindRequirements, true},
+		{"requirements-dev.txt", kindRequirements, true},
+		{"requirements_prod.txt", kindRequirements, true},
+		{"requirements.prod.txt", kindRequirements, true},
+		{"requirements-dev.in", 0, false},
+		{"pyproject.toml", kindPyProject, true},
+		{"PYPROJECT.TOML", kindPyProject, true},
+	}
+	for _, tc := range tests {
+		kind, ok := manifestKindFor(tc.name)
+		if ok != tc.ok || kind != tc.kind {
+			t.Errorf("manifestKindFor(%q) = (%v, %v), want (%v, %v)", tc.name, kind, ok, tc.kind, tc.ok)
 		}
 	}
 }

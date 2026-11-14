@@ -34,3 +34,6 @@ Thumbs.db
 
 __pycache__/
 *.pyc
+
+# Swarm research checkouts (local only)
+/ideas/

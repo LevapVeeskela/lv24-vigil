@@ -1,6 +1,7 @@
 package osv
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
@@ -10,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,6 +41,11 @@ const (
 	// maxCollectedPackages bounds intermediate memory before the MaxPackages
 	// cap is applied.
 	maxCollectedPackages = 50_000
+	// maxRequirementsIncludeDepth bounds -r/--requirement chains.
+	maxRequirementsIncludeDepth = 8
+	// maxRequirementsIncludes bounds how many distinct files one requirements
+	// tree may pull in.
+	maxRequirementsIncludes = 200
 )
 
 // Package is one exact dependency coordinate found in a manifest.
@@ -70,6 +77,7 @@ const (
 	kindPubspecLock
 	kindGradleLockfile
 	kindNuGetLock
+	kindPyProject
 )
 
 type manifestFile struct {
@@ -181,13 +189,15 @@ func collectPackages(ctx context.Context, root string, includeDev bool, max int)
 
 	// Parse lockfiles first so a manifest is only used when its directory has
 	// no usable lockfile.
+	reqBudget := newRequirementsParseBudget(ctx, absRoot)
 	var packages []Package
 	lockDirs := make(map[string]bool)
 	for _, f := range files {
 		if !isLockfileKind(f.kind) {
 			continue
 		}
-		parsed, err := parseManifestFile(f)
+		parsed, fileWarnings, err := parseManifestFile(absRoot, f, reqBudget)
+		warnings = append(warnings, fileWarnings...)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("osv: skipped %s: %s", f.rel, boundedError(err)))
 			continue
@@ -207,7 +217,8 @@ func collectPackages(ctx context.Context, root string, includeDev bool, max int)
 		if f.kind == kindPackageJSON && lockDirs[path.Dir(f.rel)] {
 			continue
 		}
-		parsed, err := parseManifestFile(f)
+		parsed, fileWarnings, err := parseManifestFile(absRoot, f, reqBudget)
+		warnings = append(warnings, fileWarnings...)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("osv: skipped %s: %s", f.rel, boundedError(err)))
 			continue
@@ -262,7 +273,14 @@ func suppressesPackageJSON(kind manifestKind) bool {
 }
 
 func manifestKindFor(name string) (manifestKind, bool) {
-	switch strings.ToLower(name) {
+	lower := strings.ToLower(name)
+	// pip requirement files are often split by purpose: requirements-dev.txt,
+	// requirements_prod.txt or requirements.prod.txt. The exact requirements.txt
+	// is covered by the same prefix/suffix check.
+	if strings.HasPrefix(lower, "requirements") && strings.HasSuffix(lower, ".txt") {
+		return kindRequirements, true
+	}
+	switch lower {
 	case "package.json":
 		return kindPackageJSON, true
 	case "package-lock.json":
@@ -281,10 +299,10 @@ func manifestKindFor(name string) (manifestKind, bool) {
 		return kindPubspecLock, true
 	case "gradle.lockfile":
 		return kindGradleLockfile, true
+	case "pyproject.toml":
+		return kindPyProject, true
 	case "packages.lock.json":
 		return kindNuGetLock, true
-	case "requirements.txt":
-		return kindRequirements, true
 	case "go.mod":
 		return kindGoMod, true
 	case "gemfile.lock":
@@ -300,49 +318,72 @@ func manifestKindFor(name string) (manifestKind, bool) {
 	}
 }
 
-func parseManifestFile(f manifestFile) ([]Package, error) {
+// parseManifestFile parses one discovered manifest. The returned warnings are
+// per-file coverage gaps (for example an unreadable requirements include) that
+// must not be mistaken for a clean parse. reqBudget is shared by every
+// requirements file of one scan; other kinds ignore it.
+func parseManifestFile(root string, f manifestFile, reqBudget *requirementsParseBudget) ([]Package, []string, error) {
 	data, err := os.ReadFile(f.abs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(data) > maxManifestBytes {
-		return nil, fmt.Errorf("manifest exceeds %d bytes", maxManifestBytes)
+		return nil, nil, fmt.Errorf("manifest exceeds %d bytes", maxManifestBytes)
 	}
 	switch f.kind {
 	case kindPackageJSON:
-		return parsePackageJSON(f.rel, data)
+		pkgs, err := parsePackageJSON(f.rel, data)
+		return pkgs, nil, err
 	case kindPackageLock:
-		return parsePackageLock(f.rel, data)
+		pkgs, err := parsePackageLock(f.rel, data)
+		return pkgs, nil, err
 	case kindPNPMLock:
-		return parsePNPMLock(f.rel, data)
+		pkgs, err := parsePNPMLock(f.rel, data)
+		return pkgs, nil, err
 	case kindYarnLock:
-		return parseYarnLock(f.rel, data)
+		pkgs, err := parseYarnLock(f.rel, data)
+		return pkgs, nil, err
 	case kindPipfileLock:
-		return parsePipfileLock(f.rel, data)
+		pkgs, err := parsePipfileLock(f.rel, data)
+		return pkgs, nil, err
 	case kindPoetryLock:
-		return parsePoetryLock(f.rel, data)
+		pkgs, err := parsePoetryLock(f.rel, data)
+		return pkgs, nil, err
 	case kindUVLock:
-		return parseUVLock(f.rel, data)
+		pkgs, err := parseUVLock(f.rel, data)
+		return pkgs, nil, err
 	case kindPubspecLock:
-		return parsePubspecLock(f.rel, data)
+		pkgs, err := parsePubspecLock(f.rel, data)
+		return pkgs, nil, err
 	case kindGradleLockfile:
-		return parseGradleLockfile(f.rel, data)
+		pkgs, err := parseGradleLockfile(f.rel, data)
+		return pkgs, nil, err
 	case kindNuGetLock:
-		return parseNuGetLock(f.rel, data)
+		pkgs, err := parseNuGetLock(f.rel, data)
+		return pkgs, nil, err
 	case kindRequirements:
-		return parseRequirementsTxt(f.rel, data)
+		pkgs, warnings := parseRequirementsFile(root, f, data, reqBudget)
+		return pkgs, warnings, nil
+	case kindPyProject:
+		pkgs, warnings := parsePyProject(f.rel, data)
+		return pkgs, warnings, nil
 	case kindGoMod:
-		return parseGoMod(f.rel, data)
+		pkgs, err := parseGoMod(f.rel, data)
+		return pkgs, nil, err
 	case kindGemfileLock:
-		return parseGemfileLock(f.rel, data)
+		pkgs, err := parseGemfileLock(f.rel, data)
+		return pkgs, nil, err
 	case kindCargoLock:
-		return parseCargoLock(f.rel, data)
+		pkgs, err := parseCargoLock(f.rel, data)
+		return pkgs, nil, err
 	case kindComposerLock:
-		return parseComposerLock(f.rel, data)
+		pkgs, err := parseComposerLock(f.rel, data)
+		return pkgs, nil, err
 	case kindPomXML:
-		return parsePomXML(f.rel, data)
+		pkgs, err := parsePomXML(f.rel, data)
+		return pkgs, nil, err
 	default:
-		return nil, nil
+		return nil, nil, nil
 	}
 }
 
@@ -606,37 +647,509 @@ func parsePackageJSON(rel string, data []byte) ([]Package, error) {
 
 var requirementsRe = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?\s*==\s*([A-Za-z0-9][A-Za-z0-9._+!-]*)`)
 
-func parseRequirementsTxt(rel string, data []byte) ([]Package, error) {
+// parsePyPIRequirement extracts an exact name==version pin from one PEP 508
+// requirement string. Ranges, direct references and unpinned names are skipped
+// because OSV needs a concrete installed version.
+func parsePyPIRequirement(raw string) (string, string, bool) {
+	line := strings.TrimSpace(raw)
+	if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
+		return "", "", false
+	}
+	if idx := strings.Index(line, " #"); idx >= 0 {
+		line = strings.TrimSpace(line[:idx])
+	}
+	// Environment markers are irrelevant to the installed version.
+	if idx := strings.Index(line, ";"); idx >= 0 {
+		line = strings.TrimSpace(line[:idx])
+	}
+	m := requirementsRe.FindStringSubmatch(line)
+	if m == nil {
+		return "", "", false
+	}
+	version := strings.TrimSpace(m[2])
+	if !validPyPIVersion(version) {
+		return "", "", false
+	}
+	return normalizePyPIName(m[1]), version, true
+}
+
+// requirementsParseBudget is shared by every requirements file of one scan. A
+// crafted repository can discover many requirements*.txt roots, and each root
+// could otherwise re-parse the same include tree with a fresh depth, include
+// and package budget; this type makes those limits scan-wide. It also carries
+// the audit context so cancellation stops parsing promptly.
+type requirementsParseBudget struct {
+	ctx         context.Context
+	root        string
+	visited     map[string]bool
+	includes    int
+	maxIncludes int
+	packages    int
+	maxPackages int
+	packageWarn bool
+	includeWarn bool
+	ctxWarn     bool
+}
+
+func newRequirementsParseBudget(ctx context.Context, root string) *requirementsParseBudget {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return &requirementsParseBudget{
+		ctx:         ctx,
+		root:        root,
+		visited:     make(map[string]bool),
+		maxIncludes: maxRequirementsIncludes,
+		maxPackages: maxCollectedPackages,
+	}
+}
+
+// halted reports whether parsing must stop. It emits at most one warning per
+// cause so a huge tree does not produce a warning per line.
+func (s *requirementsParseBudget) halted(warnings *[]string) bool {
+	if err := s.ctx.Err(); err != nil {
+		if !s.ctxWarn {
+			s.ctxWarn = true
+			*warnings = append(*warnings, fmt.Sprintf("osv: requirements parsing stopped: %s", boundedError(err)))
+		}
+		return true
+	}
+	if s.packages >= s.maxPackages {
+		if !s.packageWarn {
+			s.packageWarn = true
+			*warnings = append(*warnings, fmt.Sprintf("osv: requirements parsing stopped after %d packages; the rest of the requirements tree was not read", s.maxPackages))
+		}
+		return true
+	}
+	return false
+}
+
+func (s *requirementsParseBudget) includeLimitReached(warnings *[]string) bool {
+	if s.includes < s.maxIncludes {
+		return false
+	}
+	if !s.includeWarn {
+		s.includeWarn = true
+		*warnings = append(*warnings, fmt.Sprintf("osv: requirements includes stopped after %d files", s.maxIncludes))
+	}
+	return true
+}
+
+func parseRequirementsFile(root string, f manifestFile, data []byte, budget *requirementsParseBudget) ([]Package, []string) {
+	if budget == nil {
+		budget = newRequirementsParseBudget(nil, root)
+	}
+	// Each root gets its own visited set: the same include may be reachable
+	// from a production and a dev root, and the dev marker must stay correct
+	// per tree. The scan-wide budget (counts and context) is still shared.
+	budget.visited = map[string]bool{canonicalManifestPath(f.abs): true}
 	var out []Package
+	var warnings []string
+	budget.parse(f.abs, f.rel, data, 0, false, &out, &warnings)
+	return out, warnings
+}
+
+// parse walks one requirements file. dev is inherited by includes so the whole
+// tree of a requirements-dev.txt is treated as development dependencies.
+func (s *requirementsParseBudget) parse(abs, rel string, data []byte, depth int, dev bool, out *[]Package, warnings *[]string) {
+	dev = dev || isDevRequirementsFile(rel)
 	for i, raw := range splitLines(data) {
+		if s.halted(warnings) {
+			return
+		}
 		line := strings.TrimSpace(raw)
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
+		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		if idx := strings.Index(line, " #"); idx >= 0 {
-			line = strings.TrimSpace(line[:idx])
-		}
-		// Environment markers are irrelevant to the installed version.
-		if idx := strings.Index(line, ";"); idx >= 0 {
-			line = strings.TrimSpace(line[:idx])
-		}
-		m := requirementsRe.FindStringSubmatch(line)
-		if m == nil {
+		if include, ok := requirementsIncludePath(line); ok {
+			s.include(abs, rel, include, depth, dev, out, warnings)
 			continue
 		}
-		version := strings.TrimSpace(m[2])
-		if !validPyPIVersion(version) {
+		// Other pip options (-e, -c, --hash, --index-url) do not name an
+		// installed dependency.
+		if strings.HasPrefix(line, "-") {
 			continue
 		}
-		out = append(out, Package{
-			Name:      normalizePyPIName(m[1]),
+		name, version, ok := parsePyPIRequirement(line)
+		if !ok {
+			continue
+		}
+		s.packages++
+		*out = append(*out, Package{
+			Name:      name,
 			Version:   version,
 			Ecosystem: ecosystemPyPI,
 			Manifest:  rel,
 			Line:      i + 1,
+			Dev:       dev,
 		})
 	}
-	return out, nil
+}
+
+func (s *requirementsParseBudget) include(abs, rel, target string, depth int, dev bool, out *[]Package, warnings *[]string) {
+	if isRemoteRequirementsInclude(target) {
+		*warnings = append(*warnings, fmt.Sprintf("osv: %s: remote requirements include %q was not fetched", rel, target))
+		return
+	}
+	if s.halted(warnings) {
+		return
+	}
+	if depth >= maxRequirementsIncludeDepth {
+		*warnings = append(*warnings, fmt.Sprintf("osv: %s: requirements include %q exceeds the depth limit of %d", rel, target, maxRequirementsIncludeDepth))
+		return
+	}
+	if s.includeLimitReached(warnings) {
+		return
+	}
+
+	targetAbs := target
+	if !filepath.IsAbs(targetAbs) {
+		targetAbs = filepath.Join(filepath.Dir(abs), filepath.FromSlash(target))
+	}
+	targetAbs = filepath.Clean(targetAbs)
+
+	targetRel, ok := s.relativeToRoot(rel, targetAbs, target, warnings)
+	if !ok {
+		return
+	}
+	if dir := skippedManifestDir(targetRel); dir != "" {
+		*warnings = append(*warnings, fmt.Sprintf("osv: %s: requirements include %q is inside the skipped directory %q", rel, target, dir))
+		return
+	}
+
+	key := canonicalManifestPath(targetAbs)
+	if s.visited[key] {
+		// Already parsed, or a cycle; either way parsing it again adds nothing.
+		return
+	}
+	s.visited[key] = true
+
+	data, err := readManifestBytes(targetAbs)
+	if err != nil {
+		*warnings = append(*warnings, fmt.Sprintf("osv: %s: requirements include %q: %s", rel, target, boundedError(err)))
+		return
+	}
+	s.includes++
+	s.parse(targetAbs, targetRel, data, depth+1, dev, out, warnings)
+}
+
+// relativeToRoot resolves an include to a slash path under the scan root and
+// rejects includes that escape it.
+func (s *requirementsParseBudget) relativeToRoot(rel, targetAbs, target string, warnings *[]string) (string, bool) {
+	if s.root == "" {
+		return filepath.ToSlash(targetAbs), true
+	}
+	relFromRoot, err := filepath.Rel(s.root, targetAbs)
+	if err != nil || relFromRoot == ".." || strings.HasPrefix(relFromRoot, ".."+string(filepath.Separator)) {
+		*warnings = append(*warnings, fmt.Sprintf("osv: %s: requirements include %q is outside the scan root", rel, target))
+		return "", false
+	}
+	return filepath.ToSlash(relFromRoot), true
+}
+
+// skippedManifestDir reports the first skipped directory segment of rel, or ""
+// when the path is collectable. Includes must honour the same directories the
+// walk refuses to enter (installed and generated copies).
+func skippedManifestDir(rel string) string {
+	for _, segment := range strings.Split(filepath.ToSlash(rel), "/") {
+		if skipManifestDirs[strings.ToLower(segment)] {
+			return segment
+		}
+	}
+	return ""
+}
+
+// isDevRequirementsFile reports whether a requirements file name marks a
+// development or test dependency set, matching the dev semantics used for npm
+// devDependencies, composer packages-dev and Maven test scope.
+func isDevRequirementsFile(rel string) bool {
+	name := strings.ToLower(path.Base(filepath.ToSlash(rel)))
+	name = strings.TrimPrefix(name, "requirements")
+	name = strings.TrimSuffix(name, ".txt")
+	for _, token := range strings.FieldsFunc(name, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.'
+	}) {
+		switch token {
+		case "dev", "development", "test", "tests", "testing":
+			return true
+		}
+	}
+	return false
+}
+
+// requirementsIncludePath recognises -r and --requirement directives, including
+// the "=", attached and quoted forms.
+func requirementsIncludePath(line string) (string, bool) {
+	line = strings.TrimSpace(line)
+	var rest string
+	switch {
+	case strings.HasPrefix(line, "--requirement"):
+		rest = strings.TrimPrefix(line, "--requirement")
+		if strings.HasPrefix(rest, "=") {
+			rest = rest[1:]
+		} else if rest != "" && !strings.HasPrefix(rest, " ") && !strings.HasPrefix(rest, "\t") {
+			return "", false
+		}
+	case strings.HasPrefix(line, "-r"):
+		rest = strings.TrimPrefix(line, "-r")
+	default:
+		return "", false
+	}
+	rest = strings.TrimSpace(rest)
+	if idx := strings.Index(rest, " #"); idx >= 0 {
+		rest = strings.TrimSpace(rest[:idx])
+	}
+	rest = strings.Trim(rest, `"'`)
+	if rest == "" {
+		return "", false
+	}
+	return rest, true
+}
+
+func isRemoteRequirementsInclude(target string) bool {
+	lower := strings.ToLower(strings.TrimSpace(target))
+	for _, prefix := range []string{"http://", "https://", "git+", "ssh://", "file://"} {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// canonicalManifestPath normalises a path for cycle detection. Windows paths are
+// case-insensitive, so they are folded; on other systems a case difference can
+// name a different file.
+func canonicalManifestPath(p string) string {
+	p = filepath.Clean(p)
+	if runtime.GOOS == "windows" {
+		p = strings.ToLower(p)
+	}
+	return p
+}
+
+// readManifestBytes reads one manifest or include with the same size bound as a
+// discovered manifest.
+func readManifestBytes(abs string) ([]byte, error) {
+	info, err := os.Stat(abs)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("not a regular file")
+	}
+	if info.Size() > maxManifestBytes {
+		return nil, fmt.Errorf("manifest exceeds %d bytes", maxManifestBytes)
+	}
+	return os.ReadFile(abs)
+}
+
+// parsePyProject collects PEP 621 [project].dependencies. The project may
+// declare dependencies as dynamic, in which case the build backend owns the
+// real list and guessing it here would be wrong.
+//
+// A UTF-8 BOM is stripped first: Windows editors add one and it would hide the
+// first table header. Arrays containing triple-quoted (multi-line) strings are
+// skipped with a warning, because a line-based scanner cannot read them
+// without misparsing the rest of the array.
+func parsePyProject(rel string, data []byte) ([]Package, []string) {
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+	lines := splitLines(data)
+	var out []Package
+	var warnings []string
+	section := ""
+	dynamic := false
+
+	for i := 0; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") {
+			header := line
+			if idx := strings.Index(header, "#"); idx >= 0 {
+				header = strings.TrimSpace(header[:idx])
+			}
+			if strings.HasSuffix(header, "]") {
+				section = strings.TrimSpace(header[1 : len(header)-1])
+				continue
+			}
+		}
+		if section != "project" {
+			continue
+		}
+		key, value, ok := cargoKeyValue(line)
+		if !ok || !strings.HasPrefix(value, "[") {
+			continue
+		}
+		switch key {
+		case "dependencies":
+			elements, last, skipped := scanTOMLArrayStrings(lines, i, value)
+			i = last
+			if skipped {
+				warnings = append(warnings, fmt.Sprintf("osv: %s: [project].dependencies uses a triple-quoted (multi-line) string; the array was skipped", rel))
+				continue
+			}
+			for _, element := range elements {
+				name, version, ok := parsePyPIRequirement(element.value)
+				if !ok {
+					continue
+				}
+				out = append(out, Package{
+					Name:      name,
+					Version:   version,
+					Ecosystem: ecosystemPyPI,
+					Manifest:  rel,
+					Line:      element.line,
+				})
+			}
+		case "dynamic":
+			elements, last, _ := scanTOMLArrayStrings(lines, i, value)
+			i = last
+			for _, element := range elements {
+				if strings.TrimSpace(element.value) == "dependencies" {
+					dynamic = true
+				}
+			}
+		default:
+			// Consume unrelated arrays so their contents cannot be mistaken
+			// for [project] keys.
+			_, last, _ := scanTOMLArrayStrings(lines, i, value)
+			i = last
+		}
+	}
+	if dynamic {
+		return nil, warnings
+	}
+	return out, warnings
+}
+
+type tomlArrayString struct {
+	value string
+	line  int
+}
+
+// scanTOMLArrayStrings reads the quoted strings of a TOML array that starts on
+// start and may continue on following lines. It returns the last consumed line
+// and whether the array contained a triple-quoted string, in which case the
+// returned elements are incomplete and the caller must skip the array.
+func scanTOMLArrayStrings(lines []string, start int, first string) ([]tomlArrayString, int, bool) {
+	var out []tomlArrayString
+	var scanner tomlArrayScanner
+	index := start
+	line := first
+	for {
+		scanner.feed(line, index+1, &out)
+		if scanner.complete {
+			return out, index, scanner.triple
+		}
+		index++
+		if index >= len(lines) {
+			return out, index - 1, scanner.triple
+		}
+		line = lines[index]
+	}
+}
+
+// tomlArrayScanner is a bounded, quote-aware scanner for one TOML array.
+type tomlArrayScanner struct {
+	depth      int
+	started    bool
+	complete   bool
+	inString   bool
+	quote      byte
+	escaped    bool
+	inMulti    bool
+	multiQuote byte
+	triple     bool
+	buf        strings.Builder
+	elemLine   int
+}
+
+func (p *tomlArrayScanner) feed(line string, lineNo int, out *[]tomlArrayString) {
+	for i := 0; i < len(line); i++ {
+		if p.inMulti {
+			idx := strings.Index(line[i:], strings.Repeat(string(p.multiQuote), 3))
+			if idx < 0 {
+				return
+			}
+			i += idx + 2 // the loop increment lands after the closing delimiter
+			p.inMulti = false
+			continue
+		}
+		ch := line[i]
+		if p.inString {
+			if p.quote == '"' && p.escaped {
+				p.buf.WriteByte(ch)
+				p.escaped = false
+				continue
+			}
+			if p.quote == '"' && ch == '\\' {
+				p.buf.WriteByte(ch)
+				p.escaped = true
+				continue
+			}
+			if ch == p.quote {
+				*out = append(*out, tomlArrayString{value: p.stringValue(), line: p.elemLine})
+				p.inString = false
+				p.buf.Reset()
+				continue
+			}
+			p.buf.WriteByte(ch)
+			continue
+		}
+		switch ch {
+		case '#':
+			return
+		case '"', '\'':
+			if i+2 < len(line) && line[i+1] == ch && line[i+2] == ch {
+				// A triple-quoted string makes the array unparsable line by
+				// line; remember that and skip to the closing delimiter so
+				// the array end (and the rest of the file) is still found.
+				p.triple = true
+				closing := strings.Repeat(string(ch), 3)
+				if idx := strings.Index(line[i+3:], closing); idx >= 0 {
+					i += idx + 5 // loop increment lands after the closing delimiter
+					continue
+				}
+				p.inMulti = true
+				p.multiQuote = ch
+				return
+			}
+			p.inString = true
+			p.quote = ch
+			p.elemLine = lineNo
+			p.escaped = false
+			p.buf.Reset()
+		case '[':
+			p.depth++
+			p.started = true
+		case ']':
+			if p.started {
+				p.depth--
+				if p.depth <= 0 {
+					p.complete = true
+					return
+				}
+			}
+		}
+	}
+	// A basic TOML string cannot contain a raw newline. Dropping an
+	// unterminated fragment keeps the parser bounded instead of treating the
+	// next line as a continuation.
+	if p.inString {
+		p.inString = false
+		p.buf.Reset()
+	}
+}
+
+func (p *tomlArrayScanner) stringValue() string {
+	raw := p.buf.String()
+	if p.quote == '"' {
+		if unquoted, err := strconv.Unquote(`"` + raw + `"`); err == nil {
+			return unquoted
+		}
+	}
+	return raw
 }
 
 // validPyPIVersion rejects requirement specs that only look like versions

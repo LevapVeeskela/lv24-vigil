@@ -13,7 +13,7 @@
 
 **Документация:** [English](README.md) · Русский · [docs/](docs/) · [llms.txt](llms.txt)
 
-> **Ваш код. Ваша модель. Ваши находки.** Vigil прогоняет 221 детерминированных
+> **Ваш код. Ваша модель. Ваши находки.** Vigil прогоняет 248 детерминированных
 > правила по репозиторию, а затем — только если вы попросите — отправляет
 > минимальный контекст в модель, за которую вы уже платите: триаж находок,
 > разбор рискованного кода, предложения исправлений и модель угроз. Один
@@ -63,7 +63,7 @@ vigil fix VGL-XXXXXXXXXX --apply  # записать в рабочее дере�
 - **Ваша модель, ваши ключи.** OpenAI, Anthropic, Gemini, OpenRouter, Groq,
   DeepSeek, Mistral, xAI, OpenCode Go, Ollama, LM Studio, локальный CLI или любой
   OpenAI-совместимый endpoint. Без прокси, аккаунта Vigil и телеметрии.
-- **Сначала детерминизм.** Все 221 правила отрабатывают до вызова модели. Сбой
+- **Сначала детерминизм.** Все 248 правила отрабатывают до вызова модели. Сбой
   провайдера не спрячет захардкоженный секрет, shell-инъекцию или отключённую
   проверку JWT.
 - **Встраивается в агента, которым вы уже пользуетесь.** Один stdio MCP-сервер
@@ -82,7 +82,7 @@ vigil fix VGL-XXXXXXXXXX --apply  # записать в рабочее дере�
 
 | | Возможность | Что делает |
 | --- | --- | --- |
-| 🔍 | **221 детерминированных правила** | Секреты, инъекции, криптография, auth, web, config/IaC, CI, зависимости и anti-RE hardening — без модели |
+| 🔍 | **248 детерминированных правила** | Секреты, инъекции, криптография, auth, web, config/IaC, CI, зависимости и anti-RE hardening — без модели |
 | 🧠 | **LLM-триаж** | Ранжирует и фильтрует находки вашей моделью; детерминированная severity остаётся видимой |
 | 🧪 | **Глубокий разбор** | Читает ограниченные окна рискованных файлов и добавляет находки `VGL-AI-001` |
 | 🛠 | **Diff для фикса** | Готовит проверенный unified diff; `--apply` пишет только рабочее дерево |
@@ -264,14 +264,28 @@ args = ["-y", "lv24-vigil", "mcp"]
 Запускайте клиент из репозитория, который хотите сканировать;
 `vigil mcp --root DIR` задаёт другой корень проекта.
 
-Сервер отдаёт 13 инструментов — `vigil_scan`, `vigil_review`, `vigil_explain`,
-`vigil_fix`, `vigil_threat_model`, `vigil_status`, `vigil_rules`, `vigil_hardening`, `vigil_dependencies`,
-`vigil_baseline`, `vigil_report`, `vigil_verify`, `vigil_history` — а также
-ресурсы `vigil://status`, `vigil://rules`, `vigil://scan/last`,
-`vigil://scan/<id>` и промпты `security_review`, `threat_model`,
-`fix_finding`, `anti_re_hardening`, `dependency_audit`. Детерминированные инструменты работают без модели; `vigil_fix`
-и `vigil_threat_model` требуют её и явно об этом сообщают. Только `vigil_fix`
-с `apply=true` меняет исходники.
+Сервер отдаёт 13 инструментов:
+
+| Инструмент | Что делает | Что нужно |
+| --- | --- | --- |
+| `vigil_scan` | Детерминированный скан с опциональным LLM-разбором; опционально OSV | модель опционально; OSV опционально |
+| `vigil_review` | Ревью изменённых строк или переданного diff | модель опционально; OSV опционально |
+| `vigil_explain` | Объясняет одну находку и направление фикса | модель |
+| `vigil_fix` | Предлагает минимальный diff; `apply=true` записывает его | модель |
+| `vigil_threat_model` | Модель угроз в стиле STRIDE | модель |
+| `vigil_status` | Провайдер, модель, движок, хранилище, baseline, последний скан | ничего |
+| `vigil_rules` | Каталог правил с ID, критичностью и категориями | ничего |
+| `vigil_hardening` | Пробелы release-hardening по VGL-ARE, сгруппированные по платформам | офлайн |
+| `vigil_dependencies` | Объявленные пакеты, сверенные с OSV | сеть до OSV |
+| `vigil_baseline` | Просмотр, добавление, удаление и очистка принятых находок | файл baseline |
+| `vigil_report` | Рендерит сохранённый скан в md/json/sarif/html | локальное хранилище |
+| `vigil_verify` | Повторно проверяет, актуальна ли находка | ничего |
+| `vigil_history` | Показывает последние сканы из локального хранилища | локальное хранилище |
+
+Тот же сервер отдаёт ресурсы `vigil://status`, `vigil://rules`,
+`vigil://scan/last`, `vigil://scan/<id>` и промпты `security_review`,
+`threat_model`, `fix_finding`, `anti_re_hardening`, `dependency_audit`.
+Только `vigil_fix` с `apply=true` меняет исходники.
 
 Дальше можно попросить агента:
 
@@ -301,8 +315,9 @@ args = ["-y", "lv24-vigil", "mcp"]
   "fix_apply": "vigil fix <finding-id> --apply",
   "mcp_tools": [
     "vigil_scan", "vigil_review", "vigil_explain", "vigil_fix",
-    "vigil_threat_model", "vigil_status", "vigil_rules", "vigil_baseline",
-    "vigil_report", "vigil_verify", "vigil_history"
+    "vigil_threat_model", "vigil_status", "vigil_rules", "vigil_hardening",
+    "vigil_dependencies", "vigil_baseline", "vigil_report", "vigil_verify",
+    "vigil_history"
   ],
   "exit_codes": { "0": "clean", "1": "error", "2": "findings at or above --fail-on" },
   "docs_index": "llms.txt"
@@ -314,7 +329,7 @@ args = ["-y", "lv24-vigil", "mcp"]
 1. **Ставьте только `lv24-vigil`.** Никогда не устанавливайте
    `@lv24/vigil-<os>-<cpu>` напрямую: это optional dependency, который выбирает
    лаунчер.
-2. **Нет модели? Используйте `--no-llm`.** Все 221 детерминированных правила
+2. **Нет модели? Используйте `--no-llm`.** Все 248 детерминированных правила
    всё равно отработают и дадут находки. Отсутствие модели — предупреждение, а
    не проваленный скан.
 3. **Не парсите человеческую сводку.** Используйте `--format json`,
@@ -381,7 +396,7 @@ command_output: opencode-json
 
 ## Правила
 
-221 детерминированных правила в девяти семействах. Они чистые: читают файл,
+248 детерминированных правила в девяти семействах. Они чистые: читают файл,
 ничего не пишут, не исполняют сканируемый код и не делают сетевых вызовов.
 Авторитетный каталог — CLI:
 
@@ -391,15 +406,15 @@ vigil rules
 
 | Семейство | Префикс | Правил | Что ищет |
 | --- | --- | ---: | --- |
-| Секреты | `VGL-SEC` | 29 | Ключи облаков, токены, приватные ключи, строки подключения, утечки `.env` |
-| Инъекции | `VGL-INJ` | 47 | SQL, shell, eval, XSS, десериализация, SSTI, prototype pollution |
+| Секреты | `VGL-SEC` | 37 | Ключи облаков, токены, приватные ключи, строки подключения, утечки `.env` |
+| Инъекции | `VGL-INJ` | 51 | SQL, shell, eval, XSS, десериализация, SSTI, prototype pollution |
 | Криптография | `VGL-CRY` | 16 | Слабые хэши/шифры, ECB, статические IV, плохая случайность, отключённый TLS |
-| Аутентификация | `VGL-AUTH` | 17 | Проверка JWT, флаги cookie, CORS с credentials, CSRF, пароли по умолчанию |
-| Web | `VGL-WEB` | 18 | SSRF, path traversal, open redirect, заголовки, debug-поверхности |
-| Конфигурация / IaC | `VGL-CFG` | 37 | Docker, Compose, Kubernetes, Terraform, nginx, закоммиченные env-файлы |
-| CI | `VGL-CI` | 19 | Незапиненные actions, `pull_request_target`, инъекции в скрипты, секреты в логах |
+| Аутентификация | `VGL-AUTH` | 18 | Проверка JWT, флаги cookie, CORS с credentials, CSRF, пароли по умолчанию |
+| Web | `VGL-WEB` | 21 | SSRF, path traversal, open redirect, заголовки, debug-поверхности |
+| Конфигурация / IaC | `VGL-CFG` | 42 | Docker, Compose, Kubernetes, Terraform, nginx, закоммиченные env-файлы |
+| CI | `VGL-CI` | 20 | Незапиненные actions, `pull_request_target`, инъекции в скрипты, секреты в логах |
 | Зависимости | `VGL-DEP` | 15 | Lockfile, wildcard-версии, git/HTTP-установки, отключённый TLS |
-| Anti-RE | `VGL-ARE` | 23 | Отсутствующая защита mobile/desktop: обфускация релиза, debug-подпись, debuggable, backup/cleartext, plist-исключения, inspector, source maps, а также Rust symbols/DWARF, .NET, iOS testability и symbols, Electron fuses/ASAR, JS minify, WebView и Hermes. Маппинг: [docs/anti-re-hardening.md](docs/anti-re-hardening.md) |
+| Anti-RE | `VGL-ARE` | 28 | Отсутствующая защита mobile/desktop: обфускация релиза, debug-подпись, debuggable, backup/cleartext, plist-исключения, inspector, source maps, а также Rust symbols/DWARF, .NET, iOS testability и symbols, Electron fuses/ASAR, JS minify, WebView и Hermes. Маппинг: [docs/anti-re-hardening.md](docs/anti-re-hardening.md) |
 
 Примеры ID: `VGL-SEC-002` (critical, AWS secret key), `VGL-INJ-019` (critical,
 десериализация Java), `VGL-CRY-011` (critical, JWT `none`), `VGL-AUTH-002`
@@ -469,7 +484,7 @@ vigil hook status
 vigil hook uninstall
 ```
 
-Хук коммита запускает `vigil scan --changed --base HEAD --no-llm --fail-on high --quiet`.
+Хук коммита запускает `git diff --cached --unified=0 --no-color | vigil scan --diff - --no-llm --fail-on high --quiet`.
 Хук пуша сравнивает с `@{upstream}` и откатывается на `HEAD~1` (затем `HEAD` в
 ветке с одним коммитом). Файл помечен `# managed by lv24-vigil`, учитывает
 `VIGIL_BIN` (по умолчанию `vigil`) и не заменяет чужой хук без `--force`;

@@ -44,6 +44,9 @@ var (
 	pbReqReadGoRe     = regexp.MustCompile(`(?i)\b(?:r\s*\.\s*URL\s*\.\s*Query\s*\(\s*\)\s*\.\s*Get|c\s*\.\s*Query|r\s*\.\s*FormValue|ctx\s*\.\s*Query|r\s*\.\s*Form\s*\.\s*Get)\s*\(\s*["']([^"']+)["']`)
 
 	pbOAuthRedirectGuardRe = regexp.MustCompile(`(?i)allowlist|allowedredirect|allowed|whitelist|isvalidredirect|startswith|equals|in_array|contains|includes`)
+
+	// VGL-AUTH-021: SSH host key verification disabled.
+	pbSSHHostKeyRe = regexp.MustCompile(`(?i)\bAutoAddPolicy\s*\(|\bWarningPolicy\s*\(|\bInsecureIgnoreHostKey\s*\(|\bhostVerifier\s*[:=]\s*(?:\([^)]*\)\s*=>\s*(?:true|\{\s*return\s+true)|function\s*\([^)]*\)\s*\{\s*return\s+true)`)
 )
 
 // pbOAuthRedirectKeys are the redirect parameter names an authorization
@@ -172,6 +175,23 @@ func AuthRules() []Rule {
 			OWASP:       []string{"A01:2021", "A07:2021"},
 			Tags:        []string{"oauth", "redirect"},
 		}, pbOAuthRedirectFromRequestRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-AUTH-021",
+			Title:       "SSH host key verification disabled",
+			Description: "AutoAddPolicy, WarningPolicy, ssh.InsecureIgnoreHostKey and a hostVerifier that always returns true accept any host key, so a network attacker can impersonate the SSH server and capture credentials. Use RejectPolicy or a known_hosts entry and fail closed on a changed key.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryAuth,
+			Languages:   []string{"python", "go", "javascript", "typescript"},
+			CWE:         []string{"CWE-295"},
+			OWASP:       []string{"A07:2021"},
+			Tags:        []string{"ssh", "host-key", "auth"},
+			References: []string{
+				"https://cwe.mitre.org/data/definitions/295.html",
+				"https://www.paramiko.org/en/stable/api/client.html#paramiko.client.SSHClient.set_missing_host_key_policy",
+				"https://pkg.go.dev/golang.org/x/crypto/ssh#InsecureIgnoreHostKey",
+			},
+		}, pbSSHHostKeyRule),
 	}
 }
 
@@ -1111,4 +1131,41 @@ func pbOAuthRedirectAllowlistWindow(f *File, idx int) bool {
 		}
 	}
 	return false
+}
+
+// pbSSHHostKeyRule flags SSH clients that accept any host key. The API names
+// are exact, and .ssh/config files are owned by the config family.
+func pbSSHHostKeyRule(f *File) []model.Finding {
+	if f == nil || pbDocsPath(f.Path) || pbSSHConfigPath(f.Path) {
+		return nil
+	}
+	switch f.Language {
+	case "python", "go", "javascript", "typescript":
+	default:
+		return nil
+	}
+	var out []model.Finding
+	docstrings := PythonDocstringLines(f)
+	for i, line := range f.Lines {
+		if docstrings[i] || pbComment(f, line) {
+			continue
+		}
+		code := StripInlineHashComment(line, f.Language)
+		if !injCodeMatch(pbSSHHostKeyRe, code) {
+			continue
+		}
+		fd := pbFinding(f, i+1, line)
+		fd.Severity = pbSev(f, model.SeverityHigh)
+		fd.Confidence = model.ConfidenceHigh
+		out = append(out, fd)
+	}
+	return out
+}
+
+// pbSSHConfigPath reports whether path is an OpenSSH client or server config
+// file; those are handled by the configuration rules, not by code rules.
+func pbSSHConfigPath(path string) bool {
+	p := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
+	return strings.HasSuffix(p, ".ssh/config") || strings.Contains(p, "/.ssh/ssh_config") ||
+		strings.HasSuffix(p, "/ssh_config") || strings.HasSuffix(p, "/sshd_config")
 }

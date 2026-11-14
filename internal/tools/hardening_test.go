@@ -30,6 +30,11 @@ func TestHardeningPlatform(t *testing.T) {
 		"VGL-ARE-057":    "Electron",
 		"VGL-ARE-058":    "Electron",
 		"VGL-ARE-059":    "Web",
+		"VGL-ARE-060":    "Android",
+		"VGL-ARE-061":    "Android",
+		"VGL-ARE-062":    "Android",
+		"VGL-ARE-063":    "Electron",
+		"VGL-ARE-064":    "iOS",
 		"vgl-are-003":    "Android",
 		"VGL-SEC-001":    "Other",
 		"VGL-OSV-GHSA-1": "Other",
@@ -110,6 +115,33 @@ func TestHardeningSummaryGroupsByPlatform(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("summary missing %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestHardeningSummaryGroupsWaveOnePlatforms(t *testing.T) {
+	res := &model.ScanResult{
+		Root: "/repo",
+		Findings: []model.Finding{
+			{RuleID: "VGL-ARE-060", Title: "user CA", Severity: model.SeverityHigh,
+				Location: model.Location{Path: "res/xml/network_security_config.xml", StartLine: 4}},
+			{RuleID: "VGL-ARE-061", Title: "debuggable release", Severity: model.SeverityHigh,
+				Location: model.Location{Path: "app/build.gradle", StartLine: 5}},
+			{RuleID: "VGL-ARE-062", Title: "dontobfuscate", Severity: model.SeverityHigh,
+				Location: model.Location{Path: "app/proguard-rules.pro", StartLine: 2}},
+			{RuleID: "VGL-ARE-063", Title: "remote debugging port", Severity: model.SeverityHigh,
+				Location: model.Location{Path: "src/main.js", StartLine: 3}},
+			{RuleID: "VGL-ARE-064", Title: "optimization off", Severity: model.SeverityMedium,
+				Location: model.Location{Path: "ios/Config/Release.xcconfig", StartLine: 1}},
+		},
+	}
+	text := hardeningSummary(Deps{}, res, []string{"VGL-ARE-060", "VGL-ARE-061", "VGL-ARE-062", "VGL-ARE-063", "VGL-ARE-064"})
+	for _, want := range []string{"Android (3)", "Electron (1)", "iOS (1)"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("summary missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "Other (") {
+		t.Errorf("wave-one rules must not fall into Other:\n%s", text)
 	}
 }
 

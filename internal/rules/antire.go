@@ -84,6 +84,21 @@ var (
 	// JavaScript production minification.
 	antireJSMinifyOffRe   = regexp.MustCompile(`(?i)\bminify["']?\s*:\s*false\b`)
 	antireJSMinimizeOffRe = regexp.MustCompile(`(?i)\bminimize["']?\s*:\s*false\b`)
+
+	// Android release hardening: user CAs, a debuggable release build type and
+	// R8 renaming switched off.
+	antireNSUserCertRe       = regexp.MustCompile(`(?i)<certificates\b[^>]*\bsrc\s*=\s*["']user["']`)
+	antireGradleDebuggableRe = regexp.MustCompile(`(?i)\b(?:setdebuggable\s*\(\s*true\s*\)|(?:is)?debuggable\s*(?:=|:)?\s*["']?true\b|manifestplaceholders\s*(?:\[\s*|\.\s*put\s*\(\s*)["']debuggable["']\s*\]?\s*(?:=|:|,)?\s*["']?true\b)`)
+	antireDontObfuscateRe    = regexp.MustCompile(`(?i)^\s*-dontobfuscate\b`)
+
+	// Electron Chromium DevTools Protocol endpoint.
+	antireRemoteDebugPortRe   = regexp.MustCompile(`--remote-debugging-port\b(?:=\d+)?`)
+	antireRemoteDebugSwitchRe = regexp.MustCompile(`(?i)\bappendswitch\s*\(\s*["']remote-debugging-port["']`)
+
+	// iOS compiler optimization levels in release configurations. xcconfig
+	// permits a trailing "// comment" after the value, which pbxproj does not.
+	antireSwiftOptOffRe = regexp.MustCompile(`(?i)\bSWIFT_OPTIMIZATION_LEVEL\s*=\s*"?-Onone"?\s*;?\s*(?://.*)?$`)
+	antireGCCOptOffRe   = regexp.MustCompile(`(?i)\bGCC_OPTIMIZATION_LEVEL\s*=\s*"?0"?\s*;?\s*(?://.*)?$`)
 )
 
 const (
@@ -136,6 +151,16 @@ const (
 		"a modified app.asar is rejected at startup instead of being loaded."
 	antireFixMinify = "Enable production minification (minify/minimize true) and keep source maps out of " +
 		"the shipped bundle so names, comments and module structure are not shipped."
+	antireFixNSUserCA = "Remove <certificates src=\"user\"> from the release trust anchors and trust only " +
+		"the system CA store; keep user-installed CAs inside <debug-overrides> for debug builds."
+	antireFixGradleDebuggable = "Remove debuggable true / isDebuggable = true from the release build type and " +
+		"from release manifest placeholders; only the debug build type should set it."
+	antireFixDontObfuscate = "Remove -dontobfuscate from the release R8/ProGuard rules and keep shrinking and " +
+		"renaming enabled so class and member names are not shipped."
+	antireFixRemoteDebug = "Do not pass --remote-debugging-port or app.commandLine.appendSwitch" +
+		"('remote-debugging-port') in packaged Electron starts; enable CDP only for local development."
+	antireFixIOSOptimization = "Set SWIFT_OPTIMIZATION_LEVEL = -O (or -Osize) and GCC_OPTIMIZATION_LEVEL = s " +
+		"(or 2/fast) in the Release configuration; -Onone and 0 are Debug-only settings."
 )
 
 // AntiRERules returns the anti-reverse-engineering hardening rules.
@@ -410,6 +435,84 @@ func AntiRERules() []Rule {
 			OWASP:       []string{"A05:2021"},
 			Tags:        []string{"javascript", "build", "minify", "anti-re"},
 		}, antireJSMinifyRule),
+
+		// ---------------------------------------------------------------
+		// Android / iOS / Electron release posture (wave 1)
+		// ---------------------------------------------------------------
+		New(model.RuleMeta{
+			ID:          "VGL-ARE-060",
+			Title:       "Android network security config trusts user-installed CAs",
+			Description: "<certificates src=\"user\"> in a shipped trust-anchors block accepts any CA the device user installs, so an interception proxy can decrypt the app's HTTPS traffic. Release builds must trust only system CAs.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryAntiRE,
+			CWE:         []string{"CWE-295"},
+			OWASP:       []string{"MASVS-NETWORK"},
+			Tags:        []string{"android", "network-security-config", "tls", "anti-re"},
+			References: []string{
+				"https://developer.android.com/privacy-and-security/security-config",
+				"https://mas.owasp.org/MASVS/09-MASVS-NETWORK/",
+			},
+		}, antireNSUserCertRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-ARE-061",
+			Title:       "Android release build type enables debugging",
+			Description: "debuggable true / isDebuggable = true in a Gradle release build type (or release manifest placeholder) is merged into the shipped manifest by AGP, so the manifest can look clean while the APK remains attachable.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryAntiRE,
+			CWE:         []string{"CWE-489"},
+			OWASP:       []string{"MASVS-RESILIENCE"},
+			Tags:        []string{"android", "gradle", "debug", "anti-re"},
+			References: []string{
+				"https://developer.android.com/guide/topics/manifest/application-element#debug",
+				"https://cwe.mitre.org/data/definitions/489.html",
+			},
+		}, antireGradleReleaseDebuggableRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-ARE-062",
+			Title:       "Android R8/ProGuard rules disable obfuscation",
+			Description: "-dontobfuscate in the release R8/ProGuard rules keeps readable class and member names even when minifyEnabled is true, which silently defeats the shrinking and renaming control.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryAntiRE,
+			CWE:         []string{"CWE-693"},
+			OWASP:       []string{"MASVS-RESILIENCE"},
+			Tags:        []string{"android", "r8", "proguard", "obfuscation", "anti-re"},
+			References: []string{
+				"https://developer.android.com/build/shrink-code",
+				"https://cwe.mitre.org/data/definitions/693.html",
+			},
+		}, antireProguardObfuscationRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-ARE-063",
+			Title:       "Electron starts with a remote debugging port",
+			Description: "--remote-debugging-port (or app.commandLine.appendSwitch('remote-debugging-port')) exposes the Chromium DevTools Protocol, which allows DOM inspection, JavaScript evaluation and network capture over HTTP in a packaged app.",
+			Severity:    model.SeverityHigh,
+			Category:    model.CategoryAntiRE,
+			CWE:         []string{"CWE-489"},
+			OWASP:       []string{"A05:2021"},
+			Tags:        []string{"electron", "chromium", "cdp", "debug", "anti-re"},
+			References: []string{
+				"https://www.electronjs.org/docs/latest/api/command-line-switches",
+				"https://chromedevtools.github.io/devtools-protocol/",
+			},
+		}, antireElectronRemoteDebugRule),
+
+		New(model.RuleMeta{
+			ID:          "VGL-ARE-064",
+			Title:       "iOS Release build disables compiler optimization",
+			Description: "SWIFT_OPTIMIZATION_LEVEL = -Onone or GCC_OPTIMIZATION_LEVEL = 0 in a Release configuration keeps inlining, locals and control flow close to the source, which makes the shipped Swift/Objective-C code easier to decompile.",
+			Severity:    model.SeverityMedium,
+			Category:    model.CategoryAntiRE,
+			CWE:         []string{"CWE-693"},
+			OWASP:       []string{"MASVS-RESILIENCE"},
+			Tags:        []string{"ios", "xcode", "optimization", "anti-re"},
+			References: []string{
+				"https://developer.apple.com/documentation/xcode/build-settings-reference",
+				"https://cwe.mitre.org/data/definitions/693.html",
+			},
+		}, antireIOSOptimizationRule),
 	}
 }
 
@@ -878,6 +981,24 @@ func antireNetworkSecurityConfig(f *File) bool {
 		(strings.HasSuffix(base, ".xml") && strings.Contains(base, "network_security_config"))
 }
 
+// antireProguardFile reports whether the file can hold R8/ProGuard rules. The
+// extension alone is not enough: qmake projects also use ".pro".
+func antireProguardFile(f *File) bool {
+	base := pbBaseLower(f.Path)
+	if isDocsPath(pbPathLower(f)) {
+		return false
+	}
+	switch {
+	case base == "proguard.cfg":
+		return true
+	case strings.HasPrefix(base, "proguard") && (strings.HasSuffix(base, ".pro") || strings.HasSuffix(base, ".txt")):
+		return true
+	case strings.HasSuffix(base, ".pro") && strings.Contains(pbPathLower(f), "app/"):
+		return true
+	}
+	return false
+}
+
 // ---------------------------------------------------------------------------
 // Android rules
 // ---------------------------------------------------------------------------
@@ -998,6 +1119,83 @@ func antireNetworkConfigRule(f *File) []model.Finding {
 			continue
 		}
 		out = append(out, antireFinding(f, i+1, model.SeverityMedium, antireFixNetworkConfig))
+	}
+	return out
+}
+
+// antireNSUserCertRule reports user-installed CAs trusted by a shipped network
+// security config. <debug-overrides> blocks are debug-only and stay silent;
+// debug source sets and debug variants are already skipped by the path guards.
+func antireNSUserCertRule(f *File) []model.Finding {
+	if f == nil || !antireNetworkSecurityConfig(f) {
+		return nil
+	}
+	if antireTestPath(f) || antireDevPath(f.Path) || isDocsPath(pbPathLower(f)) {
+		return nil
+	}
+	inDebugOverrides := false
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if antireComment(f, line) {
+			continue
+		}
+		low := strings.ToLower(line)
+		if strings.Contains(low, "<debug-overrides") {
+			if !strings.Contains(low, "/>") && !strings.Contains(low, "</debug-overrides>") {
+				inDebugOverrides = true
+			}
+			continue
+		}
+		if strings.Contains(low, "</debug-overrides>") {
+			inDebugOverrides = false
+			continue
+		}
+		if inDebugOverrides || !antireNSUserCertRe.MatchString(line) {
+			continue
+		}
+		out = append(out, antireFinding(f, i+1, model.SeverityHigh, antireFixNSUserCA))
+	}
+	return out
+}
+
+// antireGradleReleaseDebuggableRule reports a release build type that turns on
+// debugging. VGL-ARE-003 reads AndroidManifest.xml only; AGP merges this
+// setting into the shipped manifest, so the manifest can look clean.
+func antireGradleReleaseDebuggableRule(f *File) []model.Finding {
+	if f == nil || !antireGradleApp(f) {
+		return nil
+	}
+	if antireDevPath(f.Path) || isDocsPath(pbPathLower(f)) {
+		return nil
+	}
+	var out []model.Finding
+	for _, r := range antireReleaseBlocks(f) {
+		for line := r.start; line <= r.end && line <= len(f.Lines); line++ {
+			text := f.Line(line)
+			if antireComment(f, text) || !antireGradleDebuggableRe.MatchString(text) {
+				continue
+			}
+			out = append(out, antireFinding(f, line, model.SeverityHigh, antireFixGradleDebuggable))
+		}
+	}
+	return out
+}
+
+// antireProguardObfuscationRule reports -dontobfuscate in release R8/ProGuard
+// rules. minifyEnabled true with renaming off still ships readable names.
+func antireProguardObfuscationRule(f *File) []model.Finding {
+	if f == nil || !antireProguardFile(f) {
+		return nil
+	}
+	if antireTestPath(f) || antireDevPath(f.Path) {
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if antireComment(f, line) || !antireDontObfuscateRe.MatchString(line) {
+			continue
+		}
+		out = append(out, antireFinding(f, i+1, model.SeverityHigh, antireFixDontObfuscate))
 	}
 	return out
 }
@@ -1365,6 +1563,17 @@ func antireElectronBuilderFile(f *File) bool {
 	return false
 }
 
+// antireElectronRemoteDebugFile reports whether the file can start a packaged
+// Electron app with a Chromium debugging endpoint. The content must mention
+// Electron so an unrelated Chromium/Puppeteer launcher is not reported.
+func antireElectronRemoteDebugFile(f *File) bool {
+	if !antireJSPath(f) && !antireNodeRuntimeFile(f) {
+		return false
+	}
+	low := strings.ToLower(string(f.Content))
+	return strings.Contains(low, "electron") || strings.Contains(low, "app.commandline")
+}
+
 // antireElectronFuseFile reports whether the file is an Electron fuse
 // configuration, by name or by content.
 func antireElectronFuseFile(f *File) bool {
@@ -1478,6 +1687,29 @@ func antireIOSDebugSymbolsRule(f *File) []model.Finding {
 			continue
 		}
 		out = append(out, antireFinding(f, i+1, model.SeverityMedium, antireFixIOSDebugSymbols))
+	}
+	return out
+}
+
+// antireIOSOptimizationRule reports Release configurations that turn compiler
+// optimization off. -Onone and 0 are Debug-only settings.
+func antireIOSOptimizationRule(f *File) []model.Finding {
+	if f == nil {
+		return nil
+	}
+	scope := antireIOSReleaseScope(f)
+	if scope == nil || antireTestPath(f) || isDocsPath(pbPathLower(f)) {
+		return nil
+	}
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if !scope[i] || antireComment(f, line) {
+			continue
+		}
+		if !antireSwiftOptOffRe.MatchString(line) && !antireGCCOptOffRe.MatchString(line) {
+			continue
+		}
+		out = append(out, antireFinding(f, i+1, model.SeverityMedium, antireFixIOSOptimization))
 	}
 	return out
 }
@@ -1607,6 +1839,35 @@ func antireElectronFuseAsarRule(f *File) []model.Finding {
 			continue
 		}
 		out = append(out, antireFinding(f, i+1, model.SeverityMedium, antireFixElectronFuseAsar))
+	}
+	return out
+}
+
+// antireElectronRemoteDebugRule reports a packaged Electron start that opens
+// the Chromium DevTools Protocol. VGL-ARE-040 covers the Node inspector only.
+func antireElectronRemoteDebugRule(f *File) []model.Finding {
+	if f == nil || !antireElectronRemoteDebugFile(f) {
+		return nil
+	}
+	if antireTestPath(f) || antireNonProdPath(f.Path) || isDocsPath(pbPathLower(f)) {
+		return nil
+	}
+	scriptKeys := antirePackageScriptKeys(f)
+	var out []model.Finding
+	for i, line := range f.Lines {
+		if antireComment(f, line) {
+			continue
+		}
+		if !antireRemoteDebugPortRe.MatchString(line) && !antireRemoteDebugSwitchRe.MatchString(line) {
+			continue
+		}
+		if antireDevScriptLine(line) {
+			continue
+		}
+		if key, ok := scriptKeys[i+1]; ok && antireDevScriptName(key) {
+			continue
+		}
+		out = append(out, antireFinding(f, i+1, model.SeverityHigh, antireFixRemoteDebug))
 	}
 	return out
 }

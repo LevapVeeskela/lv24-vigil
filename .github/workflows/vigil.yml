@@ -45,14 +45,15 @@ jobs:
         # --no-llm keeps the run free, offline and deterministic.
         # --fail-on high exits 2 on a high or critical finding; the report is
         # written before the exit code, so the upload step below still runs.
-        # The exclude list drops rule definitions, helper scripts and prose
-        # examples, not product code.
+        # The exclude list drops rule definitions, helper scripts, local
+        # research checkouts and prose examples, not product code.
         run: >-
           ./vigil scan .
           --no-llm
           --format sarif
           --output vigil.sarif
           --fail-on high
+          --exclude 'ideas/**'
           --exclude 'internal/rules/**'
           --exclude 'scripts/**'
           --exclude 'docs/**'

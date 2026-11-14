@@ -45,7 +45,7 @@ findings remain, and the scan still finishes.
 |---|---|
 | `internal/model` | Domain types: `Finding`, `ScanResult`, `Severity`, `Confidence`, `Fix`, `Location` |
 | `internal/config` | Defaults, user config, project config, environment, validation |
-| `internal/rules` | Rule interface, registry, eight rule packs, secret masking helpers |
+| `internal/rules` | Rule interface, registry, nine rule packs, secret masking helpers |
 | `internal/scanner` | Walker, ignore matcher, language detection, diff mode, baseline, orchestration |
 | `internal/gitutil` | Repository root, changed files, unified diff, `git apply --check`, apply |
 | `internal/store` | Scan history on disk, atomic writes, retention |

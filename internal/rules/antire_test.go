@@ -100,6 +100,11 @@ func TestAntiRERegistry(t *testing.T) {
 		"VGL-ARE-057": model.SeverityHigh,
 		"VGL-ARE-058": model.SeverityMedium,
 		"VGL-ARE-059": model.SeverityMedium,
+		"VGL-ARE-060": model.SeverityHigh,
+		"VGL-ARE-061": model.SeverityHigh,
+		"VGL-ARE-062": model.SeverityHigh,
+		"VGL-ARE-063": model.SeverityHigh,
+		"VGL-ARE-064": model.SeverityMedium,
 	}
 	rules := AntiRERules()
 	if len(rules) != len(wantSeverity) {
@@ -2064,4 +2069,536 @@ func TestAntiREReviewRegressionsHermesForms(t *testing.T) {
 		{name: "gradle default read is not a setting", path: "android/app/build.gradle", language: "other", content: `def enableHermes = project.ext.react.get("enableHermes", false);`},
 		{name: "example app podfile is skipped", path: "packages/x/example/ios/Podfile", language: "ruby", content: ":hermes_enabled => false"},
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Wave 1 anti-RE additions: Android trust anchors, release debuggable, R8
+// renaming, Electron CDP and iOS release optimization.
+// ---------------------------------------------------------------------------
+
+func TestAntiRE060NetworkConfigUserCA(t *testing.T) {
+	vulnerable := `<network-security-config>
+    <base-config>
+        <trust-anchors>
+            <certificates src="user" />
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>`
+	antireTestCases(t, "VGL-ARE-060", []antireCase{
+		{
+			name:     "release config trusts user CAs",
+			path:     "app/src/main/res/xml/network_security_config.xml",
+			language: "xml",
+			content:  vulnerable,
+			want:     []int{4},
+		},
+		{
+			name:     "single line form",
+			path:     "app/src/main/res/xml/network_security_config.xml",
+			language: "xml",
+			content:  `<domain-config><trust-anchors><certificates src='user'/></trust-anchors></domain-config>`,
+			want:     []int{1},
+		},
+		{
+			name:     "system CAs only are safe",
+			path:     "app/src/main/res/xml/network_security_config.xml",
+			language: "xml",
+			content: `<network-security-config>
+    <base-config>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>`,
+		},
+		{
+			name:     "debug overrides are skipped",
+			path:     "app/src/main/res/xml/network_security_config.xml",
+			language: "xml",
+			content: `<network-security-config>
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+    <base-config>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>`,
+		},
+		{
+			name:     "debug variant config is skipped",
+			path:     "app/src/debug/res/xml/network_security_config.xml",
+			language: "xml",
+			content:  vulnerable,
+		},
+		{
+			name:     "comment is skipped",
+			path:     "app/src/main/res/xml/network_security_config.xml",
+			language: "xml",
+			content: `<network-security-config>
+    <!-- <certificates src="user" /> -->
+    <base-config />
+</network-security-config>`,
+		},
+		{
+			name:     "docs sample is skipped",
+			path:     "docs/network_security_config.xml",
+			language: "xml",
+			content:  vulnerable,
+		},
+		{
+			name:     "example app is skipped",
+			path:     "samples/example/app/src/main/res/xml/network_security_config.xml",
+			language: "xml",
+			content:  vulnerable,
+		},
+	})
+}
+
+func TestAntiRE061GradleReleaseDebuggable(t *testing.T) {
+	antireTestCases(t, "VGL-ARE-061", []antireCase{
+		{
+			name:     "groovy release enables debugging",
+			path:     "app/build.gradle",
+			language: "other",
+			content: `plugins { id 'com.android.application' }
+android {
+    buildTypes {
+        release {
+            debuggable true
+        }
+    }
+}`,
+			want: []int{5},
+		},
+		{
+			name:     "kotlin release enables debugging",
+			path:     "app/build.gradle.kts",
+			language: "other",
+			content: `plugins { id("com.android.application") }
+android {
+    buildTypes {
+        release {
+            isDebuggable = true
+        }
+    }
+}`,
+			want: []int{5},
+		},
+		{
+			name:     "release manifest placeholder enables debugging",
+			path:     "app/build.gradle",
+			language: "other",
+			content: `plugins { id 'com.android.application' }
+android {
+    buildTypes {
+        release {
+            manifestPlaceholders = [debuggable: "true"]
+        }
+    }
+}`,
+			want: []int{5},
+		},
+		{
+			name:     "computed manifest placeholder enables debugging",
+			path:     "app/build.gradle",
+			language: "other",
+			content: `plugins { id 'com.android.application' }
+android {
+    buildTypes {
+        release {
+            manifestPlaceholders["debuggable"] = "true"
+        }
+    }
+}`,
+			want: []int{5},
+		},
+		{
+			name:     "setDebuggable on the release variant enables debugging",
+			path:     "app/build.gradle",
+			language: "other",
+			content: `plugins { id 'com.android.application' }
+android {
+    buildTypes {
+        release {
+            setDebuggable(true)
+        }
+    }
+}`,
+			want: []int{5},
+		},
+		{
+			name:     "setDebuggable false is safe",
+			path:     "app/build.gradle",
+			language: "other",
+			content: `plugins { id 'com.android.application' }
+android {
+    buildTypes {
+        release {
+            setDebuggable(false)
+        }
+    }
+}`,
+		},
+		{
+			name:     "debug block must not fire",
+			path:     "app/build.gradle",
+			language: "other",
+			content: `plugins { id 'com.android.application' }
+android {
+    buildTypes {
+        debug {
+            debuggable true
+        }
+        release {
+            debuggable false
+        }
+    }
+}`,
+		},
+		{
+			name:     "build config field is not the build type flag",
+			path:     "app/build.gradle",
+			language: "other",
+			content: `plugins { id 'com.android.application' }
+android {
+    buildTypes {
+        release {
+            buildConfigField "boolean", "DEBUGGABLE", "true"
+        }
+    }
+}`,
+		},
+		{
+			name:     "comment is skipped",
+			path:     "app/build.gradle",
+			language: "other",
+			content: `plugins { id 'com.android.application' }
+android {
+    buildTypes {
+        release {
+            // debuggable true
+            debuggable false
+        }
+    }
+}`,
+		},
+		{
+			name:     "docs sample is skipped",
+			path:     "docs/build.gradle",
+			language: "other",
+			content: `plugins { id 'com.android.application' }
+android {
+    buildTypes {
+        release {
+            debuggable true
+        }
+    }
+}`,
+		},
+		{
+			name:     "example app is skipped",
+			path:     "packages/camera/example/android/app/build.gradle",
+			language: "other",
+			content: `plugins { id 'com.android.application' }
+android {
+    buildTypes {
+        release {
+            debuggable true
+        }
+    }
+}`,
+		},
+	})
+}
+
+func TestAntiRE062ProguardDontObfuscate(t *testing.T) {
+	antireTestCases(t, "VGL-ARE-062", []antireCase{
+		{
+			name:     "release rules disable obfuscation",
+			path:     "app/proguard-rules.pro",
+			language: "other",
+			content: `# project rules
+-dontobfuscate
+-keep class com.example.** { *; }`,
+			want: []int{2},
+		},
+		{
+			name:     "app scoped pro file disables obfuscation",
+			path:     "android/app/rules.pro",
+			language: "other",
+			content:  `-dontobfuscate`,
+			want:     []int{1},
+		},
+		{
+			name:     "named proguard txt disables obfuscation",
+			path:     "config/proguard-release.txt",
+			language: "other",
+			content:  `-dontobfuscate`,
+			want:     []int{1},
+		},
+		{
+			name:     "keep rules are safe",
+			path:     "app/proguard-rules.pro",
+			language: "other",
+			content:  `-keepattributes SourceFile,LineNumberTable`,
+		},
+		{
+			name:     "comment is skipped",
+			path:     "app/proguard-rules.pro",
+			language: "other",
+			content:  `# -dontobfuscate`,
+		},
+		{
+			name:     "docs sample is skipped",
+			path:     "docs/proguard-rules.pro",
+			language: "other",
+			content:  `-dontobfuscate`,
+		},
+		{
+			name:     "test path is skipped",
+			path:     "app/src/test/proguard-rules.pro",
+			language: "other",
+			content:  `-dontobfuscate`,
+		},
+		{
+			name:     "debug path is skipped",
+			path:     "app/src/debug/proguard-rules.pro",
+			language: "other",
+			content:  `-dontobfuscate`,
+		},
+		{
+			name:     "example app is skipped",
+			path:     "packages/x/example/android/app/proguard-rules.pro",
+			language: "other",
+			content:  `-dontobfuscate`,
+		},
+		{
+			name:     "unrelated txt is out of scope",
+			path:     "notes.txt",
+			language: "other",
+			content:  `-dontobfuscate`,
+		},
+	})
+}
+
+func TestAntiRE063ElectronRemoteDebugging(t *testing.T) {
+	antireTestCases(t, "VGL-ARE-063", []antireCase{
+		{
+			name:     "package start script exposes CDP",
+			path:     "package.json",
+			language: "json",
+			content: `{
+  "name": "app",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron . --remote-debugging-port=9222"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}`,
+			want: []int{5},
+		},
+		{
+			name:     "main process append switch exposes CDP",
+			path:     "src/main.js",
+			language: "javascript",
+			content: `const { app, BrowserWindow } = require('electron');
+
+app.commandLine.appendSwitch('remote-debugging-port', '9222');
+const win = new BrowserWindow({});`,
+			want: []int{3},
+		},
+		{
+			name:     "shell start exposes CDP",
+			path:     "scripts/start.sh",
+			language: "shell",
+			content: `#!/usr/bin/env bash
+electron . --remote-debugging-port=9222`,
+			want: []int{2},
+		},
+		{
+			name:     "spawned packaged app exposes CDP",
+			path:     "src/launcher.ts",
+			language: "typescript",
+			content: `import { spawn } from 'node:child_process';
+spawn('electron', ['.', '--remote-debugging-port=9222']);`,
+			want: []int{2},
+		},
+		{
+			name:     "safe package start script",
+			path:     "package.json",
+			language: "json",
+			content: `{
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": { "electron": "^33.0.0" }
+}`,
+		},
+		{
+			name:     "dev script is skipped",
+			path:     "package.json",
+			language: "json",
+			content: `{
+  "scripts": {
+    "dev": "electron . --remote-debugging-port=9222"
+  },
+  "devDependencies": { "electron": "^33.0.0" }
+}`,
+		},
+		{
+			name:     "test path is skipped",
+			path:     "test/main.js",
+			language: "javascript",
+			content: `const { app } = require('electron');
+app.commandLine.appendSwitch('remote-debugging-port', '9222');`,
+		},
+		{
+			name:     "dev path is skipped",
+			path:     "src/dev/main.js",
+			language: "javascript",
+			content: `const { app } = require('electron');
+app.commandLine.appendSwitch('remote-debugging-port', '9222');`,
+		},
+		{
+			name:     "comment is skipped",
+			path:     "src/main.js",
+			language: "javascript",
+			content: `require('electron');
+// app.commandLine.appendSwitch('remote-debugging-port', '9222');`,
+		},
+		{
+			name:     "non electron launcher is out of scope",
+			path:     "scripts/screenshot.js",
+			language: "javascript",
+			content: `const { spawn } = require('node:child_process');
+spawn('chrome', ['.', '--remote-debugging-port=9222']);`,
+		},
+		{
+			name:     "remote debugging pipe is a different flag",
+			path:     "src/main.js",
+			language: "javascript",
+			content: `require('electron');
+app.commandLine.appendSwitch('remote-debugging-pipe');`,
+		},
+		{
+			name:     "docs launch script is skipped",
+			path:     "docs/launch.sh",
+			language: "shell",
+			content:  `electron . --remote-debugging-port=9222`,
+		},
+	})
+}
+
+func TestAntiRE064IOSReleaseOptimization(t *testing.T) {
+	antireTestCases(t, "VGL-ARE-064", []antireCase{
+		{
+			name:     "release pbxproj disables optimization",
+			path:     "ios/Runner.xcodeproj/project.pbxproj",
+			language: "other",
+			content: `		97C146EE1CF9000F007C117D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				GCC_OPTIMIZATION_LEVEL = 0;
+			};
+			name = Release;
+		};`,
+			want: []int{4, 5},
+		},
+		{
+			name:     "release xcconfig disables swift optimization",
+			path:     "ios/Config/Release.xcconfig",
+			language: "other",
+			content:  `SWIFT_OPTIMIZATION_LEVEL = "-Onone"`,
+			want:     []int{1},
+		},
+		{
+			name:     "prod xcconfig disables gcc optimization",
+			path:     "ios/Config/App-Prod.xcconfig",
+			language: "other",
+			content:  `GCC_OPTIMIZATION_LEVEL = "0";`,
+			want:     []int{1},
+		},
+		{
+			name:     "xcconfig value followed by a line comment is parsed",
+			path:     "ios/Config/Release.xcconfig",
+			language: "other",
+			content:  `SWIFT_OPTIMIZATION_LEVEL = -Onone // keep debug builds fast`,
+			want:     []int{1},
+		},
+		{
+			name:     "optimized release is safe",
+			path:     "ios/Runner.xcodeproj/project.pbxproj",
+			language: "other",
+			content: `		97C146EE1CF9000F007C117D /* Release */ = {
+			buildSettings = {
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				GCC_OPTIMIZATION_LEVEL = s;
+			};
+		};`,
+		},
+		{
+			name:     "debug config must not fire",
+			path:     "ios/Runner.xcodeproj/project.pbxproj",
+			language: "other",
+			content: `		97C146ED1CF9000F007C117D /* Debug */ = {
+			buildSettings = {
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				GCC_OPTIMIZATION_LEVEL = 0;
+			};
+		};`,
+		},
+		{
+			name:     "xcconfig without a release name is skipped",
+			path:     "ios/Config/Base.xcconfig",
+			language: "other",
+			content:  `SWIFT_OPTIMIZATION_LEVEL = -Onone`,
+		},
+		{
+			name:     "comment is skipped",
+			path:     "ios/Config/Release.xcconfig",
+			language: "other",
+			content:  `// SWIFT_OPTIMIZATION_LEVEL = -Onone`,
+		},
+		{
+			name:     "docs sample is skipped",
+			path:     "docs/Release.xcconfig",
+			language: "other",
+			content:  `SWIFT_OPTIMIZATION_LEVEL = -Onone`,
+		},
+		{
+			name:     "test path is skipped",
+			path:     "ios/tests/Config/Release.xcconfig",
+			language: "other",
+			content:  `SWIFT_OPTIMIZATION_LEVEL = -Onone`,
+		},
+	})
+}
+
+// Wave 1 rules are posture findings: no Critical severity, explicit
+// confidence on every finding, and a nil file must never panic or report.
+func TestAntiREWaveOneNilAndSeverityCap(t *testing.T) {
+	caps := map[string]model.Severity{
+		"VGL-ARE-060": model.SeverityHigh,
+		"VGL-ARE-061": model.SeverityHigh,
+		"VGL-ARE-062": model.SeverityHigh,
+		"VGL-ARE-063": model.SeverityHigh,
+		"VGL-ARE-064": model.SeverityMedium,
+	}
+	for id, max := range caps {
+		rule := antireTestRule(t, id)
+		if got := rule.Meta().Severity; got.Rank() > max.Rank() {
+			t.Errorf("%s: severity %q exceeds the posture cap %q", id, got, max)
+		}
+		if got := rule.Check(nil); len(got) != 0 {
+			t.Errorf("%s: nil file produced %d findings", id, len(got))
+		}
+	}
 }
