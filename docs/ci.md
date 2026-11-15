@@ -17,6 +17,7 @@ process exits `2`, so an upload step with `if: always()` still runs.
 | Where you work | Use | Template |
 | --- | --- | --- |
 | Local clone | `vigil hook install` | built in |
+| Local clone using pre-commit | framework hook `vigil-scan` | [pre-commit.md](pre-commit.md) |
 | GitHub | Actions on PR, `main` and manual dispatch | [`examples/github-workflow.yml`](../examples/github-workflow.yml) |
 | GitLab | MR, default branch and manual web run | [`examples/gitlab-ci.yml`](../examples/gitlab-ci.yml) |
 | Any runner | CLI + SARIF artifact | this document |
@@ -53,6 +54,27 @@ The file starts with `#!/bin/sh`, is executable, and contains the exact marker
 
 `vigil hook status` prints every installed hook, its marker and the exact target
 command. `--fail-on low|medium|high|critical` is available on install.
+
+## pre-commit framework
+
+Repositories that already use [pre-commit](https://pre-commit.com) can enable the
+published hook instead of the native one:
+
+```yaml
+repos:
+  - repo: https://github.com/LevapVeeskela/lv24-vigil
+    rev: v0.9.1
+    hooks:
+      - id: vigil-scan
+```
+
+`vigil-scan` runs `vigil scan --no-llm --fail-on high` with
+`pass_filenames: false`, so it scans the project rather than the staged file
+list; `vigil-mcp-audit` is an opt-in second hook for repositories that commit MCP
+configuration. The CLI must already be on `PATH` (`language: system`), and
+pre-commit.ci cannot run it — keep the gate in a workflow there. Install, skip,
+`autoupdate`, exit code `2` and the comparison with `vigil hook install`:
+[pre-commit.md](pre-commit.md).
 
 ## GitHub Actions
 
@@ -176,7 +198,7 @@ vigil:
 runners should call `actions/setup-node` first.
 
 The action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
-as **Vigil security scan** (Security + Code quality). Pin `version: 0.9.0` when
+as **Vigil security scan** (Security + Code quality). Pin `version: 0.9.1` when
 the CLI must match the action tag; the default `latest` follows the newest npm
 release.
 
@@ -184,13 +206,13 @@ release.
 - uses: actions/checkout@v7
 
 - id: vigil
-  uses: LevapVeeskela/lv24-vigil@v0.9.0
+  uses: LevapVeeskela/lv24-vigil@v0.9.1
   with:
     path: .
     fail-on: high
     no-llm: true
     format: sarif
-    version: 0.9.0
+    version: 0.9.1
 
 - if: always()
   uses: github/codeql-action/upload-sarif@v4

@@ -1,0 +1,43 @@
+name: scorecard
+
+# OpenSSF Scorecard: supply-chain posture of this repository (OpenSSF
+# maintained checks, run from the GitHub API rather than the source tree).
+# Results land in Security > Code scanning and, because publish_results is
+# true, in the public OpenSSF dataset. See docs/scorecard.md.
+
+on:
+  branch_protection_rule:
+  schedule:
+    - cron: "30 1 * * 1"
+  push:
+    branches: [ main ]
+
+# Least privilege by default; the analysis job raises only what it needs.
+permissions: read-all
+
+jobs:
+  analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+      actions: read
+
+    steps:
+      - name: Run OpenSSF Scorecard
+        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      # Upload on every outcome: the SARIF is written before the step result.
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: results.sarif
+          category: scorecard

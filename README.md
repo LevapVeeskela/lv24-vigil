@@ -10,6 +10,9 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](go.mod)
 [![MCP](https://img.shields.io/badge/MCP-stdio-6C5CE7)](docs/mcp.md)
 [![OpenCode Go](https://img.shields.io/badge/OpenCode_Go-supported-6C5CE7)](docs/providers.md)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/LevapVeeskela/lv24-vigil/badge)](https://securityscorecards.dev/viewer/?uri=github.com/LevapVeeskela/lv24-vigil)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com)
+[![Go Reference](https://pkg.go.dev/badge/github.com/levapveeskela/lv24-vigil.svg)](https://pkg.go.dev/github.com/levapveeskela/lv24-vigil)
 
 **Docs:** English · [Русский](README.ru.md) · [Documentation](docs/) · [llms.txt](llms.txt)
 
@@ -129,7 +132,7 @@ platform packages. Keep optional dependencies enabled — `--no-optional` and
 Do not pin `0.5.0`: the tag and the npm package are immutable and still
 installable, but the CI examples on that tag are stale (`inputs.fail-on`, an
 unguarded GitLab pre-check). The binaries are fine; the templates are not. Use
-`0.9.0` or newer, or `@latest`.
+`0.9.1` or newer, or `@latest`.
 
 Requirements: Node.js 18+ for npm, Go 1.27+ for `go install`; release binaries
 and installers need no runtime.
@@ -160,17 +163,25 @@ Each release also publishes six raw binaries and `checksums.txt` on the
 [releases page](https://github.com/LevapVeeskela/lv24-vigil/releases). Options
 and manual verification: [docs/install.md](docs/install.md).
 
-### Container (local build)
+### Container
 
-There is no prebuilt Vigil image. Build the distroless Dockerfile from this
-repository:
+A prebuilt multi-arch image (`linux/amd64` and `linux/arm64`, distroless and
+running as `nonroot`) is published to GitHub Container Registry for every
+release:
+
+```bash
+docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.9.1 scan --no-llm --path /workspace
+```
+
+The local `Dockerfile` builds the same image if you prefer:
 
 ```bash
 docker build -t lv24-vigil .
 docker run --rm -v "$PWD:/workspace" -w /workspace lv24-vigil scan --no-llm
 ```
 
-The image runs as a non-root user. Details: [docs/install.md](docs/install.md#container).
+Tags, digest pinning, provenance/SBOM attestations and limitations:
+[docs/install.md](docs/install.md#container) and [docs/container.md](docs/container.md).
 
 ### Verify
 
@@ -494,9 +505,14 @@ replaces a foreign hook without `--force`, which saves it as
 `<hook>.pre-vigil.bak`. Uninstall removes only marked hooks and restores that
 backup.
 
+Using the [pre-commit](https://pre-commit.com) framework instead? The repository
+ships a `vigil-scan` hook id that runs the same deterministic gate; setup,
+skipping, `autoupdate` and the comparison with `vigil hook install`:
+[docs/pre-commit.md](docs/pre-commit.md).
+
 ### GitHub Actions (PR, `main`, manual)
 
-The same action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Use `uses: LevapVeeskela/lv24-vigil@v0.9.0`; add `version: 0.9.0` when the CLI must match the action tag.
+The same action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Use `uses: LevapVeeskela/lv24-vigil@v0.9.1`; add `version: 0.9.1` when the CLI must match the action tag.
 
 Copy [`examples/github-workflow.yml`](examples/github-workflow.yml) to
 `.github/workflows/vigil.yml`:
@@ -623,7 +639,7 @@ does not start a scan. Full guide: [docs/ci.md](docs/ci.md) · example:
 
 | Document | Contents |
 | --- | --- |
-| [docs/install.md](docs/install.md) | npm, Go, installers, binaries, container |
+| [docs/install.md](docs/install.md) | npm, Go, installers, deb/rpm/apk, binaries, container |
 | [docs/cli.md](docs/cli.md) | Commands, flags, exit codes, formats |
 | [docs/mcp.md](docs/mcp.md) | MCP clients, tools, resources, prompts |
 | [docs/providers.md](docs/providers.md) | Providers, keys, local models, config precedence |

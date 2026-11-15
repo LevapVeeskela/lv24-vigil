@@ -1,10 +1,11 @@
 # Release and npm publishing
 
 Vigil ships from git tags. A tag produces the GitHub release with six static
-binaries, and a second job publishes seven npm packages. Since `0.1.4` the npm
-half runs on npm Trusted Publishing (OIDC): no npm token is stored in the
-repository or in GitHub secrets, and npm records a provenance attestation for
-each published package.
+binaries, Linux packages, a self-SBOM, a keyless cosign signature and a build
+provenance attestation, and a second job publishes seven npm packages. Since
+`0.1.4` the npm half runs on npm Trusted Publishing (OIDC): no npm token is
+stored in the repository or in GitHub secrets, and npm records a provenance
+attestation for each published package.
 
 ## How a release works
 
@@ -28,7 +29,12 @@ generated from the tag.
       v
  release.yml
    GoReleaser (CGO off)  ->  6 binaries + checksums.txt
-   asset check           ->  fail unless exactly 6 binaries + checksums.txt
+                         ->  6 Linux packages (deb/rpm/apk x amd64/arm64)
+                         ->  checksums.txt.sigstore.json (cosign, keyless)
+   vigil sbom .          ->  vigil-sbom-X.Y.Z.cdx.json
+   asset check           ->  fail unless 6 binaries, 6 packages and checksums.txt exist
+   cosign sign-blob      ->  release-assets/checksums.txt.sigstore.json
+   attest-build-provenance ->  SLSA provenance for release-assets/*
    gh release create     ->  GitHub release (notes generated, prerelease if the tag has "-")
       |
       v
@@ -42,7 +48,11 @@ generated from the tag.
 |---|---|---|
 | Tag push | `release.yml` | Workflow starts; the tag is the version |
 | Build | `release.yml` | `vigil_<version>_<goos>_<goarch>[.exe]` for windows, linux and darwin on amd64 and arm64, plus `checksums.txt` (SHA-256) |
-| Asset check | `release.yml` | The run fails unless exactly six binaries and `checksums.txt` are present |
+| Linux packages | `release.yml` | `vigil-<version>-linux-<arch>.deb`, `.rpm` and `.apk` for amd64 and arm64, with `vigil` in `/usr/bin` |
+| SBOM | `release.yml` | `vigil-sbom-<version>.cdx.json`, a CycloneDX 1.6 document generated from the tagged tree by the freshly built source |
+| Signature | `release.yml` | `checksums.txt.sigstore.json`, a keyless cosign bundle over `checksums.txt` |
+| Provenance | `release.yml` | `actions/attest-build-provenance` records SLSA provenance for every file in `release-assets/` |
+| Asset check | `release.yml` | The run fails unless exactly six binaries, six Linux packages and `checksums.txt` are present |
 | GitHub release | `release.yml` | Creates `vX.Y.Z` with generated notes; a tag containing `-` becomes a prerelease; on a re-run only missing assets are uploaded |
 | Package build | `npm-publish.yml` | `npm/build.mjs` verifies each binary against `checksums.txt` and writes nothing unless all six match |
 | npm publish | `npm-publish.yml` | Platform packages first, then the launcher; versions already on npm are skipped |
@@ -52,12 +62,66 @@ exist before packaging starts, and the publish step is `continue-on-error`, so a
 failed npm publish leaves the release published and green. The job ends with a
 warning that names the missing setup; re-run it after fixing the cause.
 
+Two more workflows run around a tag. [`container.yml`](../.github/workflows/container.yml)
+builds the multi-arch image (`linux/amd64`, `linux/arm64`) from the repository
+`Dockerfile` and pushes it to `ghcr.io/levapveeskela/lv24-vigil` with BuildKit
+provenance and SBOM attestations; it triggers on the same `v*` push and can be
+dispatched for an existing tag. [`scorecard.yml`](../.github/workflows/scorecard.yml)
+re-runs OpenSSF Scorecard on `main`, weekly and on branch-protection changes, and
+uploads the SARIF result to code scanning.
+
 `npm-publish.yml` is both a reusable workflow (called by `release.yml`) and a
 `workflow_dispatch` workflow, so it can publish an existing tag on demand.
 `release.yml` triggers on any `v*` tag; `npm-publish.yml` accepts only
 `v<major>.<minor>.<patch>` with an optional `-prerelease` suffix. `ci.yml` runs a
 GoReleaser snapshot and an npm package dry run on pull requests, so asset naming
 and package layout mistakes fail before a tag is cut.
+
+## Release assets
+
+Every release carries these files:
+
+| Asset | Purpose |
+|---|---|
+| `vigil_<version>_<goos>_<goarch>[.exe]` | Six static binaries: windows, linux and darwin on amd64 and arm64 |
+| `vigil-<version>-linux-amd64.deb` / `...-arm64.deb` | Debian/Ubuntu package |
+| `vigil-<version>-linux-amd64.rpm` / `...-arm64.rpm` | Fedora/RHEL/openSUSE package |
+| `vigil-<version>-linux-amd64.apk` / `...-arm64.apk` | Alpine package |
+| `vigil-sbom-<version>.cdx.json` | CycloneDX 1.6 self-SBOM of the tagged source; its digest is in the provenance attestation |
+| `checksums.txt` | SHA-256 of the six binaries and the six Linux packages |
+| `checksums.txt.sigstore.json` | Keyless cosign bundle over `checksums.txt` |
+
+The same tag also publishes `ghcr.io/levapveeskela/lv24-vigil` for
+`linux/amd64` and `linux/arm64` (tags `X.Y.Z`, `X.Y`, `latest`, `sha-<commit>`),
+with BuildKit provenance and SPDX SBOM attestations; see
+[container.md](container.md).
+
+The Linux packages are built by GoReleaser (`nfpms` in
+[`deploy/goreleaser.yaml`](../deploy/goreleaser.yaml)) from the same `-ldflags`
+as the binaries, so `vigil version` inside a package reports the tag. Each one
+installs `LICENSE` as `/usr/share/doc/vigil/LICENSE` and the binary as
+`/usr/bin/vigil_<version>_linux_<arch>`, with a `/usr/bin/vigil` symlink next to
+it; deb and rpm also declare `Provides: vigil`. Every package is Apache-2.0.
+Package files use a hyphenated name so they are never mistaken for one of the
+six `vigil_*` binaries.
+
+```bash
+sudo apt install ./vigil-X.Y.Z-linux-amd64.deb                # Debian, Ubuntu
+sudo dnf install --nogpgcheck ./vigil-X.Y.Z-linux-amd64.rpm   # Fedora, RHEL, openSUSE
+sudo apk add --allow-untrusted ./vigil-X.Y.Z-linux-amd64.apk  # Alpine
+vigil version
+```
+
+The packages carry no distribution key of their own: there is no GPG signature
+on the rpm and no Alpine signing key, which is why `dnf` needs `--nogpgcheck`
+and `apk` needs `--allow-untrusted`. What is signed is `checksums.txt`, which
+lists the six binaries and the six packages, and the provenance attestation
+covers the SBOM and the bundle as well.
+
+The SBOM is generated on the runner from the tagged tree with
+`go run ./cmd/vigil sbom . --format cyclonedx`. `vigil sbom` is offline: it
+inventories `go.mod`, lockfiles and declared manifests and needs no network, so
+the command works on a runner and on a detached checkout.
 
 ## Packages
 
@@ -121,11 +185,61 @@ refuses an older npm). Use the same or newer npm for the `npm trust` commands.
 
 ## Verify a release
 
+`v0.9.1` ships six static binaries, six Linux packages (deb/rpm/apk × amd64/arm64),
+`vigil-sbom-0.9.1.cdx.json`, `checksums.txt` and its cosign bundle, and the GHCR
+image for both architectures. Download what you need from the release page; the
+commands below verify it without trusting the download.
+
+Signatures are keyless: there is no long-lived signing key in the repository or
+in GitHub secrets. cosign exchanges the workflow's OIDC token for a short-lived
+certificate, records the signature in the Rekor transparency log, and the
+certificate identity names this repository, `release.yml` and the tag. Both
+commands below need network access (Rekor, the OIDC issuer, GitHub).
+
 ```bash
-npm view lv24-vigil version          # 0.9.0
-npm view lv24-vigil dist-tags        # { latest: '0.9.0' }
-npm i -g lv24-vigil@0.9.0            # or @latest
-vigil version                        # vigil 0.9.0 (<commit>, <date>, go<version>)
+gh release download vX.Y.Z --pattern checksums.txt --pattern checksums.txt.sigstore.json
+cosign verify-blob \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity "https://github.com/LevapVeeskela/lv24-vigil/.github/workflows/release.yml@refs/tags/vX.Y.Z" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+```
+
+A passing run prints `Verified OK`. Then check what you downloaded against the
+signed file (`--ignore-missing` skips assets you did not fetch):
+
+```bash
+sha256sum -c checksums.txt --ignore-missing
+```
+
+Provenance is a separate, GitHub-native attestation for every file in
+`release-assets/` (binaries, packages, SBOM, checksums and bundle):
+
+```bash
+gh attestation verify vigil-X.Y.Z-linux-amd64.deb --repo LevapVeeskela/lv24-vigil
+gh attestation verify vigil-sbom-X.Y.Z.cdx.json --repo LevapVeeskela/lv24-vigil
+```
+
+The attestation names the workflow, the commit and the digest the runner
+produced. `gh attestation verify` fails if the file was rebuilt or altered
+outside that run.
+
+The container image carries BuildKit provenance and an SBOM instead of a cosign
+signature. Compare its digest with the `container` run summary, or inspect the
+attestations directly:
+
+```bash
+docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.9.1 \
+  --format '{{json .Manifest}}' | jq -r .digest
+```
+
+Installed CLI:
+
+```bash
+npm view lv24-vigil version          # 0.9.1
+npm view lv24-vigil dist-tags        # { latest: '0.9.1' }
+npm i -g lv24-vigil@0.9.1            # or @latest
+vigil version                        # vigil 0.9.1 (<commit>, <date>, go<version>)
 ```
 
 Platform packages, one line each:
@@ -141,6 +255,7 @@ Workflow runs:
 ```bash
 gh run list --workflow release.yml --limit 3
 gh run list --workflow npm-publish.yml --limit 3
+gh run list --workflow container.yml --limit 3
 gh run view <run-id> --log
 ```
 
@@ -154,7 +269,7 @@ Provenance:
 npm view lv24-vigil dist.attestations
 ```
 
-For `0.9.0` this returns a `https://slsa.dev/provenance/v1` attestation built
+For `0.9.1` this returns a `https://slsa.dev/provenance/v1` attestation built
 from `.github/workflows/npm-publish.yml` on a GitHub-hosted runner. The npm page
 shows the matching provenance badge.
 
@@ -192,7 +307,7 @@ the current release in "Current state" below.
 Before deciding, verify what users actually have:
 
 ```bash
-gh release view vX.Y.Z --json assets --jq '.assets[].name'   # binaries + checksums.txt
+gh release view vX.Y.Z --json assets --jq '.assets[].name'   # binaries, packages, SBOM, checksums, bundle
 tar -tzf lv24-vigil-X.Y.Z.tgz                                 # npm: bin/, README, LICENSE
 curl -s https://pypi.org/pypi/lv24-vigil/X.Y.Z/json | jq '.urls[].filename'
 vigil version                                                 # reports the tag commit
@@ -200,6 +315,17 @@ vigil version                                                 # reports the tag 
 
 ### Decision log
 
+- **0.9.1 makes the release installable everywhere and attributable
+  (2026-11-15).** A patch release with no rule changes (**263** rules, ten
+  families, 14 MCP tools): the same engine as 0.9.0, different delivery.
+  Added native Linux packages (deb/rpm/apk for amd64 and arm64, built by
+  GoReleaser `nfpms` from the same `-ldflags`), a CycloneDX 1.6 self-SBOM asset,
+  a keyless cosign bundle over `checksums.txt`, SLSA build provenance for
+  `release-assets/*`, a `pre-commit` hook definition, an OpenSSF Scorecard
+  workflow and a multi-arch (`linux/amd64`, `linux/arm64`) distroless GHCR image
+  with BuildKit provenance and SBOM. The pipeline also gained an asset check
+  (six binaries, six packages, `checksums.txt`) so a partial tag fails before
+  publishing, and the action default moves to `0.9.1`.
 - **0.9.0 adds MCP audit, SBOM and inline suppression (2026-11-15).** Ten
   `VGL-MCP` rules and the offline `vigil mcp-audit` / `vigil_mcp_audit` tool
   audit MCP configs without starting a server. `vigil sbom` emits CycloneDX 1.6
@@ -312,9 +438,11 @@ GitHub Actions and GitLab CI, so a publish started from a workstation fails with
 and no provenance.
 
 The scripts are idempotent: an existing release is reused, present assets are
-skipped, and versions already on npm are skipped.
+skipped, and versions already on npm are skipped. They produce the six binaries
+and `checksums.txt` only: the Linux packages, the SBOM, the cosign bundle and
+the provenance attestation come from `release.yml`.
 
-## Release assets and repository size
+## Asset storage and repository size
 
 Release assets are published to the GitHub release and never committed. The
 workflows download them into `release-assets/`, and `/dist-*/`, `/dist/`,
@@ -350,9 +478,20 @@ reasoning and the procedure if a rewrite is ever required are in
   publisher names `LevapVeeskela/lv24-vigil` and
   `.github/workflows/npm-publish.yml`; a fork, another repository or another
   workflow cannot publish these packages.
-- **Minimal token scope.** Only the publish job requests `id-token: write`
-  (`release.yml` grants it to the reusable workflow); `npm-publish.yml` runs with
-  `contents: read` and `id-token: write` and nothing else.
+- **Release assets are signed, not just hashed.** `checksums.txt` is signed with
+  cosign in keyless mode: the runner exchanges its OIDC token for a short-lived
+  certificate bound to `release.yml` and the tag, so there is no signing key to
+  leak or rotate. The `checksums.txt.sigstore.json` bundle is uploaded next to
+  the checksums and covers every package and binary.
+- **Provenance is recorded for every asset.** `actions/attest-build-provenance`
+  writes a SLSA provenance attestation for `release-assets/*`; `gh attestation
+  verify <file> --repo LevapVeeskela/lv24-vigil` checks the digest against that
+  run.
+- **Minimal token scope.** `id-token: write` is granted to the publish job and
+  to the release job that signs and attests; `release.yml` also passes it to the
+  reusable npm workflow. `npm-publish.yml` runs with `contents: read` and
+  `id-token: write` and nothing else; the release job adds `contents: write`
+  (release upload) and `attestations: write` (provenance).
 - **GitHub-hosted runners only.** The publish job runs on `ubuntu-latest`; the
   provenance attestation records a `github-hosted` builder. Do not move
   publishing to a self-hosted runner.
@@ -365,8 +504,16 @@ reasoning and the procedure if a rewrite is ever required are in
 ## Current state
 
 `0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
-path. All seven npm packages and PyPI are live at `0.9.0`, and `latest` points
-at it. `v0.9.0` adds MCP configuration auditing (`vigil mcp-audit` /
+path. All seven npm packages and PyPI are live at `0.9.1`, and `latest` points
+at it. `v0.9.1` is a packaging and supply-chain release: **no rule or tool
+changes** (263 rules in ten families, 14 MCP tools). It adds native deb/rpm/apk
+packages for amd64 and arm64, a CycloneDX 1.6 SBOM asset, keyless cosign signing
+of `checksums.txt`, SLSA build provenance for every release asset, a `pre-commit`
+hook definition, an OpenSSF Scorecard workflow, and the multi-arch GHCR image
+(`ghcr.io/levapveeskela/lv24-vigil`, distroless, nonroot, BuildKit provenance and
+SBOM, not cosign-signed). Verify assets with `cosign verify-blob` and
+`gh attestation verify`, images by digest.
+`v0.9.0` adds MCP configuration auditing (`vigil mcp-audit` /
 `vigil_mcp_audit`), SBOM export (CycloneDX 1.6 / SPDX 2.3), inline
 `vigil:ignore` suppression and 42 new rules since 0.8.0 (**263** total, 10
 families).
@@ -387,7 +534,7 @@ attempt. `v0.5.2` contains the corrected CI templates and the post-0.5.1 docs.
 The composite action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
 as **Vigil security scan** (Security + Code quality).
 
-**Do not pin `0.5.0`.** Use `0.9.0` or newer, or `@latest`. The `v0.5.0` tag is
+**Do not pin `0.5.0`.** Use `0.9.1` or newer, or `@latest`. The `v0.5.0` tag is
 immutable and still resolves, so pinning it silently keeps the stale templates;
 its GitHub release body carries the warning. The npm package version is marked
 with a deprecation notice (a metadata change, not a republish) once the npm 2FA

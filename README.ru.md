@@ -10,6 +10,9 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](go.mod)
 [![MCP](https://img.shields.io/badge/MCP-stdio-6C5CE7)](docs/mcp.md)
 [![OpenCode Go](https://img.shields.io/badge/OpenCode_Go-supported-6C5CE7)](docs/providers.md)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/LevapVeeskela/lv24-vigil/badge)](https://securityscorecards.dev/viewer/?uri=github.com/LevapVeeskela/lv24-vigil)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com)
+[![Go Reference](https://pkg.go.dev/badge/github.com/levapveeskela/lv24-vigil.svg)](https://pkg.go.dev/github.com/levapveeskela/lv24-vigil)
 
 **Документация:** [English](README.md) · Русский · [docs/](docs/) · [llms.txt](llms.txt)
 
@@ -130,7 +133,7 @@ Publishing (OIDC) с аттестацией происхождения.
 
 Не пиньте `0.5.0`: тег и npm-пакет неизменяемы и всё ещё ставятся, но примеры
 CI на этом теге устарели (`inputs.fail-on`, непроверенный GitLab pre-check).
-Бинарники в порядке, шаблоны — нет. Используйте `0.9.0` или новее, либо
+Бинарники в порядке, шаблоны — нет. Используйте `0.9.1` или новее, либо
 `@latest`.
 
 Требования: Node.js 18+ для npm, Go 1.27+ для `go install`; готовым бинарникам и
@@ -162,17 +165,24 @@ bash installers/unix/install.sh          # macOS / Linux
 [странице релизов](https://github.com/LevapVeeskela/lv24-vigil/releases). Опции
 и ручная проверка: [docs/install.md](docs/install.md).
 
-### Контейнер (локальная сборка)
+### Контейнер
 
-Готового образа Vigil нет. Соберите distroless Dockerfile из этого репозитория:
+Готовый мультиархитектурный образ (`linux/amd64` и `linux/arm64`, distroless,
+запуск от `nonroot`) публикуется в GitHub Container Registry с каждым релизом:
+
+```bash
+docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.9.1 scan --no-llm --path /workspace
+```
+
+Локальный `Dockerfile` собирает тот же образ, если так удобнее:
 
 ```bash
 docker build -t lv24-vigil .
 docker run --rm -v "$PWD:/workspace" -w /workspace lv24-vigil scan --no-llm
 ```
 
-Образ работает от непривилегированного пользователя. Подробности:
-[docs/install.md](docs/install.md#container).
+Теги, закрепление по digest, аттестации provenance/SBOM и ограничения:
+[docs/install.md](docs/install.md#container) и [docs/container.md](docs/container.md).
 
 ### Проверка
 
@@ -503,9 +513,14 @@ vigil hook uninstall
 старый хук сохраняется как `<hook>.pre-vigil.bak`. `uninstall` удаляет только
 хуки Vigil и возвращает бэкап.
 
+Используете фреймворк [pre-commit](https://pre-commit.com)? В репозитории есть
+хук `vigil-scan` с тем же детерминированным гейтом; настройка, пропуск,
+`autoupdate` и сравнение с `vigil hook install`:
+[docs/pre-commit.md](docs/pre-commit.md).
+
 ### GitHub Actions (PR, `main`, вручную)
 
-Действие также опубликовано в [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Используйте `uses: LevapVeeskela/lv24-vigil@v0.9.0`; добавьте `version: 0.9.0`, если CLI должен совпадать с тегом действия.
+Действие также опубликовано в [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Используйте `uses: LevapVeeskela/lv24-vigil@v0.9.1`; добавьте `version: 0.9.1`, если CLI должен совпадать с тегом действия.
 
 Скопируйте [`examples/github-workflow.yml`](examples/github-workflow.yml) в
 `.github/workflows/vigil.yml`:
@@ -632,7 +647,7 @@ Precheck не запускает скан. Полное руководство: 
 
 | Документ | Содержание |
 | --- | --- |
-| [docs/install.md](docs/install.md) | npm, Go, установщики, бинарники, контейнер |
+| [docs/install.md](docs/install.md) | npm, Go, установщики, deb/rpm/apk, бинарники, контейнер |
 | [docs/cli.md](docs/cli.md) | Команды, флаги, коды выхода, форматы |
 | [docs/mcp.md](docs/mcp.md) | MCP-клиенты, инструменты, ресурсы, промпты |
 | [docs/providers.md](docs/providers.md) | Провайдеры, ключи, локальные модели, приоритет настроек |

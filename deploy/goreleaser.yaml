@@ -10,8 +10,9 @@ builds:
   - id: vigil
     main: ./cmd/vigil
     # GoReleaser appends .exe for windows itself; adding .Ext here produces
-    # .exe.exe files. Asset names must stay in sync with npm/build.mjs and the
-    # installers: vigil_<version>_<goos>_<goarch>[.exe].
+    # .exe.exe files. This name is also the on-disk name the release workflow
+    # copies, and it must stay in sync with npm/build.mjs and the installers:
+    # vigil_<version>_<goos>_<goarch>[.exe].
     binary: 'vigil_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
     env:
       - CGO_ENABLED=0
@@ -44,39 +45,50 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
+# Linux packages are built from the linux binaries only (GoReleaser filters the
+# nfpm artifact set to linux); the binary archives above keep their names.
+nfpms:
+  - id: vigil
+    package_name: vigil
+    ids:
+      - vigil
+    formats:
+      - deb
+      - rpm
+      - apk
+    # Package files use a hyphenated name so they never match the `vigil_*`
+    # glob that ci.yml uses to count the six release binaries.
+    file_name_template: "vigil-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    bindir: /usr/bin
+    license: Apache-2.0
+    maintainer: LevapVeeskela <LevapVeeskela@users.noreply.github.com>
+    vendor: LV24
+    homepage: https://github.com/LevapVeeskela/lv24-vigil
+    description: |-
+      Local-first security auditor: deterministic rules plus optional LLM
+      triage, fixes and a threat model. Ships a CLI and a stdio MCP server.
+    # deb and rpm declare the command they provide. apk already provides its own
+    # package name and rejects an explicit self-provide ("conflicts:
+    # vigil-... [vigil]"), so the provide list is set per format.
+    overrides:
+      deb:
+        provides:
+          - vigil
+      rpm:
+        provides:
+          - vigil
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/vigil/LICENSE
+      # The build binary keeps its versioned name (the release workflow copies
+      # files by that name), so the package links the command to it instead of
+      # shipping a second 12 MB copy.
+      - src: /usr/bin/vigil_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+        dst: /usr/bin/vigil
+        type: symlink
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
-
-changelog:
-  sort: asc
-  use: git
-  groups:
-    - title: Features
-      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
-      order: 0
-    - title: "Bug fixes"
-      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
-      order: 1
-    - title: Performance
-      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
-      order: 2
-    - title: Refactors
-      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
-      order: 3
-    - title: Documentation
-      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
-      order: 4
-    - title: Other changes
-      order: 999
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
-      - '^chore:'
-      - '^ci:'
-      - '^build:'
-      - 'Merge pull request'
-      - 'Merge branch'
 
 release:
   draft: false

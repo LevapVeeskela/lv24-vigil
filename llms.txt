@@ -10,7 +10,10 @@ License: Apache-2.0
 Binary: vigil
 Current release line: 0.9.x: 263 rules in ten families, 14 MCP tools,
 offline `mcp-audit` and `sbom`, inline suppression, plus the
-`vigil_hardening` and `vigil_dependencies` tools.
+`vigil_hardening` and `vigil_dependencies` tools. 0.9.1 adds no rules: it ships
+deb/rpm/apk packages, a CycloneDX SBOM asset, keyless cosign signing over
+checksums, build provenance, `pre-commit` hooks, OpenSSF Scorecard and the
+multi-arch image `ghcr.io/levapveeskela/lv24-vigil` (distroless, nonroot).
 
 ## Canonical install
 
@@ -25,6 +28,12 @@ One-off:
 Go 1.27+:
 
     go install github.com/levapveeskela/lv24-vigil/cmd/vigil@latest
+
+Native Linux packages (release assets) and the container image:
+
+    sudo apt install ./vigil-0.9.1-linux-amd64.deb      # also .rpm (dnf), .apk (apk)
+    docker run --rm -v "$PWD:/workspace" \
+      ghcr.io/levapveeskela/lv24-vigil:0.9.1 scan --no-llm --path /workspace
 
 ## Package choice
 

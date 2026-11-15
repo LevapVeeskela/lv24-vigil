@@ -18,6 +18,10 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write
+      # Keyless cosign signing and build provenance both use the GitHub OIDC
+      # token; the attestation itself is written to the repository.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -28,6 +32,10 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        with:
+          cosign-release: v2.4.1
+
       - name: Build release artifacts
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
@@ -37,6 +45,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Generate release SBOM
+        env:
+          TAG: ${{ github.ref_name }}
+        # `go run` builds the tagged source with the local toolchain and
+        # `vigil sbom` is offline: it inventories go.mod, lockfiles and
+        # declared manifests, so it never needs network access.
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          sbom="release-assets/vigil-sbom-${TAG#v}.cdx.json"
+          go run ./cmd/vigil sbom . --format cyclonedx --output "$sbom"
+          test -s "$sbom"
+
       - name: Assemble release assets
         run: |
           set -euo pipefail
@@ -44,10 +65,12 @@ jobs:
           find dist -type f | while read -r file; do
             base="$(basename "$file")"
             case "$base" in
-              vigil_*|checksums.txt) cp "$file" "release-assets/$base" ;;
+              vigil_*|checksums.txt|*.deb|*.rpm|*.apk|*.sigstore.json) cp "$file" "release-assets/$base" ;;
             esac
           done
-          count="$(find release-assets -maxdepth 1 -type f -name 'vigil_*' | wc -l | tr -d ' ')"
+          # The SBOM is named vigil-sbom-<version>.cdx.json, so exclude it from
+          # the binary count; exactly six vigil_* binaries are expected.
+          count="$(find release-assets -maxdepth 1 -type f -name 'vigil_*' ! -name 'vigil-sbom-*' | wc -l | tr -d ' ')"
           if [ "$count" -ne 6 ]; then
             echo "expected 6 release binaries, found $count" >&2
             exit 1
@@ -56,7 +79,30 @@ jobs:
             echo "checksums.txt is missing from the release assets" >&2
             exit 1
           fi
+          package_count="$(find release-assets -maxdepth 1 -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.apk' \) | wc -l | tr -d ' ')"
+          if [ "$package_count" -ne 6 ]; then
+            echo "expected 6 Linux packages (deb/rpm/apk x amd64/arm64), found $package_count" >&2
+            exit 1
+          fi
           ls -l release-assets
+
+      - name: Sign checksums with cosign (keyless)
+        # The bundle covers checksums.txt, which lists the six binaries and the
+        # six Linux packages; signing each file separately is unnecessary.
+        # Keyless: the OIDC token identifies this workflow run and cosign writes
+        # to the transparency log, so there is no key to store.
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes \
+            --bundle release-assets/checksums.txt.sigstore.json \
+            release-assets/checksums.txt
+          test -s release-assets/checksums.txt.sigstore.json
+          ls -l release-assets/checksums.txt.sigstore.json
+
+      - name: Attest release assets
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: release-assets/*
 
       - name: Publish GitHub release
         env:

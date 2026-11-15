@@ -4,6 +4,40 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.9.1 - 2026-11-15
+
+No rule changes (263 rules, ten families, 14 MCP tools): the same engine as
+0.9.0, delivered through more channels and attributable end to end.
+
+### Added
+
+- Native Linux packages: `vigil-<version>-linux-<arch>.deb`, `.rpm` and `.apk`
+  for amd64 and arm64, built by GoReleaser from the same `-ldflags` as the
+  binaries. Each installs the binary, a `/usr/bin/vigil` symlink and the
+  license; deb and rpm declare `Provides: vigil`.
+- A CycloneDX 1.6 self-SBOM asset (`vigil-sbom-<version>.cdx.json`) generated on
+  the runner from the tagged tree with `vigil sbom`.
+- Keyless cosign signing: `checksums.txt.sigstore.json`, a bundle over
+  `checksums.txt` and therefore over all six binaries and six Linux packages.
+- SLSA build provenance from `actions/attest-build-provenance` for every file in
+  `release-assets/`, checked with `gh attestation verify`.
+- A multi-arch container image at `ghcr.io/levapveeskela/lv24-vigil`
+  (`linux/amd64`, `linux/arm64`, distroless, `nonroot`) with BuildKit
+  provenance and SPDX SBOM attestations, published by
+  `.github/workflows/container.yml` for a `v*` tag or on demand.
+- `pre-commit` hooks (`.pre-commit-hooks.yaml`: `vigil-scan` and the opt-in
+  `vigil-mcp-audit`) and [docs/pre-commit.md](docs/pre-commit.md).
+- OpenSSF Scorecard (`.github/workflows/scorecard.yml`) with published results,
+  and the Scorecard, pre-commit and Go Reference badges in both READMEs.
+
+### Changed
+
+- The release pipeline fails when a tag does not produce exactly six binaries,
+  six Linux packages and `checksums.txt`, before anything is published.
+- `action.yml` defaults to `0.9.1`; the documented pin is `@v0.9.1`.
+- Install docs cover the GHCR image (tags, digest pinning, attestation checks)
+  and the deb/rpm/apk packages; the READMEs link the pre-commit setup.
+
 ## 0.9.0 - 2026-11-15
 
 263 rules (42 new since 0.8.0), inline suppression, an offline MCP configuration

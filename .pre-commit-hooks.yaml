@@ -1,0 +1,28 @@
+- id: vigil-scan
+  name: Vigil deterministic security scan
+  description: >
+    Runs all 263 deterministic Vigil rules over the repository with no model,
+    no key and no network, and fails the commit on findings at or above high
+    severity. Requires the Vigil CLI on PATH: install it with
+    `npm i -g lv24-vigil` or
+    `go install github.com/levapveeskela/lv24-vigil/cmd/vigil@latest`.
+    The hook passes no filenames, so it scans the project instead of the staged
+    file list.
+  entry: vigil scan --no-llm --fail-on high
+  language: system
+  pass_filenames: false
+  always_run: true
+
+- id: vigil-mcp-audit
+  name: Vigil MCP configuration audit
+  description: >
+    Opt-in hook: audits MCP server configuration (VGL-MCP rules) for unpinned
+    packages, literal secrets, cleartext endpoints and TLS bypass. It reads
+    configuration files only, starts no configured server and contacts no
+    endpoint. Add it to .pre-commit-config.yaml only when the repository keeps
+    MCP configuration; it is not part of the default Vigil gate. Requires the
+    Vigil CLI on PATH.
+  entry: vigil mcp-audit --fail-on high
+  language: system
+  pass_filenames: false
+  always_run: true
