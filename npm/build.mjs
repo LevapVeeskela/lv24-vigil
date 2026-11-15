@@ -26,6 +26,10 @@ export const MAIN_PACKAGE = 'lv24-vigil';
 export const PLATFORM_SCOPE = '@lv24';
 export const REPOSITORY_URL = 'https://github.com/LevapVeeskela/lv24-vigil';
 export const LICENSE = 'Apache-2.0';
+// Official MCP Registry (modelcontextprotocol/registry) namespace. The registry
+// rejects a publish unless the published npm package's top-level `mcpName`
+// equals server.json's `name`, so the launcher package.json carries it too.
+export const MCP_SERVER_NAME = 'io.github.LevapVeeskela/vigil';
 
 // goos/goarch are GoReleaser's names (asset file names); os/cpu are npm's.
 export const PLATFORMS = Object.freeze(
@@ -88,6 +92,8 @@ export function mainPackageJson(version) {
   return {
     name: MAIN_PACKAGE,
     version,
+    // Ownership proof for the MCP Registry; must match server.json "name".
+    mcpName: MCP_SERVER_NAME,
     description:
       'Vigil — security audit for your code on your own model: 263 deterministic rules, LLM triage, fixes and an MCP server',
     license: LICENSE,

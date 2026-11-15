@@ -132,7 +132,7 @@ platform packages. Keep optional dependencies enabled — `--no-optional` and
 Do not pin `0.5.0`: the tag and the npm package are immutable and still
 installable, but the CI examples on that tag are stale (`inputs.fail-on`, an
 unguarded GitLab pre-check). The binaries are fine; the templates are not. Use
-`0.9.2` or newer, or `@latest`.
+`0.9.3` or newer, or `@latest`.
 
 Requirements: Node.js 18+ for npm, Go 1.27+ for `go install`; release binaries
 and installers need no runtime.
@@ -163,6 +163,18 @@ Each release also publishes six raw binaries and `checksums.txt` on the
 [releases page](https://github.com/LevapVeeskela/lv24-vigil/releases). Options
 and manual verification: [docs/install.md](docs/install.md).
 
+### Other channels
+
+Arch Linux: the AUR package builds from the published release
+(`yay -S vigil-bin`), with the PKGBUILD and verification steps in
+[docs/aur.md](docs/aur.md).
+
+MCP: the server also ships official MCP Registry metadata (`mcpName` in the npm
+package plus `server.json`), so registry-aware clients can install it as
+`npx -y lv24-vigil mcp`. Registry layout, publishing and verification:
+[docs/mcp-registry.md](docs/mcp-registry.md). Other MCP catalogues and the status
+of each submission: [docs/mcp-directories.md](docs/mcp-directories.md).
+
 ### Container
 
 A prebuilt multi-arch image (`linux/amd64` and `linux/arm64`, distroless and
@@ -170,7 +182,7 @@ running as `nonroot`) is published to GitHub Container Registry for every
 release:
 
 ```bash
-docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.9.2 scan --no-llm --path /workspace
+docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.9.3 scan --no-llm --path /workspace
 ```
 
 The local `Dockerfile` builds the same image if you prefer:
@@ -512,7 +524,7 @@ skipping, `autoupdate` and the comparison with `vigil hook install`:
 
 ### GitHub Actions (PR, `main`, manual)
 
-The same action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Use `uses: LevapVeeskela/lv24-vigil@v0.9.2`; add `version: 0.9.2` when the CLI must match the action tag.
+The same action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Use `uses: LevapVeeskela/lv24-vigil@v0.9.3`; add `version: 0.9.3` when the CLI must match the action tag.
 
 Copy [`examples/github-workflow.yml`](examples/github-workflow.yml) to
 `.github/workflows/vigil.yml`:

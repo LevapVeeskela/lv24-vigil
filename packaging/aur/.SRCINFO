@@ -1,0 +1,19 @@
+pkgbase = vigil-bin
+	pkgdesc = Local-first security auditor with 263 deterministic rules and an MCP server
+	pkgver = 0.9.3
+	pkgrel = 1
+	url = https://github.com/LevapVeeskela/lv24-vigil
+	arch = x86_64
+	arch = aarch64
+	license = Apache-2.0
+	provides = vigil
+	conflicts = vigil
+	options = !strip
+	source = LICENSE::https://github.com/LevapVeeskela/lv24-vigil/raw/v0.9.3/LICENSE
+	source_x86_64 = vigil_0.9.3_linux_amd64::https://github.com/LevapVeeskela/lv24-vigil/releases/download/v0.9.3/vigil_0.9.3_linux_amd64
+	source_aarch64 = vigil_0.9.3_linux_arm64::https://github.com/LevapVeeskela/lv24-vigil/releases/download/v0.9.3/vigil_0.9.3_linux_arm64
+	sha256sums = TODO_LICENSE_SHA256
+	sha256sums_x86_64 = TODO_AMD64_SHA256
+	sha256sums_aarch64 = TODO_ARM64_SHA256
+
+pkgname = vigil-bin

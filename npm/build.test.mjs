@@ -8,10 +8,13 @@ import { fileURLToPath } from 'node:url';
 
 import {
   BuildError,
+  MAIN_PACKAGE,
+  MCP_SERVER_NAME,
   PLATFORMS,
   assertVersion,
   assetFileName,
   generatePackages,
+  mainPackageJson,
   parseChecksums,
   sha256Hex,
 } from './build.mjs';
@@ -67,6 +70,7 @@ test('generates main and platform packages from a fake dist', async (t) => {
   assert.equal(main.license, 'Apache-2.0');
   assert.equal(main.engines.node, '>=18');
   assert.equal(main.publishConfig.access, 'public');
+  assert.equal(main.mcpName, 'io.github.LevapVeeskela/vigil');
   assert.equal(main.repository.url, 'git+https://github.com/LevapVeeskela/lv24-vigil.git');
   assert.equal(main.homepage, 'https://github.com/LevapVeeskela/lv24-vigil#readme');
   assert.equal(main.bugs.url, 'https://github.com/LevapVeeskela/lv24-vigil/issues');
@@ -104,6 +108,7 @@ test('generates main and platform packages from a fake dist', async (t) => {
     assert.equal(pkg.license, 'Apache-2.0');
     assert.equal(pkg.publishConfig.access, 'public');
     assert.equal(pkg.scripts, undefined, 'no install scripts');
+    assert.equal(pkg.mcpName, undefined, 'mcpName belongs to the launcher package only');
 
     const binPath = path.join(dir, 'bin', platform.binaryName);
     assert.deepEqual(await readFile(binPath), fakeBinary(platform));
@@ -122,6 +127,39 @@ test('generates main and platform packages from a fake dist', async (t) => {
 
   const launcherCopy = await readFile(path.join(out, 'lv24-vigil', 'bin', 'vigil.js'), 'utf8');
   assert.equal(launcherCopy, await readFile(path.join(here, 'bin', 'vigil.js'), 'utf8'));
+});
+
+test('server.json matches the generated npm package and registry schema fields', async () => {
+  assert.equal(MCP_SERVER_NAME, 'io.github.LevapVeeskela/vigil');
+  assert.equal(mainPackageJson(VERSION).mcpName, MCP_SERVER_NAME);
+
+  const serverJson = JSON.parse(await readFile(path.join(here, '..', 'server.json'), 'utf8'));
+  assert.equal(
+    serverJson.$schema,
+    'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json',
+  );
+  // The registry rejects a server.json whose name differs from the published mcpName.
+  assert.equal(serverJson.name, MCP_SERVER_NAME);
+  assert.ok(serverJson.description.length <= 100, 'registry description limit is 100 characters');
+  assert.deepEqual(serverJson.repository, {
+    url: 'https://github.com/LevapVeeskela/lv24-vigil',
+    source: 'github',
+  });
+
+  const npmPackage = serverJson.packages.find((pkg) => pkg.registryType === 'npm');
+  assert.ok(npmPackage, 'server.json must declare the npm package');
+  assert.equal(npmPackage.identifier, MAIN_PACKAGE);
+  assert.equal(npmPackage.transport.type, 'stdio');
+  assert.equal(npmPackage.runtimeHint, 'npx');
+  assert.deepEqual(npmPackage.packageArguments, [{ type: 'positional', value: 'mcp' }]);
+  // Publishing a new registry version requires the matching npm version on npm.
+  // A metadata-only prerelease may add a suffix to the npm version.
+  assert.ok(
+    serverJson.version === npmPackage.version ||
+      serverJson.version.startsWith(npmPackage.version + '-'),
+    `server.json version ${serverJson.version} does not match npm ${npmPackage.version}`,
+  );
+  assert.match(serverJson.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
 });
 
 test('asset-version selects GoReleaser names while package version stays explicit', async (t) => {

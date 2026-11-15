@@ -20,7 +20,7 @@ runs `vigil` and its subcommands.
 
 | Tag | Example | Meaning |
 | --- | --- | --- |
-| `<version>` | `0.9.2` | exact release |
+| `<version>` | `0.9.3` | exact release |
 | `<major>.<minor>` | `0.9` | newest `0.9.x`, including a prerelease if one is tagged |
 | `latest` | `latest` | newest non-prerelease release only |
 | `sha-<short>` | `sha-f5686bb` | one commit, for bisecting |
@@ -30,10 +30,10 @@ For a reproducible pipeline, prefer a version tag with a digest (below), not
 
 ## Scan a repository
 
-`0.9.2` is the upcoming tag; use the version you actually run.
+`0.9.3` is the upcoming tag; use the version you actually run.
 
 ```bash
-docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.9.2 scan --no-llm --path /workspace
+docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.9.3 scan --no-llm --path /workspace
 ```
 
 `/workspace` is the image's working directory, so `--path /workspace` is
@@ -47,7 +47,7 @@ when the container exits.
 A tag can move; a digest cannot. Resolve it once and pin it in CI:
 
 ```bash
-docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.9.2 \
+docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.9.3 \
   --format '{{json .Manifest}}' | jq -r .digest
 ```
 
@@ -68,11 +68,11 @@ so both attestations are pushed next to the image. Inspect them with Buildx:
 
 ```bash
 # SBOM (SPDX) for one platform
-docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.9.2 \
+docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.9.3 \
   --format '{{json (index .SBOM "linux/amd64")}}'
 
 # provenance for one platform
-docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.9.2 \
+docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.9.3 \
   --format '{{json (index .Provenance "linux/amd64")}}'
 ```
 
@@ -80,7 +80,7 @@ Pipe the output through `jq` for readable JSON. A quick check that the
 attestations exist at all:
 
 ```bash
-docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.9.2 \
+docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.9.3 \
   --format '{{json .Manifest}}' | jq -r '.manifests[].annotations["vnd.docker.reference.type"] // empty' | sort -u
 ```
 
@@ -120,7 +120,7 @@ model, no key and no network call. Nothing is downloaded at run time.
 
   ```bash
   git diff | docker run -i --rm -v "$PWD:/workspace" \
-    ghcr.io/levapveeskela/lv24-vigil:0.9.2 scan --diff - --no-llm
+    ghcr.io/levapveeskela/lv24-vigil:0.9.3 scan --diff - --no-llm
   ```
 
 - **No shell.** `sh -c` wrappers and shell redirection are not available; use

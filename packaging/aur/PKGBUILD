@@ -1,0 +1,54 @@
+# Maintainer: TODO Your Name <you@example.com>
+# Contributor: Vigil maintainers
+#
+# vigil-bin installs the prebuilt upstream release binary. There is no build
+# step: package() copies the binary and the license into $pkgdir.
+#
+# Before building or pushing, replace the three TODO checksum values with the
+# SHA-256 hashes published for v0.9.3:
+#
+#   curl -fsSLO https://github.com/LevapVeeskela/lv24-vigil/releases/download/v0.9.3/checksums.txt
+#   grep -E 'vigil_0\.9\.3_linux_(amd64|arm64)$' checksums.txt
+#   sha256sum LICENSE   # https://raw.githubusercontent.com/LevapVeeskela/lv24-vigil/v0.9.3/LICENSE
+#
+# Then verify the sources and build:
+#
+#   makepkg --verifysource && makepkg -si
+#
+# TODO values are deliberately invalid so a forgotten checksum fails loudly
+# instead of installing an unverified binary. Never publish with TODO values.
+
+pkgname=vigil-bin
+pkgver=0.9.3
+pkgrel=1
+pkgdesc="Local-first security auditor with 263 deterministic rules and an MCP server"
+arch=('x86_64' 'aarch64')
+url="https://github.com/LevapVeeskela/lv24-vigil"
+license=('Apache-2.0')
+provides=('vigil')
+conflicts=('vigil')
+options=('!strip') # upstream binary is prebuilt and statically linked
+
+_baseurl="${url}/releases/download/v${pkgver}"
+
+source=("LICENSE::${url}/raw/v${pkgver}/LICENSE")
+source_x86_64=("vigil_${pkgver}_linux_amd64::${_baseurl}/vigil_${pkgver}_linux_amd64")
+source_aarch64=("vigil_${pkgver}_linux_arm64::${_baseurl}/vigil_${pkgver}_linux_arm64")
+
+sha256sums=('TODO_LICENSE_SHA256')
+sha256sums_x86_64=('TODO_AMD64_SHA256')
+sha256sums_aarch64=('TODO_ARM64_SHA256')
+
+package() {
+  local asset_arch
+  case "$CARCH" in
+    x86_64) asset_arch=amd64 ;;
+    aarch64) asset_arch=arm64 ;;
+    *) echo "unsupported architecture: $CARCH" >&2; return 1 ;;
+  esac
+
+  install -Dm755 "${srcdir}/vigil_${pkgver}_linux_${asset_arch}" \
+    "${pkgdir}/usr/bin/vigil"
+  install -Dm644 "${srcdir}/LICENSE" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

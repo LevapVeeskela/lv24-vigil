@@ -7,7 +7,7 @@ for a normal scan.
 ## npm
 
 ```bash
-npm i -g lv24-vigil@latest     # or pin a release: lv24-vigil@0.9.2
+npm i -g lv24-vigil@latest     # or pin a release: lv24-vigil@0.9.3
 vigil version
 ```
 
@@ -19,7 +19,7 @@ platform package, and `vigil` then exits with `platform package ... is not
 installed`.
 
 Releases are published from GitHub Actions with npm Trusted Publishing (OIDC).
-`0.9.2` is the current version on the `latest` tag. Pipeline, verification and
+`0.9.3` is the current version on the `latest` tag. Pipeline, verification and
 re-run steps: [release.md](release.md).
 
 For a one-off run without a global install:
@@ -28,6 +28,19 @@ For a one-off run without a global install:
 npx -y lv24-vigil scan --no-llm
 npx -y lv24-vigil mcp
 ```
+
+## MCP Registry
+
+The npm package carries official MCP Registry metadata (`mcpName`) and the
+repository ships the matching `server.json`, so registry-aware clients can add
+Vigil from the registry and still run the same stdio server:
+
+```bash
+npx -y lv24-vigil mcp
+```
+
+Registry layout, publishing and verification: [mcp-registry.md](mcp-registry.md).
+Other MCP catalogues Vigil is submitted to: [mcp-directories.md](mcp-directories.md).
 
 ## Go
 
@@ -87,12 +100,12 @@ vigil-<version>-linux-amd64.apk   vigil-<version>-linux-arm64.apk
 ```
 
 Download the file for your distribution from the release page and install it
-with the local path (`0.9.2`, `amd64` shown):
+with the local path (`0.9.3`, `amd64` shown):
 
 ```bash
-sudo apt install ./vigil-0.9.2-linux-amd64.deb                # Debian, Ubuntu
-sudo dnf install --nogpgcheck ./vigil-0.9.2-linux-amd64.rpm   # Fedora, RHEL, openSUSE
-sudo apk add --allow-untrusted ./vigil-0.9.2-linux-amd64.apk  # Alpine
+sudo apt install ./vigil-0.9.3-linux-amd64.deb                # Debian, Ubuntu
+sudo dnf install --nogpgcheck ./vigil-0.9.3-linux-amd64.rpm   # Fedora, RHEL, openSUSE
+sudo apk add --allow-untrusted ./vigil-0.9.3-linux-amd64.apk  # Alpine
 vigil version
 ```
 
@@ -103,6 +116,20 @@ no distribution key of their own, which is why `dnf` needs `--nogpgcheck` and
 `apk` needs `--allow-untrusted`. Integrity comes from `checksums.txt`, which
 lists the packages and is signed with cosign keyless:
 [release.md](release.md#verify-a-release).
+
+## AUR (Arch Linux)
+
+The AUR package `vigil-bin` installs the published release binary instead of
+building from source:
+
+```bash
+yay -S vigil-bin          # or: paru -S vigil-bin
+vigil version
+```
+
+The PKGBUILD downloads the release asset, checks it against the published
+`checksums.txt` and installs the binary and license. Details, manual build and
+verification: [aur.md](aur.md).
 
 ## Standalone binaries
 
@@ -132,19 +159,19 @@ Prebuilt multi-arch images (`linux/amd64`, `linux/arm64`) are published to
 GitHub Container Registry with every release:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-vigil:0.9.2
+docker pull ghcr.io/levapveeskela/lv24-vigil:0.9.3
 docker run --rm -v "$PWD:/workspace" \
-  ghcr.io/levapveeskela/lv24-vigil:0.9.2 scan --no-llm --path /workspace
+  ghcr.io/levapveeskela/lv24-vigil:0.9.3 scan --no-llm --path /workspace
 ```
 
 The image is distroless (`gcr.io/distroless/static-debian12:nonroot`): no shell,
 no package manager, entrypoint `vigil`, user `nonroot:nonroot`, working directory
-`/workspace`. Tags are `<version>` (`0.9.2`), `<major>.<minor>` (`0.9`), `latest`
+`/workspace`. Tags are `<version>` (`0.9.3`), `<major>.<minor>` (`0.9`), `latest`
 (non-prerelease only) and `sha-<commit>`. A tag can move; pin the manifest-list
 digest in CI:
 
 ```bash
-docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.9.2 \
+docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.9.3 \
   --format '{{json .Manifest}}' | jq -r .digest
 
 docker run --rm -v "$PWD:/workspace" \
@@ -211,6 +238,7 @@ clients: [mcp.md](mcp.md). CI: [ci.md](ci.md). Local hooks, including the
 - standalone: download the new binary and replace the old one
 - Debian/Ubuntu, Fedora/RHEL/openSUSE, Alpine: install the new `.deb`/`.rpm`/
   `.apk` asset; the package replaces the previous one
+- Arch Linux (AUR): `yay -Syu vigil-bin` once the PKGBUILD version is bumped
 - container: `docker pull ghcr.io/levapveeskela/lv24-vigil:<new-version>`, or
   rebuild the local image
 
@@ -225,6 +253,7 @@ Check the changelog before a major update: [../CHANGELOG.md](../CHANGELOG.md).
 - standalone: delete the binary
 - Linux package: `sudo apt remove vigil`, `sudo dnf remove vigil` or
   `sudo apk del vigil`
+- Arch Linux (AUR): `sudo pacman -Rns vigil-bin`
 
 Vigil does not install a daemon, a service, a scheduled task or a browser
 extension. Scan history lives in the repository under `.vigil/scans` or in the

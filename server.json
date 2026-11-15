@@ -1,0 +1,35 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.LevapVeeskela/vigil",
+  "title": "Vigil",
+  "description": "Local-first security auditor: 263 deterministic rules, LLM triage, fixes and MCP tools",
+  "repository": {
+    "url": "https://github.com/LevapVeeskela/lv24-vigil",
+    "source": "github"
+  },
+  "version": "0.9.3",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "lv24-vigil",
+      "version": "0.9.3",
+      "runtimeHint": "npx",
+      "runtimeArguments": [
+        {
+          "type": "positional",
+          "value": "-y"
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

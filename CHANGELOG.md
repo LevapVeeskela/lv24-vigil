@@ -4,6 +4,27 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.9.3 - 2026-11-15
+
+Distribution metadata release. **No code or rule changes**: 263 rules, 14 MCP
+tools.
+
+### Added
+
+- Official MCP Registry metadata: `mcpName` in the npm package and a
+  `server.json` manifest, so registry-aware clients can resolve and install the
+  stdio server (`npx -y lv24-vigil mcp`). Layout and verification:
+  [docs/mcp-registry.md](docs/mcp-registry.md).
+- An AUR package (`vigil-bin`) built from the published release assets, with
+  build and verification steps in [docs/aur.md](docs/aur.md).
+- MCP directory and CII submission preparation, tracked in
+  [docs/mcp-directories.md](docs/mcp-directories.md).
+
+### Changed
+
+- Version references and the composite action default move to `0.9.3`. Release
+  assets are unchanged from 0.9.2.
+
 ## 0.9.2 - 2026-11-15
 
 Release-pipeline fix. **No code or rule changes**: 263 rules, 14 MCP tools.

@@ -10,10 +10,12 @@ License: Apache-2.0
 Binary: vigil
 Current release line: 0.9.x: 263 rules in ten families, 14 MCP tools,
 offline `mcp-audit` and `sbom`, inline suppression, plus the
-`vigil_hardening` and `vigil_dependencies` tools. 0.9.2 adds no rules: it ships
-deb/rpm/apk packages, a CycloneDX SBOM asset, keyless cosign signing over
-checksums, build provenance, `pre-commit` hooks, OpenSSF Scorecard and the
-multi-arch image `ghcr.io/levapveeskela/lv24-vigil` (distroless, nonroot).
+`vigil_hardening` and `vigil_dependencies` tools. 0.9.3 adds no rules: it ships
+official MCP Registry metadata (`mcpName` in the npm package plus `server.json`)
+and an AUR package (`vigil-bin`), on top of the 0.9.2 packaging work: deb/rpm/apk
+packages, a CycloneDX SBOM asset, keyless cosign signing over checksums, build
+provenance, `pre-commit` hooks, OpenSSF Scorecard and the multi-arch image
+`ghcr.io/levapveeskela/lv24-vigil` (distroless, nonroot).
 
 ## Canonical install
 
@@ -29,11 +31,17 @@ Go 1.27+:
 
     go install github.com/levapveeskela/lv24-vigil/cmd/vigil@latest
 
-Native Linux packages (release assets) and the container image:
+Native Linux packages (release assets), AUR and the container image:
 
-    sudo apt install ./vigil-0.9.2-linux-amd64.deb      # also .rpm (dnf), .apk (apk)
+    sudo apt install ./vigil-0.9.3-linux-amd64.deb      # also .rpm (dnf), .apk (apk)
+    yay -S vigil-bin                                    # Arch Linux (AUR)
     docker run --rm -v "$PWD:/workspace" \
-      ghcr.io/levapveeskela/lv24-vigil:0.9.2 scan --no-llm --path /workspace
+      ghcr.io/levapveeskela/lv24-vigil:0.9.3 scan --no-llm --path /workspace
+
+The npm package carries MCP Registry metadata (`mcpName`) and the repository
+ships `server.json`, so registry-aware clients add the same stdio server:
+`npx -y lv24-vigil mcp`. Details: docs/mcp-registry.md, docs/aur.md,
+docs/mcp-directories.md.
 
 ## Package choice
 
@@ -277,6 +285,9 @@ offline, runs no package manager and does not resolve version ranges.
 - Install: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/install.md
 - CLI: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/cli.md
 - MCP: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/mcp.md
+- MCP Registry: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/mcp-registry.md
+- MCP directories: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/mcp-directories.md
+- AUR: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/aur.md
 - Providers: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/providers.md
 - Rules: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/rules.md
 - Anti-RE hardening mapping: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/anti-re-hardening.md
