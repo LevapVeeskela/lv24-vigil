@@ -31,9 +31,10 @@ npx -y lv24-vigil mcp
 
 ## MCP Registry
 
-The npm package carries official MCP Registry metadata (`mcpName`) and the
+Vigil is listed in the official MCP Registry as
+`io.github.LevapVeeskela/vigil`; the npm package carries `mcpName` and the
 repository ships the matching `server.json`, so registry-aware clients can add
-Vigil from the registry and still run the same stdio server:
+it and still run the same stdio server:
 
 ```bash
 npx -y lv24-vigil mcp

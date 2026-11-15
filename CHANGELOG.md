@@ -11,7 +11,8 @@ tools.
 
 ### Added
 
-- Official MCP Registry metadata: `mcpName` in the npm package and a
+- Published to the official MCP Registry as
+  `io.github.LevapVeeskela/vigil` v0.9.3: `mcpName` in the npm package and a
   `server.json` manifest, so registry-aware clients can resolve and install the
   stdio server (`npx -y lv24-vigil mcp`). Layout and verification:
   [docs/mcp-registry.md](docs/mcp-registry.md).

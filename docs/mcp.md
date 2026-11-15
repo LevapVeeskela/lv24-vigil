@@ -4,7 +4,7 @@ Vigil runs as a Model Context Protocol server over stdio. A coding agent can cal
 it to scan the repository, explain a finding, propose a fix, verify the result
 and write a threat model without shelling out to a separate tool.
 
-Prepared for the official MCP Registry (listing not published yet); ownership proof and publishing: [mcp-registry.md](mcp-registry.md).
+Listed in the official MCP Registry as `io.github.LevapVeeskela/vigil` (v0.9.3); ownership proof and publishing: [mcp-registry.md](mcp-registry.md).
 
 ## Start the server
 

@@ -169,8 +169,9 @@ Arch Linux: the AUR package builds from the published release
 (`yay -S vigil-bin`), with the PKGBUILD and verification steps in
 [docs/aur.md](docs/aur.md).
 
-MCP: the server also ships official MCP Registry metadata (`mcpName` in the npm
-package plus `server.json`), so registry-aware clients can install it as
+MCP: Vigil is listed in the official MCP Registry as
+`io.github.LevapVeeskela/vigil`; the npm package carries `mcpName` and the
+repository ships `server.json`, so registry-aware clients can install it as
 `npx -y lv24-vigil mcp`. Registry layout, publishing and verification:
 [docs/mcp-registry.md](docs/mcp-registry.md). Other MCP catalogues and the status
 of each submission: [docs/mcp-directories.md](docs/mcp-directories.md).

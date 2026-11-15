@@ -10,9 +10,10 @@ License: Apache-2.0
 Binary: vigil
 Current release line: 0.9.x: 263 rules in ten families, 14 MCP tools,
 offline `mcp-audit` and `sbom`, inline suppression, plus the
-`vigil_hardening` and `vigil_dependencies` tools. 0.9.3 adds no rules: it ships
-official MCP Registry metadata (`mcpName` in the npm package plus `server.json`)
-and an AUR package (`vigil-bin`), on top of the 0.9.2 packaging work: deb/rpm/apk
+`vigil_hardening` and `vigil_dependencies` tools. 0.9.3 adds no rules: it
+publishes the official MCP Registry listing (`mcpName` in the npm package plus
+`server.json`, active at 0.9.3) and an AUR package (`vigil-bin`), on top of the
+0.9.2 packaging work: deb/rpm/apk
 packages, a CycloneDX SBOM asset, keyless cosign signing over checksums, build
 provenance, `pre-commit` hooks, OpenSSF Scorecard and the multi-arch image
 `ghcr.io/levapveeskela/lv24-vigil` (distroless, nonroot).

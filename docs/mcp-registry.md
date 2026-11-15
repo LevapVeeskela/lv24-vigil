@@ -6,6 +6,13 @@ metadata catalogue run by the Model Context Protocol project
 It stores `server.json` documents, not packages: a client that finds Vigil there
 still downloads the npm package and runs the same stdio server.
 
+**Status:** published on 2026-11-15 as version `0.9.3`; the registry reports it
+`active` and latest. Verify:
+
+```bash
+curl -s 'https://registry.modelcontextprotocol.io/v0/servers?search=io.github.LevapVeeskela%2Fvigil' | jq .
+```
+
 Registry publishing is **account-gated and manual**. It needs a GitHub account
 that owns the `io.github.LevapVeeskela` namespace, so it is not part of the
 release workflow and no registry token is stored in CI.
