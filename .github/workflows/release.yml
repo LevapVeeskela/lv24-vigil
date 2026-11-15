@@ -32,10 +32,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
-        with:
-          cosign-release: v2.4.1
-
       - name: Build release artifacts
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
@@ -85,6 +81,10 @@ jobs:
             exit 1
           fi
           ls -l release-assets
+
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        with:
+          cosign-release: v2.4.1
 
       - name: Sign checksums with cosign (keyless)
         # The bundle covers checksums.txt, which lists the six binaries and the

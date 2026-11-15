@@ -4,6 +4,17 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.9.2 - 2026-11-15
+
+Release-pipeline fix. **No code or rule changes**: 263 rules, 14 MCP tools.
+
+### Fixed
+
+- The release workflow installs cosign after the GoReleaser build, so
+  goreleaser-action verifies its own binary with the bundled cosign. The 0.9.1
+  tag failed before publishing; 0.9.2 supersedes it. Keyless signing still
+  covers `checksums.txt` and the release assets are unchanged.
+
 ## 0.9.1 - 2026-11-15
 
 No rule changes (263 rules, ten families, 14 MCP tools): the same engine as

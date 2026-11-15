@@ -73,7 +73,7 @@ In that case dispatch the workflow explicitly (see the fallback below).
 Manual fallback, for example when a release tag predates the workflow:
 
 ```bash
-gh workflow run pypi-publish.yml -f version=0.9.1
+gh workflow run pypi-publish.yml -f version=0.9.2
 ```
 
 The input may include or omit the leading `v`. Existing versions are detected
@@ -97,7 +97,7 @@ Set `VIGIL_NPM_VERSION` to pin the npm CLI version or tag the wrapper invokes
 
 ```bash
 VIGIL_NPM_VERSION=latest vigil scan --no-llm
-VIGIL_NPM_VERSION=0.9.1 vigil scan --no-llm
+VIGIL_NPM_VERSION=0.9.2 vigil scan --no-llm
 ```
 
 On PowerShell: `$env:VIGIL_NPM_VERSION = "latest"`.
