@@ -41,9 +41,9 @@ same command.
 
 ## Verify the checksums
 
-The PKGBUILD ships with `TODO_*` checksum values on purpose: they fail loudly
-instead of accepting an unverified binary. Fill all three before building or
-pushing.
+The 0.9.3 PKGBUILD records the published checksums for both architectures and
+the LICENSE file. For every new release, refresh all three from `checksums.txt`
+before building or pushing.
 
 Upstream publishes SHA-256 sums in `checksums.txt` for every release:
 
@@ -88,7 +88,7 @@ namcap PKGBUILD          # optional lint
 ```
 
 `makepkg` is Arch-only. Without an Arch machine, compare the hashes manually as
-shown above; do not publish a PKGBUILD whose `TODO_*` values are still present.
+shown above; never publish a PKGBUILD whose checksums do not match the release.
 
 ## Build from this checkout
 
@@ -97,7 +97,7 @@ The AUR files live in [`packaging/aur/`](../packaging/aur/):
 ```bash
 cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO /tmp/vigil-bin/
 cd /tmp/vigil-bin
-# fill the TODO checksums first
+# verify the recorded checksums first
 makepkg --printsrcinfo > .SRCINFO   # keeps .SRCINFO generated, not hand-edited
 makepkg -si
 ```
@@ -151,7 +151,7 @@ the PKGBUILD changes; `makepkg --printsrcinfo` is authoritative.
    `makepkg` downloads the release asset from GitHub.
 
 The maintainer line in the PKGBUILD must name you and your AUR account email;
-replace the `TODO` before the first push.
+verify the release checksums before the first push.
 
 ## Update for a new release
 
