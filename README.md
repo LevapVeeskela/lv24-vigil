@@ -26,7 +26,7 @@
 | --- | --- | --- |
 | [Install](#install) · [See it work](#see-it-work) · [Quickstart](#60-second-quickstart) | [MCP setup](#mcp-setup) · [For AI agents](#for-ai-agents) · [Providers](#providers) · [Rules](#rules) | [CI & SARIF](#ci-sarif-and-precheck) · [Safety](#safety) · [Docs](#documentation) |
 
-> **Status: 0.10.x.** The deterministic engine, CLI and MCP server are usable
+> **Status: 0.10.1.** The deterministic engine, CLI and MCP server are usable
 > today. LLM output is advisory, rule coverage keeps growing, and Vigil is not a
 > replacement for a pentest. Treat every finding as a lead to verify, not a
 > verdict.
@@ -132,7 +132,7 @@ platform packages. Keep optional dependencies enabled — `--no-optional` and
 Do not pin `0.5.0`: the tag and the npm package are immutable and still
 installable, but the CI examples on that tag are stale (`inputs.fail-on`, an
 unguarded GitLab pre-check). The binaries are fine; the templates are not. Use
-`0.10.0` or newer, or `@latest`.
+`0.10.1` or newer, or `@latest`.
 
 Requirements: Node.js 18+ for npm, Go 1.27+ for `go install`; release binaries
 and installers need no runtime.
@@ -178,13 +178,14 @@ Homebrew (macOS and Linux):
 brew install LevapVeeskela/tap/vigil
 ```
 
-Arch Linux: the `vigil-security-bin` PKGBUILD is ready for 0.10.0 in
-[`packaging/aur`](packaging/aur), but AUR registration is temporarily paused,
-so the package is not published yet. Status, manual build and verification:
+Arch Linux: the `vigil-security-bin` PKGBUILD in
+[`packaging/aur`](packaging/aur) is refreshed from the published release
+assets, but AUR registration is temporarily paused, so the package is not
+published yet. Status, manual build and verification:
 [docs/aur.md](docs/aur.md).
 
-WinGet: the 0.10.0 manifest is in review; use Scoop or the release binaries
-until it is merged.
+WinGet: the manifest is in review; use Scoop or the release binaries until it
+is merged.
 
 MCP: Vigil is listed in the official MCP Registry as
 `io.github.LevapVeeskela/vigil`; the npm package carries `mcpName` and the
@@ -200,7 +201,7 @@ running as `nonroot`) is published to GitHub Container Registry for every
 release:
 
 ```bash
-docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.10.0 scan --no-llm --path /workspace
+docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.10.1 scan --no-llm --path /workspace
 ```
 
 The local `Dockerfile` builds the same image if you prefer:
@@ -550,7 +551,7 @@ skipping, `autoupdate` and the comparison with `vigil hook install`:
 
 ### GitHub Actions (PR, `main`, manual)
 
-The same action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Use `uses: LevapVeeskela/lv24-vigil@v0.10.0`; add `version: 0.10.0` when the CLI must match the action tag.
+The same action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Use `uses: LevapVeeskela/lv24-vigil@v0.10.1`; add `version: 0.10.1` when the CLI must match the action tag.
 
 Copy [`examples/github-workflow.yml`](examples/github-workflow.yml) to
 `.github/workflows/vigil.yml`:

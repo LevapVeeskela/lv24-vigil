@@ -27,7 +27,7 @@
 | --- | --- | --- |
 | [Установка](#установка) · [Посмотрите, как это работает](#посмотрите-как-это-работает) · [Быстрый старт](#быстрый-старт-за-60-секунд) | [Настройка MCP](#настройка-mcp) · [Для ИИ-агентов](#для-ии-агентов) · [Провайдеры](#провайдеры) · [Правила](#правила) | [CI и SARIF](#ci-sarif-и-precheck) · [Безопасность](#безопасность) · [Документация](#документация) |
 
-> **Статус: 0.10.x.** Детерминированный движок, CLI и MCP-сервер уже можно
+> **Статус: 0.10.1.** Детерминированный движок, CLI и MCP-сервер уже можно
 > использовать. Вывод модели носит рекомендательный характер, покрытие правил
 > растёт, и Vigil не заменяет пентест. Любая находка — это повод проверить, а не
 > готовый приговор.
@@ -133,7 +133,7 @@ Publishing (OIDC) с аттестацией происхождения.
 
 Не пиньте `0.5.0`: тег и npm-пакет неизменяемы и всё ещё ставятся, но примеры
 CI на этом теге устарели (`inputs.fail-on`, непроверенный GitLab pre-check).
-Бинарники в порядке, шаблоны — нет. Используйте `0.10.0` или новее, либо
+Бинарники в порядке, шаблоны — нет. Используйте `0.10.1` или новее, либо
 `@latest`.
 
 Требования: Node.js 18+ для npm, Go 1.27+ для `go install`; готовым бинарникам и
@@ -180,13 +180,13 @@ Homebrew (macOS ? Linux):
 brew install LevapVeeskela/tap/vigil
 ```
 
-Arch Linux: PKGBUILD `vigil-security-bin` ????? ??? 0.10.0 ?
-[`packaging/aur`](packaging/aur), ?? ??????????? ? AUR ????????
-??????????????, ??????? ????? ??? ?? ???????????. ??????, ?????? ?????? ?
-????????: [docs/aur.md](docs/aur.md).
+Arch Linux: PKGBUILD `vigil-security-bin` в [`packaging/aur`](packaging/aur)
+обновляется из опубликованных релизных файлов, но регистрация в AUR временно
+приостановлена, поэтому пакет ещё не опубликован. Статус, ручная сборка и
+проверка: [docs/aur.md](docs/aur.md).
 
-WinGet: ???????? 0.10.0 ?? ?????; ?? ????? ??????????? Scoop ??? ????????? ??
-??????.
+WinGet: манифест на проверке; до его слияния используйте Scoop или релизные
+бинарники.
 
 MCP: сервер опубликован в официальном MCP Registry (`mcpName` в
 npm-пакете и `server.json`), поэтому клиенты с поддержкой реестра ставят его как
@@ -200,7 +200,7 @@ npm-пакете и `server.json`), поэтому клиенты с подде�
 запуск от `nonroot`) публикуется в GitHub Container Registry с каждым релизом:
 
 ```bash
-docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.10.0 scan --no-llm --path /workspace
+docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.10.1 scan --no-llm --path /workspace
 ```
 
 Локальный `Dockerfile` собирает тот же образ, если так удобнее:
@@ -557,7 +557,7 @@ vigil hook uninstall
 
 ### GitHub Actions (PR, `main`, вручную)
 
-Действие также опубликовано в [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Используйте `uses: LevapVeeskela/lv24-vigil@v0.10.0`; добавьте `version: 0.10.0`, если CLI должен совпадать с тегом действия.
+Действие также опубликовано в [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Используйте `uses: LevapVeeskela/lv24-vigil@v0.10.1`; добавьте `version: 0.10.1`, если CLI должен совпадать с тегом действия.
 
 Скопируйте [`examples/github-workflow.yml`](examples/github-workflow.yml) в
 `.github/workflows/vigil.yml`:

@@ -8,11 +8,14 @@ binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud
 Repository: https://github.com/LevapVeeskela/lv24-vigil
 License: Apache-2.0
 Binary: vigil
-Current release line: 0.10.x: 263 rules in ten families, 14 MCP tools,
+Current release line: 0.10.1: 263 rules in ten families, 14 MCP tools,
 offline `mcp-audit` and `sbom`, inline suppression, baseline v2
 (`ticket`, `expires`, `path`, `prune`, active-only SARIF), hardening platform
 presets (`--platform` / MCP `platform`), `vigil config validate|show`,
 report-only JUnit, plus the `vigil_hardening` and `vigil_dependencies` tools.
+0.10.1 is a patch release: it validates the cosign-installer v4 signing path
+against the existing cosign 2.4.1 bundle and ships the post-0.10.0
+distribution docs. No code or rule changes.
 0.10.0 adds no rules: it ships baseline v2, platform presets, config inspection
 and JUnit reporting on top of the 0.9.x packaging work: deb/rpm/apk
 packages, a CycloneDX SBOM asset, keyless cosign signing over checksums, build
@@ -36,10 +39,10 @@ Go 1.27+:
 
 Native Linux packages (release assets), AUR packaging and the container image:
 
-    sudo apt install ./vigil-0.10.0-linux-amd64.deb      # also .rpm (dnf), .apk (apk)
+    sudo apt install ./vigil-0.10.1-linux-amd64.deb      # also .rpm (dnf), .apk (apk)
     # Arch Linux: vigil-security-bin PKGBUILD ready; AUR registration temporarily paused
     docker run --rm -v "$PWD:/workspace" \
-      ghcr.io/levapveeskela/lv24-vigil:0.10.0 scan --no-llm --path /workspace
+      ghcr.io/levapveeskela/lv24-vigil:0.10.1 scan --no-llm --path /workspace
 
 The npm package carries MCP Registry metadata (`mcpName`) and the repository
 ships `server.json`, so registry-aware clients add the same stdio server:

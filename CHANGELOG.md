@@ -4,6 +4,30 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.10.1 - 2026-11-16
+
+Patch release. **No code or rule changes**: 263 rules in ten families, 14 MCP
+tools.
+
+### Fixed
+
+- Release-pipeline validation: the workflow installs cosign through
+  `sigstore/cosign-installer` v4 and pins `cosign-release: v2.4.1`, so
+  `checksums.txt` is signed into the same keyless `checksums.txt.sigstore.json`
+  bundle that 0.9.3 and 0.10.0 shipped. The 0.10.1 run confirms that
+  `cosign verify-blob --bundle` accepts the bundle produced through the v4
+  installer. Release assets are unchanged from 0.10.0: six static binaries, six
+  Linux packages, the CycloneDX SBOM, `checksums.txt` with its bundle, and the
+  multi-arch GHCR image.
+
+### Changed
+
+- Post-0.10.0 distribution documentation: per-channel status in
+  [docs/distribution.md](docs/distribution.md), the AUR package name
+  `vigil-security-bin` (`vigil-bin` belongs to an unrelated project), and
+  refreshed install, CI, PyPI, container, pre-commit and release docs.
+- Version references and the composite action default move to `0.10.1`.
+
 ## 0.10.0 - 2026-11-16
 
 Minor release. **No rule changes**: 263 rules in ten families, 14 MCP tools.
