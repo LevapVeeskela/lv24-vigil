@@ -20,13 +20,13 @@ commands are in [Re-verify](#re-verify).
 | [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan) | `v0.10.0` | **Available** — action listing live, `v0.10.0` tag present | `uses: LevapVeeskela/lv24-vigil@v0.10.0` | Listing page shows the tag; add `version: 0.10.0` when the CLI must match |
 | [Scoop](https://github.com/LevapVeeskela/scoop-bucket) | `0.10.0` | **Available** — manifest tracks releases | `scoop bucket add lv24 https://github.com/LevapVeeskela/scoop-bucket`<br>`scoop install lv24/vigil` | `scoop info lv24/vigil` then `vigil version` |
 | [Homebrew](https://github.com/LevapVeeskela/homebrew-tap) | `0.10.0` | **Available** — builds from the tagged source tarball | `brew install LevapVeeskela/tap/vigil` | `brew info LevapVeeskela/tap/vigil` |
-| [GitLab mirror](https://gitlab.com/lv24-company/lv24-vigil) | `main`, `v0.10.0` | **Available** — private mirror, `main` matches GitHub `529b396`; not an install channel | `git clone https://gitlab.com/lv24-company/lv24-vigil.git` | `git ls-remote --tags https://gitlab.com/lv24-company/lv24-vigil.git` |
+| [GitLab mirror](https://gitlab.com/lv24-company/lv24-vigil) | `main`, `v0.10.0` | **Available** — private mirror, `main` matches GitHub `e49d093`; not an install channel | `git clone https://gitlab.com/lv24-company/lv24-vigil.git` | `git ls-remote --tags https://gitlab.com/lv24-company/lv24-vigil.git` |
 | [WinGet](https://github.com/microsoft/winget-pkgs/pull/480713) | `0.10.0` | **Pending** — PR 480713 open; checks 01–10 + CLA pass, awaiting moderator; not installable | — | `gh pr checks 480713 -R microsoft/winget-pkgs` |
-| [Official MCP Registry](https://registry.modelcontextprotocol.io) | `0.9.3` live | **Pending 0.10.0** — `0.9.3` is active (`isLatest`); `server.json` already targets `0.10.0`, publication waits for owner re-auth | `npx -y lv24-vigil@0.9.3 mcp` (registry-pinned); npm `latest` already runs `0.10.0` | `curl "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.LevapVeeskela/vigil"` |
+| [Official MCP Registry](https://registry.modelcontextprotocol.io) | `0.9.3` live | **Pending 0.10.0** — `0.9.3` is active (`isLatest`); `server.json` already targets `0.10.0`, publication waits for owner re-auth | `npx -y lv24-vigil@0.9.3 mcp` (registry-pinned); npm `latest` already runs `0.10.0` | `curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.LevapVeeskela/vigil"` |
 | [AUR](aur.md) | `0.10.0` PKGBUILD, `vigil-security-bin` | **Not published** — registration paused (HTTP 503); renamed from the occupied `vigil-bin` to the free `vigil-security-bin` | — **never run `yay -S vigil-bin`** (unrelated package); `yay -S vigil-security-bin` only after it appears | `curl -s "https://aur.archlinux.org/rpc/v5/info?arg[]=vigil-bin&arg[]=vigil-security-bin"` |
 | Glama, Smithery, mcp.so, PulseMCP | — | **Not listed** — account-gated submissions, metadata ready | — | [mcp-directories.md](mcp-directories.md) |
 | [CII Best Practices](https://bestpractices.coreinfrastructure.org) | — | **Not registered** — checklist prepared, no project id | — | No badge in the README; [cii-best-practices.md](cii-best-practices.md) |
-| [analysis-tools.dev](https://analysis-tools.dev) | — | **Not eligible** — directory targets language/ecosystem static analyzers, not a cross-language security auditor | — | — |
+| [analysis-tools.dev](https://analysis-tools.dev) | — | **Not eligible** — the directory requires at least 6 months public, 20 stars and more than one human contributor; revisit later | — | — |
 
 ## Release assets (15)
 
@@ -51,7 +51,7 @@ signature identity and the full verification flow:
 | AUR | Registration paused (HTTP 503, no manual queue); the original `vigil-bin` name belongs to `valeriansaliou/vigil`, so this package is renamed `vigil-security-bin` | Wait for the aur-general/Arch announcement; do not script retries; [aur.md](aur.md) |
 | MCP directories | No listing accepted yet; every submission is an account-gated web action | Use the prepared metadata in [mcp-directories.md](mcp-directories.md) for Glama, Smithery, mcp.so, PulseMCP and the awesome lists |
 | CII Best Practices | No project registered, so no project id and no badge | Register, answer the prepared questionnaire, replace `PROJECT_ID`; [cii-best-practices.md](cii-best-practices.md) |
-| analysis-tools.dev | Eligibility not met | Do not submit until the directory adds a matching category |
+| analysis-tools.dev | Eligibility not met | Revisit after the repository meets the directory's age, star and contributor gates |
 
 ## Re-verify
 
