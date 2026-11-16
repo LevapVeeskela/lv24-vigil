@@ -4,7 +4,7 @@
 binary. It installs `/usr/bin/vigil` and the Apache-2.0 license; nothing is
 compiled locally.
 
-The packaging in this repository is ready for **0.10.0**, but the package is not
+The packaging in this repository is ready for **0.10.1**, but the package is not
 published yet. Publishing needs an AUR account and an SSH key, so it is a manual
 account-gated step (see [Publish](#publish-to-the-aur)). AUR registration is
 currently paused (HTTP 503, no manual queue); wait for the aur-general/Arch news
@@ -19,7 +19,7 @@ yay -S vigil-security-bin
 # or
 paru -S vigil-security-bin
 
-vigil version   # 0.10.0
+vigil version   # 0.10.1
 ```
 
 Without an AUR helper:
@@ -43,40 +43,44 @@ same command.
 
 ## Verify the checksums
 
-The 0.10.0 PKGBUILD records the published checksums for both architectures and
+The 0.10.1 PKGBUILD records the published checksums for both architectures and
 the LICENSE file. For every new release, refresh all three from `checksums.txt`
 before building or pushing.
 
 Upstream publishes SHA-256 sums in `checksums.txt` for every release:
 
 ```bash
-curl -fsSLO https://github.com/LevapVeeskela/lv24-vigil/releases/download/v0.10.0/checksums.txt
-grep -E 'vigil_0\.10\.0_linux_(amd64|arm64)$' checksums.txt
+curl -fsSLO https://github.com/LevapVeeskela/lv24-vigil/releases/download/v0.10.1/checksums.txt
+grep -E 'vigil_0\.10\.1_linux_(amd64|arm64)$' checksums.txt
 ```
 
 Copy the `amd64` hash into `sha256sums_x86_64` and the `arm64` hash into
 `sha256sums_aarch64`. For the license file:
 
 ```bash
-curl -fsSL -o LICENSE https://raw.githubusercontent.com/LevapVeeskela/lv24-vigil/v0.10.0/LICENSE
+curl -fsSL -o LICENSE https://raw.githubusercontent.com/LevapVeeskela/lv24-vigil/v0.10.1/LICENSE
 sha256sum LICENSE
 ```
 
 Copy that hash into `sha256sums`. A filled PKGBUILD looks like:
 
 ```bash
-sha256sums=('9f1c...64-hex...')
-sha256sums_x86_64=('4b2e...64-hex...')
-sha256sums_aarch64=('a70d...64-hex...')
+sha256sums=('46601daebe32a15c144660cf135cfa3b610459085b7118c2d499f4f8b6f2ce61')
+sha256sums_x86_64=('bd57e09db2ca704461e8dc4d234ba2d4cf05753d7c9de3c60935f274d9974b75')
+sha256sums_aarch64=('8c227e12c9649cd71838f8bbf2c65aae99d5bbafa337f32f16bafe6d6946abf5')
 ```
+
+These are the 0.10.1 values checked into
+[`packaging/aur/PKGBUILD`](../packaging/aur/PKGBUILD); they must always match the
+published `checksums.txt` for the same tag.
 
 The signed source of truth is `checksums.txt`. To verify its cosign bundle:
 
 ```bash
-gh release download v0.10.0 --pattern checksums.txt --pattern checksums.txt.sigstore.json
+gh release download v0.10.1 --pattern checksums.txt --pattern checksums.txt.sigstore.json
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
-  --certificate-identity "https://github.com/LevapVeeskela/lv24-vigil/.github/workflows/release.yml@refs/tags/v0.10.0" \
+  --certificate-identity "https://github.com/LevapVeeskela/lv24-vigil/.github/workflows/release.yml@refs/tags/v0.10.1" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
 ```
@@ -104,7 +108,7 @@ makepkg --printsrcinfo > .SRCINFO   # keeps .SRCINFO generated, not hand-edited
 makepkg -si
 ```
 
-The checked-in `.SRCINFO` matches the PKGBUILD for 0.10.0. Regenerate it whenever
+The checked-in `.SRCINFO` matches the PKGBUILD for 0.10.1. Regenerate it whenever
 the PKGBUILD changes; `makepkg --printsrcinfo` is authoritative.
 
 ## Publish to the AUR
@@ -144,7 +148,7 @@ the PKGBUILD changes; `makepkg --printsrcinfo` is authoritative.
    cp /path/to/lv24-vigil/packaging/aur/.SRCINFO .
    makepkg --printsrcinfo > .SRCINFO   # requires makepkg; skip only if the pair is already in sync
    git add PKGBUILD .SRCINFO
-   git commit -m "Add vigil-security-bin 0.10.0-1"
+   git commit -m "Add vigil-security-bin 0.10.1-1"
    git push
    ```
 
@@ -170,7 +174,7 @@ verify the release checksums before the first push.
 5. Commit and push:
 
    ```bash
-   git commit -am "upgpkg: vigil-security-bin 0.10.0-1"
+   git commit -am "upgpkg: vigil-security-bin 0.10.1-1"
    git push
    ```
 
@@ -183,7 +187,7 @@ verify the release checksums before the first push.
 - **License.** Apache-2.0 is a common license, but the package still installs
   the upstream text under `/usr/share/licenses/vigil-security-bin/` so the exact release is
   auditable.
-- **npm alternative.** `npm i -g lv24-vigil@0.10.0` installs the same CLI
+- **npm alternative.** `npm i -g lv24-vigil@0.10.1` installs the same CLI
   without pacman; use one install method per machine to avoid two `vigil`
   binaries on `PATH`.
 - **AUR etiquette.** Keep `pkgrel` at `1` for a new upstream version, do not
