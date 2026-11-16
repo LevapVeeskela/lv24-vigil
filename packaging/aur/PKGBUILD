@@ -1,7 +1,7 @@
 # Maintainer: LevapVeeskela <paulalexeev10@gmail.com>
 # Contributor: Vigil maintainers
 #
-# vigil-bin installs the prebuilt upstream release binary. There is no build
+# vigil-security-bin installs the prebuilt upstream release binary. There is no build
 # step: package() copies the binary and the license into $pkgdir.
 #
 # Checksums below are the published v0.10.0 values. Refresh all three from
@@ -16,7 +16,7 @@
 #   makepkg --verifysource && makepkg -si
 #
 
-pkgname=vigil-bin
+pkgname=vigil-security-bin
 pkgver=0.10.0
 pkgrel=1
 pkgdesc="Local-first security auditor with 263 deterministic rules and an MCP server"

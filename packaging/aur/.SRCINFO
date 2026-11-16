@@ -1,4 +1,4 @@
-pkgbase = vigil-bin
+pkgbase = vigil-security-bin
 	pkgdesc = Local-first security auditor with 263 deterministic rules and an MCP server
 	pkgver = 0.10.0
 	pkgrel = 1
@@ -16,4 +16,4 @@ pkgbase = vigil-bin
 	sha256sums_x86_64 = a58716d27d746e5260f64280fd167aceeff652ecad2b51705aa41a93f671037c
 	sha256sums_aarch64 = 5bf9945da19f73095d268c868deb70f1f003808c19ed3dcb119cb6e9c6b6dab9
 
-pkgname = vigil-bin
+pkgname = vigil-security-bin

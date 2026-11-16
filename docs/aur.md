@@ -1,6 +1,6 @@
-# AUR (vigil-bin)
+# AUR (vigil-security-bin)
 
-`vigil-bin` is the Arch User Repository package for the prebuilt Vigil release
+`vigil-security-bin` is the Arch User Repository package for the prebuilt Vigil release
 binary. It installs `/usr/bin/vigil` and the Apache-2.0 license; nothing is
 compiled locally.
 
@@ -15,9 +15,9 @@ announcement and do not script retries.
 After the package appears on AUR:
 
 ```bash
-yay -S vigil-bin
+yay -S vigil-security-bin
 # or
-paru -S vigil-bin
+paru -S vigil-security-bin
 
 vigil version   # 0.10.0
 ```
@@ -25,8 +25,8 @@ vigil version   # 0.10.0
 Without an AUR helper:
 
 ```bash
-git clone https://aur.archlinux.org/vigil-bin.git
-cd vigil-bin
+git clone https://aur.archlinux.org/vigil-security-bin.git
+cd vigil-security-bin
 makepkg -si
 ```
 
@@ -35,7 +35,7 @@ The package installs:
 | Path | Content |
 |---|---|
 | `/usr/bin/vigil` | statically linked release binary, mode `0755` |
-| `/usr/share/licenses/vigil-bin/LICENSE` | Apache-2.0 text |
+| `/usr/share/licenses/vigil-security-bin/LICENSE` | Apache-2.0 text |
 
 `provides=('vigil')` and `conflicts=('vigil')` mean the package satisfies a
 dependency on `vigil` and does not coexist with another package that owns the
@@ -97,8 +97,8 @@ shown above; never publish a PKGBUILD whose checksums do not match the release.
 The AUR files live in [`packaging/aur/`](../packaging/aur/):
 
 ```bash
-cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO /tmp/vigil-bin/
-cd /tmp/vigil-bin
+cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO /tmp/vigil-security-bin/
+cd /tmp/vigil-security-bin
 # verify the recorded checksums first
 makepkg --printsrcinfo > .SRCINFO   # keeps .SRCINFO generated, not hand-edited
 makepkg -si
@@ -130,11 +130,11 @@ the PKGBUILD changes; `makepkg --printsrcinfo` is authoritative.
    an empty repository with the same remote:
 
    ```bash
-   git clone ssh://aur@aur.archlinux.org/vigil-bin.git
+   git clone ssh://aur@aur.archlinux.org/vigil-security-bin.git
    # if cloning reports that the repository is empty/does not exist:
-   mkdir vigil-bin && cd vigil-bin
+   mkdir vigil-security-bin && cd vigil-security-bin
    git init
-   git remote add origin ssh://aur@aur.archlinux.org/vigil-bin.git
+   git remote add origin ssh://aur@aur.archlinux.org/vigil-security-bin.git
    ```
 
 5. Copy both files, regenerate `.SRCINFO` on an Arch host, and commit:
@@ -144,12 +144,12 @@ the PKGBUILD changes; `makepkg --printsrcinfo` is authoritative.
    cp /path/to/lv24-vigil/packaging/aur/.SRCINFO .
    makepkg --printsrcinfo > .SRCINFO   # requires makepkg; skip only if the pair is already in sync
    git add PKGBUILD .SRCINFO
-   git commit -m "Add vigil-bin 0.10.0-1"
+   git commit -m "Add vigil-security-bin 0.10.0-1"
    git push
    ```
 
 6. The package page is then
-   <https://aur.archlinux.org/packages/vigil-bin>. AUR does not host binaries:
+   <https://aur.archlinux.org/packages/vigil-security-bin>. AUR does not host binaries:
    `makepkg` downloads the release asset from GitHub.
 
 The maintainer line in the PKGBUILD must name you and your AUR account email;
@@ -170,7 +170,7 @@ verify the release checksums before the first push.
 5. Commit and push:
 
    ```bash
-   git commit -am "upgpkg: vigil-bin 0.10.0-1"
+   git commit -am "upgpkg: vigil-security-bin 0.10.0-1"
    git push
    ```
 
@@ -181,7 +181,7 @@ verify the release checksums before the first push.
 - **No build step.** `options=('!strip')` is required because the binary is
   prebuilt and statically linked; stripping it is not the packager's job.
 - **License.** Apache-2.0 is a common license, but the package still installs
-  the upstream text under `/usr/share/licenses/vigil-bin/` so the exact release is
+  the upstream text under `/usr/share/licenses/vigil-security-bin/` so the exact release is
   auditable.
 - **npm alternative.** `npm i -g lv24-vigil@0.10.0` installs the same CLI
   without pacman; use one install method per machine to avoid two `vigil`

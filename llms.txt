@@ -37,7 +37,7 @@ Go 1.27+:
 Native Linux packages (release assets), AUR packaging and the container image:
 
     sudo apt install ./vigil-0.10.0-linux-amd64.deb      # also .rpm (dnf), .apk (apk)
-    # Arch Linux: vigil-bin PKGBUILD ready; AUR registration temporarily paused
+    # Arch Linux: vigil-security-bin PKGBUILD ready; AUR registration temporarily paused
     docker run --rm -v "$PWD:/workspace" \
       ghcr.io/levapveeskela/lv24-vigil:0.10.0 scan --no-llm --path /workspace
 
@@ -311,6 +311,7 @@ offline, runs no package manager and does not resolve version ranges.
 
 - README: https://github.com/LevapVeeskela/lv24-vigil#readme
 - Install: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/install.md
+- Distribution status: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/distribution.md
 - CLI: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/cli.md
 - MCP: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/mcp.md
 - MCP Registry: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/mcp-registry.md

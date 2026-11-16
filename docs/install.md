@@ -138,12 +138,12 @@ test.
 
 ## AUR (Arch Linux)
 
-AUR registration is temporarily paused, so `vigil-bin` is not published yet.
+AUR registration is temporarily paused, so `vigil-security-bin` is not published yet.
 The PKGBUILD in this repository is ready for 0.10.0. After the package appears on
 AUR it installs the release binary instead of building from source:
 
 ```bash
-yay -S vigil-bin          # or: paru -S vigil-bin
+yay -S vigil-security-bin          # or: paru -S vigil-security-bin
 vigil version
 ```
 
@@ -260,7 +260,7 @@ clients: [mcp.md](mcp.md). CI: [ci.md](ci.md). Local hooks, including the
   `.apk` asset; the package replaces the previous one
 - Scoop: `scoop update vigil`
 - Homebrew: `brew upgrade vigil`
-- Arch Linux (AUR): `yay -Syu vigil-bin` after the package is published and
+- Arch Linux (AUR): `yay -Syu vigil-security-bin` after the package is published and
   the PKGBUILD version is bumped
 - container: `docker pull ghcr.io/levapveeskela/lv24-vigil:<new-version>`, or
   rebuild the local image
@@ -276,7 +276,7 @@ Check the changelog before a major update: [../CHANGELOG.md](../CHANGELOG.md).
 - standalone: delete the binary
 - Linux package: `sudo apt remove vigil`, `sudo dnf remove vigil` or
   `sudo apk del vigil`
-- Arch Linux (AUR): `sudo pacman -Rns vigil-bin`
+- Arch Linux (AUR): `sudo pacman -Rns vigil-security-bin`
 
 Vigil does not install a daemon, a service, a scheduled task or a browser
 extension. Scan history lives in the repository under `.vigil/scans` or in the

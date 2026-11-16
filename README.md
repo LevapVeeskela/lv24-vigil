@@ -178,7 +178,7 @@ Homebrew (macOS and Linux):
 brew install LevapVeeskela/tap/vigil
 ```
 
-Arch Linux: the `vigil-bin` PKGBUILD is ready for 0.10.0 in
+Arch Linux: the `vigil-security-bin` PKGBUILD is ready for 0.10.0 in
 [`packaging/aur`](packaging/aur), but AUR registration is temporarily paused,
 so the package is not published yet. Status, manual build and verification:
 [docs/aur.md](docs/aur.md).
@@ -678,6 +678,7 @@ does not start a scan. Full guide: [docs/ci.md](docs/ci.md) · example:
 | Document | Contents |
 | --- | --- |
 | [docs/install.md](docs/install.md) | npm, Go, installers, deb/rpm/apk, Scoop, Homebrew, AUR, container |
+| [docs/distribution.md](docs/distribution.md) | Per-channel status: GitHub, npm, PyPI, GHCR, Go, Scoop, Homebrew, WinGet, AUR, MCP Registry |
 | [docs/cli.md](docs/cli.md) | Commands, flags, exit codes, formats |
 | [docs/mcp.md](docs/mcp.md) | MCP clients, tools, resources, prompts |
 | [docs/providers.md](docs/providers.md) | Providers, keys, local models, config precedence |
