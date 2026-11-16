@@ -165,9 +165,26 @@ and manual verification: [docs/install.md](docs/install.md).
 
 ### Other channels
 
-Arch Linux: the AUR package builds from the published release
-(`yay -S vigil-bin`), with the PKGBUILD and verification steps in
+Scoop (Windows):
+
+```powershell
+scoop bucket add lv24 https://github.com/LevapVeeskela/scoop-bucket
+scoop install lv24/vigil
+```
+
+Homebrew (macOS and Linux):
+
+```bash
+brew install LevapVeeskela/tap/vigil
+```
+
+Arch Linux: the `vigil-bin` PKGBUILD is ready for 0.9.3 in
+[`packaging/aur`](packaging/aur), but AUR registration is temporarily paused,
+so the package is not published yet. Status, manual build and verification:
 [docs/aur.md](docs/aur.md).
+
+WinGet: the 0.9.3 manifest is in review; use Scoop or the release binaries
+until it is merged.
 
 MCP: Vigil is listed in the official MCP Registry as
 `io.github.LevapVeeskela/vigil`; the npm package carries `mcpName` and the
@@ -652,7 +669,7 @@ does not start a scan. Full guide: [docs/ci.md](docs/ci.md) · example:
 
 | Document | Contents |
 | --- | --- |
-| [docs/install.md](docs/install.md) | npm, Go, installers, deb/rpm/apk, binaries, container |
+| [docs/install.md](docs/install.md) | npm, Go, installers, deb/rpm/apk, Scoop, Homebrew, AUR, container |
 | [docs/cli.md](docs/cli.md) | Commands, flags, exit codes, formats |
 | [docs/mcp.md](docs/mcp.md) | MCP clients, tools, resources, prompts |
 | [docs/providers.md](docs/providers.md) | Providers, keys, local models, config precedence |
@@ -664,6 +681,14 @@ does not start a scan. Full guide: [docs/ci.md](docs/ci.md) · example:
 | [docs/comparison.md](docs/comparison.md) | Vigil vs Strix vs hosted scanners |
 | [docs/release.md](docs/release.md) | Release pipeline, npm Trusted Publishing, re-runs |
 | [docs/pypi.md](docs/pypi.md) | Python launcher and PyPI publishing |
+| [docs/mcp-registry.md](docs/mcp-registry.md) | Official MCP Registry entry, publish and verify |
+| [docs/mcp-directories.md](docs/mcp-directories.md) | MCP directory metadata and submission status |
+| [docs/aur.md](docs/aur.md) | Arch AUR package, build and publication |
+| [docs/pre-commit.md](docs/pre-commit.md) | pre-commit framework hooks |
+| [docs/container.md](docs/container.md) | GHCR image, provenance and SBOM |
+| [docs/scorecard.md](docs/scorecard.md) | OpenSSF Scorecard workflow and badge |
+| [docs/anti-re-hardening.md](docs/anti-re-hardening.md) | ARE rule mapping to REA capabilities |
+| [docs/cii-best-practices.md](docs/cii-best-practices.md) | CII Best Practices checklist |
 | [docs/history.md](docs/history.md) | The `dist-0.1.4` incident and repository history |
 | [docs/lv24-security-analysis.md](docs/lv24-security-analysis.md) | Strix upstream sync and the LV24 fork |
 | [llms.txt](llms.txt) | Plain-text index for AI agents |

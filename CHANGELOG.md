@@ -16,8 +16,9 @@ tools.
   `server.json` manifest, so registry-aware clients can resolve and install the
   stdio server (`npx -y lv24-vigil mcp`). Layout and verification:
   [docs/mcp-registry.md](docs/mcp-registry.md).
-- An AUR package (`vigil-bin`) built from the published release assets, with
-  build and verification steps in [docs/aur.md](docs/aur.md).
+- AUR packaging (`vigil-bin`) prepared for the published release assets, with
+  build and verification steps in [docs/aur.md](docs/aur.md). Publication waits
+  for AUR registration to reopen.
 - MCP directory and CII submission preparation, tracked in
   [docs/mcp-directories.md](docs/mcp-directories.md).
 

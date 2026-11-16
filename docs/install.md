@@ -118,10 +118,29 @@ no distribution key of their own, which is why `dnf` needs `--nogpgcheck` and
 lists the packages and is signed with cosign keyless:
 [release.md](release.md#verify-a-release).
 
+## Scoop (Windows)
+
+```powershell
+scoop bucket add lv24 https://github.com/LevapVeeskela/scoop-bucket
+scoop install lv24/vigil
+```
+
+The manifest tracks releases through `checkver` and `autoupdate`.
+
+## Homebrew (macOS and Linux)
+
+```bash
+brew install LevapVeeskela/tap/vigil
+```
+
+The tap builds from the tagged source tarball and runs `vigil version` as its
+test.
+
 ## AUR (Arch Linux)
 
-The AUR package `vigil-bin` installs the published release binary instead of
-building from source:
+AUR registration is temporarily paused, so `vigil-bin` is not published yet.
+The PKGBUILD in this repository is ready for 0.9.3. After the package appears on
+AUR it installs the release binary instead of building from source:
 
 ```bash
 yay -S vigil-bin          # or: paru -S vigil-bin
@@ -239,7 +258,10 @@ clients: [mcp.md](mcp.md). CI: [ci.md](ci.md). Local hooks, including the
 - standalone: download the new binary and replace the old one
 - Debian/Ubuntu, Fedora/RHEL/openSUSE, Alpine: install the new `.deb`/`.rpm`/
   `.apk` asset; the package replaces the previous one
-- Arch Linux (AUR): `yay -Syu vigil-bin` once the PKGBUILD version is bumped
+- Scoop: `scoop update vigil`
+- Homebrew: `brew upgrade vigil`
+- Arch Linux (AUR): `yay -Syu vigil-bin` after the package is published and
+  the PKGBUILD version is bumped
 - container: `docker pull ghcr.io/levapveeskela/lv24-vigil:<new-version>`, or
   rebuild the local image
 

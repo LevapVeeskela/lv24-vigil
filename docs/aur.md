@@ -6,7 +6,9 @@ compiled locally.
 
 The packaging in this repository is ready for **0.9.3**, but the package is not
 published yet. Publishing needs an AUR account and an SSH key, so it is a manual
-account-gated step (see [Publish](#publish-to-the-aur)).
+account-gated step (see [Publish](#publish-to-the-aur)). AUR registration is
+currently paused (HTTP 503, no manual queue); wait for the aur-general/Arch news
+announcement and do not script retries.
 
 ## Install
 

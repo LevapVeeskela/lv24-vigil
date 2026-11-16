@@ -167,10 +167,28 @@ bash installers/unix/install.sh          # macOS / Linux
 
 ### Другие каналы
 
-Arch Linux: пакет в AUR собирается из опубликованного релиза
-(`yay -S vigil-bin`); PKGBUILD и шаги проверки: [docs/aur.md](docs/aur.md).
+Scoop (Windows):
 
-MCP: сервер также поставляет метаданные официального MCP Registry (`mcpName` в
+```powershell
+scoop bucket add lv24 https://github.com/LevapVeeskela/scoop-bucket
+scoop install lv24/vigil
+```
+
+Homebrew (macOS ? Linux):
+
+```bash
+brew install LevapVeeskela/tap/vigil
+```
+
+Arch Linux: PKGBUILD `vigil-bin` ????? ??? 0.9.3 ?
+[`packaging/aur`](packaging/aur), ?? ??????????? ? AUR ????????
+??????????????, ??????? ????? ??? ?? ???????????. ??????, ?????? ?????? ?
+????????: [docs/aur.md](docs/aur.md).
+
+WinGet: ???????? 0.9.3 ?? ?????; ?? ????? ??????????? Scoop ??? ????????? ??
+??????.
+
+MCP: сервер опубликован в официальном MCP Registry (`mcpName` в
 npm-пакете и `server.json`), поэтому клиенты с поддержкой реестра ставят его как
 `npx -y lv24-vigil mcp`. Структура реестра, публикация и проверка:
 [docs/mcp-registry.md](docs/mcp-registry.md). Другие каталоги MCP и статус
@@ -658,7 +676,7 @@ Precheck не запускает скан. Полное руководство: 
 
 | Документ | Содержание |
 | --- | --- |
-| [docs/install.md](docs/install.md) | npm, Go, установщики, deb/rpm/apk, бинарники, контейнер |
+| [docs/install.md](docs/install.md) | npm, Go, установщики, deb/rpm/apk, Scoop, Homebrew, AUR, контейнер |
 | [docs/cli.md](docs/cli.md) | Команды, флаги, коды выхода, форматы |
 | [docs/mcp.md](docs/mcp.md) | MCP-клиенты, инструменты, ресурсы, промпты |
 | [docs/providers.md](docs/providers.md) | Провайдеры, ключи, локальные модели, приоритет настроек |
@@ -670,6 +688,14 @@ Precheck не запускает скан. Полное руководство: 
 | [docs/comparison.md](docs/comparison.md) | Vigil, Strix и облачные сканеры |
 | [docs/release.md](docs/release.md) | Релизный конвейер, npm Trusted Publishing, повторные запуски |
 | [docs/pypi.md](docs/pypi.md) | Python-лаунчер и публикация на PyPI |
+| [docs/mcp-registry.md](docs/mcp-registry.md) | Запись в официальном MCP Registry, публикация и проверка |
+| [docs/mcp-directories.md](docs/mcp-directories.md) | Метаданные и статус заявок в MCP-каталоги |
+| [docs/aur.md](docs/aur.md) | Пакет AUR, сборка и публикация |
+| [docs/pre-commit.md](docs/pre-commit.md) | Хуки для pre-commit framework |
+| [docs/container.md](docs/container.md) | Образ GHCR, provenance и SBOM |
+| [docs/scorecard.md](docs/scorecard.md) | OpenSSF Scorecard и badge |
+| [docs/anti-re-hardening.md](docs/anti-re-hardening.md) | Сопоставление ARE-правил с возможностями REA |
+| [docs/cii-best-practices.md](docs/cii-best-practices.md) | Чеклист CII Best Practices |
 | [docs/history.md](docs/history.md) | Инцидент `dist-0.1.4` и история репозитория |
 | [docs/lv24-security-analysis.md](docs/lv24-security-analysis.md) | Синхронизация Strix и форк LV24 |
 | [llms.txt](llms.txt) | Плоский индекс для ИИ-агентов |
