@@ -2,7 +2,7 @@ name: action-smoke
 
 # Manual end-to-end check of the published Marketplace action.
 # It scans a clean fixture, asserts that the action pinned the npm CLI to its
-# own tag (0.10.0), and uploads the SARIF report.
+# own tag (0.10.1), and uploads the SARIF report.
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - id: vigil
-        uses: LevapVeeskela/lv24-vigil@1510bae29eedef5a0c51568ff251c98221bf14b3 # v0.10.0
+        uses: LevapVeeskela/lv24-vigil@cdead46d9f9e674bc187109d2e0b9583219b1292 # v0.10.1
         with:
           path: examples/action-smoke
           fail-on: high
@@ -26,7 +26,7 @@ jobs:
           format: sarif
 
       - name: Assert the action pinned the CLI to its tag
-        run: test "${{ steps.vigil.outputs.version }}" = "0.10.0"
+        run: test "${{ steps.vigil.outputs.version }}" = "0.10.1"
 
       - if: always()
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
