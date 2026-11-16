@@ -352,6 +352,19 @@ func mergeFile(cfg *Config, path string, allowSecret bool) error {
 			}
 		}
 	}
+	// A project file may choose the provider, but an api_key the user config
+	// set next to its own provider belongs to that provider. Without this a
+	// cloned repository could name another vendor and receive the user's key
+	// (and the code excerpts) at that vendor's endpoint. The provider's own
+	// environment key, or VIGIL_API_KEY, still applies afterwards.
+	if !allowSecret && fc.Provider != nil && cfg.APIKey != "" {
+		keySource := cfg.Sources["api_key"]
+		if keySource != "" && keySource == cfg.Sources["provider"] &&
+			CanonicalProvider(strings.TrimSpace(*fc.Provider)) != CanonicalProvider(cfg.Provider) {
+			cfg.APIKey = ""
+			delete(cfg.Sources, "api_key")
+		}
+	}
 	cfg.ConfigFiles = append(cfg.ConfigFiles, path)
 	merge(&cfg.Provider, fc.Provider, "provider", path, cfg.Sources)
 	merge(&cfg.Model, fc.Model, "model", path, cfg.Sources)
@@ -993,7 +1006,12 @@ func (c Config) Redacted() Config {
 var urlSecretParts = []string{
 	"password", "passwd", "pwd", "secret", "token", "access_token",
 	"api_key", "apikey", "key", "auth", "credential", "signature", "sig",
+	"pass", "jwt", "bearer", "session", "cookie", "code",
 }
+
+// urlSecretKeys are short parameter names that are credentials as a whole word
+// but too short to match as a fragment.
+var urlSecretKeys = map[string]bool{"k": true, "sk": true, "pw": true, "p": true}
 
 // looksSecretQueryKey reports whether a query parameter name carries a
 // credential. It is deliberately conservative: hiding a harmless value costs
@@ -1002,6 +1020,9 @@ func looksSecretQueryKey(name string) bool {
 	k := strings.ToLower(strings.TrimSpace(name))
 	if k == "" {
 		return false
+	}
+	if urlSecretKeys[k] {
+		return true
 	}
 	for _, part := range urlSecretParts {
 		if strings.Contains(k, part) {
@@ -1019,6 +1040,18 @@ func RedactURL(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
+	}
+	// Without "scheme://", net/url reads "user:password@host/path" as a scheme
+	// and opaque data and would print the password. Parse it as an authority.
+	if !strings.Contains(raw, "://") {
+		authority := raw
+		if end := strings.IndexAny(raw, "/?#"); end >= 0 {
+			authority = raw[:end]
+		}
+		if strings.Contains(authority, "@") {
+			const scheme = "vigil-redact://"
+			return strings.TrimPrefix(RedactURL(scheme+raw), scheme)
+		}
 	}
 	u, err := url.Parse(raw)
 	if err != nil {

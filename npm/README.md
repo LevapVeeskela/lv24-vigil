@@ -156,4 +156,7 @@ the human summary. Show a fix diff before applying it.
 - **Issues:** <https://github.com/LevapVeeskela/lv24-vigil/issues>
 - **Changelog:** <https://github.com/LevapVeeskela/lv24-vigil/blob/main/CHANGELOG.md>
 
-Apache-2.0. No telemetry: only the model endpoint you configure is contacted.
+Apache-2.0. No telemetry. A deterministic scan makes no network calls; the
+only outbound requests are to the model endpoint you configure, to the OSV API
+when you run `vigil dependencies` or enable `scan.osv`, and the explicit
+`vigil precheck` upload.

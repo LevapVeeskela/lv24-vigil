@@ -146,7 +146,7 @@ func (s *Store) Save(res *model.ScanResult) error {
 	if err := s.writeLast(id); err != nil {
 		return err
 	}
-	return s.Prune(defaultKeep)
+	return s.prune(defaultKeep, id)
 }
 
 // Last returns the scan referenced by last.json, or the newest scan when the
@@ -235,12 +235,28 @@ func (s *Store) List(limit int) ([]Summary, error) {
 // Prune keeps the newest keep scans and removes the rest. keep <= 0 removes
 // every scan. last.json is repointed or removed as needed.
 func (s *Store) Prune(keep int) error {
+	return s.prune(keep, "")
+}
+
+// prune is Prune with one scan that must survive: the one Save has just
+// written. The store directory can live inside a cloned repository, so its
+// other files are untrusted; they must not be able to evict the real result.
+func (s *Store) prune(keep int, protect string) error {
 	if keep < 0 {
 		keep = 0
 	}
 	entries, err := s.entries()
 	if err != nil {
 		return err
+	}
+	if protect != "" && keep > 0 {
+		for i, e := range entries {
+			if e.id == protect {
+				copy(entries[1:i+1], entries[:i])
+				entries[0] = e
+				break
+			}
+		}
 	}
 	if len(entries) <= keep {
 		if keep == 0 && len(entries) == 0 {
@@ -265,6 +281,10 @@ func (s *Store) Prune(keep int) error {
 	return nil
 }
 
+// futureScanTolerance absorbs clock adjustments between two runs on the same
+// machine.
+const futureScanTolerance = 5 * time.Minute
+
 type scanEntry struct {
 	id      string
 	started time.Time
@@ -279,6 +299,7 @@ func (s *Store) entries() ([]scanEntry, error) {
 		return nil, fmt.Errorf("store: list %s: %w", s.dir, err)
 	}
 
+	now := time.Now().Add(futureScanTolerance)
 	entries := make([]scanEntry, 0, len(dirEntries))
 	for _, de := range dirEntries {
 		if de.IsDir() {
@@ -301,7 +322,10 @@ func (s *Store) entries() ([]scanEntry, error) {
 			var head struct {
 				StartedAt time.Time `json:"startedAt"`
 			}
-			if json.Unmarshal(data, &head) == nil && !head.StartedAt.IsZero() {
+			// A start time in the future cannot be real. Trusting it would let
+			// a planted file outrank every genuine scan forever, so such a
+			// file keeps its modification time instead.
+			if json.Unmarshal(data, &head) == nil && !head.StartedAt.IsZero() && !head.StartedAt.After(now) {
 				started = head.StartedAt
 			}
 		}

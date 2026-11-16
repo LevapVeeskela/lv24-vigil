@@ -34,6 +34,10 @@ type inlineDirective struct {
 	untilSet      bool
 	untilBad      string
 	untilBadSet   bool
+	// unterminated is set when a quoted option value has no closing quote. The
+	// value then runs to the end of the comment and may have swallowed the
+	// rule list, so the directive cannot be trusted.
+	unterminated bool
 }
 
 // matches reports whether the directive covers ruleID. A directive without a
@@ -150,6 +154,17 @@ func inlineDirectiveFor(f model.Finding, path string, file *rules.File, reader *
 		if !d.matches(f.RuleID) {
 			continue
 		}
+		// A directive that cannot be read as written fails closed. Ignoring
+		// the unreadable part would keep the suppression while dropping what
+		// was meant to limit it: a mistyped expiry key would suppress forever.
+		if d.unterminated {
+			errs = append(errs, fmt.Sprintf("inline suppression at %s:%d has an unterminated quote and was ignored", path, c.num))
+			continue
+		}
+		if d.unknownOption != "" {
+			errs = append(errs, fmt.Sprintf("inline suppression at %s:%d has an unrecognized option %q and was ignored (supported: reason=, until=)", path, c.num, d.unknownOption))
+			continue
+		}
 		if d.invalidUntil() {
 			errs = append(errs, fmt.Sprintf("inline suppression at %s:%d has an invalid until date %q", path, c.num, d.untilBad))
 			continue
@@ -245,7 +260,11 @@ func parseInlineDirective(line string) *inlineDirective {
 		}
 		if key, ok := inlineOptionKey(rest); ok {
 			var value string
-			value, rest = inlineOptionValue(rest[strings.IndexByte(rest, '=')+1:])
+			var closed bool
+			value, rest, closed = inlineOptionValue(rest[strings.IndexByte(rest, '=')+1:])
+			if !closed {
+				d.unterminated = true
+			}
 			switch key {
 			case "reason":
 				d.reason = strings.TrimSpace(value)
@@ -298,11 +317,12 @@ func inlineOptionKey(s string) (string, bool) {
 }
 
 // inlineOptionValue extracts one option value. A double- or single-quoted
-// value may contain spaces; a bare value ends at the next whitespace.
-func inlineOptionValue(s string) (value, rest string) {
+// value may contain spaces; a bare value ends at the next whitespace. closed is
+// false when a quoted value has no closing quote.
+func inlineOptionValue(s string) (value, rest string, closed bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return "", ""
+		return "", "", true
 	}
 	if s[0] == '"' || s[0] == '\'' {
 		quote := s[0]
@@ -312,12 +332,13 @@ func inlineOptionValue(s string) (value, rest string) {
 				continue
 			}
 			if s[i] == quote {
-				return s[1:i], strings.TrimSpace(s[i+1:])
+				return s[1:i], strings.TrimSpace(s[i+1:]), true
 			}
 		}
-		return s[1:], ""
+		return s[1:], "", false
 	}
-	return splitInlineToken(s)
+	value, rest = splitInlineToken(s)
+	return value, rest, true
 }
 
 func splitInlineToken(s string) (token, rest string) {

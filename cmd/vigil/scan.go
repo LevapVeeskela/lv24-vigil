@@ -128,6 +128,9 @@ func runScanLikeMode(name string, args []string, review, hardening bool, stdout,
 		if rerr != nil {
 			return rerr
 		}
+		if perr := guardProjectOutputPath(a.Config.Sources["output.path"], outputPath, resolved); perr != nil {
+			return perr
+		}
 		outputPath = resolved
 	}
 	color := useColor(firstNonEmpty(o.color, a.Config.Output.Color), stdout)
@@ -317,7 +320,7 @@ func printSummary(w io.Writer, title string, res *model.ScanResult, color bool, 
 		if f.Location.StartLine > 0 {
 			location = fmt.Sprintf("%s:%d", location, f.Location.StartLine)
 		}
-		fmt.Fprintf(w, "  %s %s  %s — %s\n", label, location, f.RuleID, oneLine(f.Title))
+		fmt.Fprintf(w, "  %s %s  %s — %s\n", label, report.SanitizeTerminal(location), f.RuleID, report.SanitizeTerminal(oneLine(f.Title)))
 	}
 	if len(res.Findings) > limit {
 		fmt.Fprintf(w, "  … %d more in the report\n", len(res.Findings)-limit)

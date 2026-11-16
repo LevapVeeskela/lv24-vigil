@@ -21,6 +21,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"unicode"
 )
@@ -49,6 +50,12 @@ func CleanRel(rel string) (string, error) {
 	for _, seg := range strings.Split(p, "/") {
 		if seg == ".." {
 			return "", errors.New("path must not contain '..'")
+		}
+		// On Windows a colon inside a segment addresses an NTFS alternate data
+		// stream: ".git::$INDEX_ALLOCATION" is the .git directory itself and
+		// "file.txt:stream" is a stream no reviewer sees.
+		if runtime.GOOS == "windows" && strings.Contains(seg, ":") {
+			return "", errors.New("path must not address an alternate data stream")
 		}
 		if isGitSegment(seg) {
 			return "", errors.New("refusing to write inside .git")
@@ -111,7 +118,14 @@ func Resolve(root, rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	relToRoot, err := filepath.Rel(realRoot, resolved)
+	// The .git check must see the name the filesystem uses. Windows also
+	// addresses a directory by its 8.3 alias, so "GIT~1/hooks/pre-commit" is
+	// .git/hooks/pre-commit although no segment reads ".git".
+	canonical := canonicalExisting(resolved)
+	if !Within(realRoot, canonical) {
+		return "", errors.New("path escapes the app root")
+	}
+	relToRoot, err := filepath.Rel(realRoot, canonical)
 	if err != nil {
 		return "", errors.New("path escapes the app root")
 	}
@@ -121,6 +135,28 @@ func Resolve(root, rel string) (string, error) {
 		}
 	}
 	return target, nil
+}
+
+// canonicalExisting rewrites the deepest existing ancestor of p to the name
+// the filesystem reports for it (long names instead of 8.3 aliases, real case)
+// and keeps the not yet existing tail as written. A path that cannot be
+// canonicalised is returned unchanged; the lexical checks still apply to it.
+func canonicalExisting(p string) string {
+	cur, tail := p, ""
+	for {
+		if real, err := filepath.EvalSymlinks(cur); err == nil {
+			if tail == "" {
+				return real
+			}
+			return filepath.Join(real, tail)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return p
+		}
+		tail = filepath.Join(filepath.Base(cur), tail)
+		cur = parent
+	}
 }
 
 // resolveComponents walks rel one segment at a time and follows symlinks and

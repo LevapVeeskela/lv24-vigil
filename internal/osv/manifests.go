@@ -3,8 +3,10 @@ package osv
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -15,6 +17,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf16"
+
+	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 )
 
 // Ecosystems are the OSV API identifiers used in this package.
@@ -648,28 +653,42 @@ func parsePackageLock(rel string, data []byte) ([]Package, error) {
 		if key == "" {
 			continue
 		}
-		name := npmNameFromPath(key)
-		if name == "" || entry.Version == "" || entry.Link {
+		installed := npmNameFromPath(key)
+		if installed == "" || entry.Link {
+			continue
+		}
+		// An aliased install ("alias": "npm:real@1.0.0") lives under the alias
+		// path and records the published package in "name".
+		name := installed
+		if real := strings.TrimSpace(entry.Name); real != "" {
+			name = real
+		}
+		version, ok := npmRegistryVersion(entry.Version)
+		if !ok {
 			continue
 		}
 		out = append(out, Package{
 			Name:      name,
-			Version:   entry.Version,
+			Version:   version,
 			Ecosystem: ecosystemNPM,
 			Manifest:  rel,
 			Line:      1,
-			Dev:       entry.Dev || devNames[name],
+			Dev:       entry.Dev || devNames[installed],
 		})
 	}
 
-	// Lockfile v1 stores a nested dependency tree instead of "packages".
+	// Lockfile v1 stores a nested dependency tree instead of "packages". Its
+	// "version" holds the spec for anything that is not a registry install: a
+	// git or tarball URL (which can carry a credential), a file path, or an
+	// "npm:real@1.0.0" alias. Only a registry version may leave this parser.
 	var walk func(deps map[string]npmLockDependency)
 	walk = func(deps map[string]npmLockDependency) {
 		for name, dep := range deps {
-			if dep.Version != "" {
+			real, spec := npmAliasTarget(name, dep.Version)
+			if version, ok := npmRegistryVersion(spec); ok {
 				out = append(out, Package{
-					Name:      name,
-					Version:   dep.Version,
+					Name:      real,
+					Version:   version,
 					Ecosystem: ecosystemNPM,
 					Manifest:  rel,
 					Line:      1,
@@ -681,6 +700,18 @@ func parsePackageLock(rel string, data []byte) ([]Package, error) {
 	}
 	walk(doc.Dependencies)
 	return out, nil
+}
+
+// npmRegistryVersion reports whether a lockfile "version" is a published
+// registry version. Git, tarball, file and alias specs are rejected: OSV cannot
+// match them, and they would otherwise be sent to the API and written to an
+// SBOM verbatim.
+func npmRegistryVersion(raw string) (string, bool) {
+	version := strings.TrimSpace(raw)
+	if !npmVersionRe.MatchString(version) {
+		return "", false
+	}
+	return version, true
 }
 
 // npmNameFromPath extracts the package name from a lockfile path key such as
@@ -725,7 +756,8 @@ func npmAliasTarget(name, spec string) (string, string) {
 
 // concreteNPMVersion turns a package.json semver range into the lowest concrete
 // version it admits. OSV needs exact versions, so "*", "latest", git and file
-// specs are skipped rather than queried blindly.
+// specs, and ranges without an inclusive lower bound, are skipped rather than
+// queried blindly.
 func concreteNPMVersion(spec string) string {
 	s := strings.TrimSpace(spec)
 	if s == "" {
@@ -759,6 +791,11 @@ func concreteNPMVersion(spec string) string {
 
 	if i := strings.Index(s, "||"); i >= 0 {
 		s = strings.TrimSpace(s[:i])
+	}
+	// "<2.0.0", "<=2.0.0" and ">1.0.0" name a version the range does not have
+	// as its lowest member, so there is nothing concrete to query.
+	if strings.HasPrefix(s, "<") || (strings.HasPrefix(s, ">") && !strings.HasPrefix(s, ">=")) {
+		return ""
 	}
 	s = strings.TrimLeft(s, "^~><= ")
 	if i := strings.IndexAny(s, " \t,"); i >= 0 {
@@ -914,7 +951,7 @@ func parseRequirementsFile(root string, f manifestFile, data []byte, budget *req
 // tree of a requirements-dev.txt is treated as development dependencies.
 func (s *requirementsParseBudget) parse(abs, rel string, data []byte, depth int, dev bool, out *[]Package, warnings *[]string) {
 	dev = dev || isDevRequirementsFile(rel)
-	for i, raw := range splitLines(data) {
+	for i, raw := range splitLines(decodeRequirementsText(data)) {
 		if s.halted(warnings) {
 			return
 		}
@@ -981,6 +1018,14 @@ func (s *requirementsParseBudget) include(abs, rel, target string, depth int, de
 		*warnings = append(*warnings, fmt.Sprintf("osv: %s: requirements include %q is excluded by the scan exclude list", rel, target))
 		return
 	}
+	// relativeToRoot is lexical. Reading follows symlinks and junctions, so an
+	// include through a link could still leave the scan root.
+	if s.root != "" {
+		if _, err := safepath.Resolve(s.root, targetRel); err != nil {
+			*warnings = append(*warnings, fmt.Sprintf("osv: %s: requirements include %q is outside the scan root", rel, target))
+			return
+		}
+	}
 
 	key := canonicalManifestPath(targetAbs)
 	if s.visited[key] {
@@ -991,7 +1036,7 @@ func (s *requirementsParseBudget) include(abs, rel, target string, depth int, de
 
 	data, err := readManifestBytes(targetAbs)
 	if err != nil {
-		*warnings = append(*warnings, fmt.Sprintf("osv: %s: requirements include %q: %s", rel, target, boundedError(err)))
+		*warnings = append(*warnings, fmt.Sprintf("osv: %s: requirements include %q: %s", rel, target, pathlessError(err)))
 		return
 	}
 	s.includes++
@@ -1090,6 +1135,46 @@ func canonicalManifestPath(p string) string {
 		p = strings.ToLower(p)
 	}
 	return p
+}
+
+// pathlessError describes a file error without the absolute path the operating
+// system puts in it. Warnings are copied into scan results and SBOM
+// properties, where a local path is both a leak and a source of
+// machine-dependent output.
+func pathlessError(err error) string {
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "file not found"
+		}
+		return boundedError(pathErr.Err)
+	}
+	return boundedError(err)
+}
+
+// decodeRequirementsText returns requirements data as UTF-8 text. pip accepts a
+// UTF-8 byte-order mark and UTF-16 files (what "pip freeze > requirements.txt"
+// writes in Windows PowerShell 5.1); without decoding, the first pin or the
+// whole file would be dropped silently.
+func decodeRequirementsText(data []byte) []byte {
+	switch {
+	case bytes.HasPrefix(data, []byte{0xEF, 0xBB, 0xBF}):
+		return data[3:]
+	case bytes.HasPrefix(data, []byte{0xFF, 0xFE}):
+		return decodeUTF16(data[2:], binary.LittleEndian)
+	case bytes.HasPrefix(data, []byte{0xFE, 0xFF}):
+		return decodeUTF16(data[2:], binary.BigEndian)
+	default:
+		return data
+	}
+}
+
+func decodeUTF16(data []byte, order binary.ByteOrder) []byte {
+	units := make([]uint16, 0, len(data)/2)
+	for i := 0; i+1 < len(data); i += 2 {
+		units = append(units, order.Uint16(data[i:]))
+	}
+	return []byte(string(utf16.Decode(units)))
 }
 
 // readManifestBytes reads one manifest or include with the same size bound as a

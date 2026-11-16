@@ -21,7 +21,20 @@ func TestSeverityFromScore(t *testing.T) {
 		{"numeric low", "0.1", model.SeverityLow, true},
 		{"numeric info", "0", model.SeverityInfo, true},
 		{"vector v3 critical", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", model.SeverityCritical, true},
-		{"vector v3 high", "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:H", model.SeverityHigh, true},
+		// 7.5: one high impact over the network. The former additive estimate
+		// rated this medium, so --fail-on high passed real high advisories.
+		{"vector v3 high single impact", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", model.SeverityHigh, true},
+		{"vector v3 high availability only", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H", model.SeverityHigh, true},
+		{"vector v3.0 high changed scope", "CVSS:3.0/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:L/A:N", model.SeverityHigh, true},
+		// 6.6: high complexity and high privileges keep three high impacts medium.
+		{"vector v3 medium high privileges", "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:H", model.SeverityMedium, true},
+		// 5.6 (GHSA-9wx4-h78v-vm56), formerly rated low.
+		{"vector v3 medium low impacts", "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:L", model.SeverityMedium, true},
+		{"vector v3 critical changed scope", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H", model.SeverityCritical, true},
+		{"vector v4 high single impact", "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N", model.SeverityHigh, true},
+		{"vector v2 complete impact", "AV:N/AC:L/Au:N/C:C/I:C/A:C", model.SeverityCritical, true},
+		{"vector v2 medium", "AV:N/AC:M/Au:N/C:N/I:P/A:N", model.SeverityMedium, true},
+		{"vector v3 missing metric falls back to the estimate", "CVSS:3.1/AV:N/AC:L/C:H/I:H/A:H", model.SeverityCritical, true},
 		{"vector v3 medium", "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N", model.SeverityMedium, true},
 		{"vector v3 low", "CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:U/C:L/I:N/A:N", model.SeverityLow, true},
 		{"vector v3 info", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N", model.SeverityInfo, true},
@@ -66,6 +79,24 @@ func TestSeverityFor(t *testing.T) {
 				Severity: []severityEntry{{Type: "CVSS_V3", Score: "5.0"}, {Type: "CVSS_V4", Score: "9.9"}},
 			},
 			want: model.SeverityCritical,
+		},
+		{
+			// GHSA-x84v-xcm2-53pg as served by api.osv.dev: a 7.5 vector that
+			// the database also rates HIGH.
+			name: "vector and database band agree on high",
+			vuln: vulnerability{
+				Severity:         []severityEntry{{Type: "CVSS_V3", Score: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"}},
+				DatabaseSpecific: databaseSpecific{Severity: "HIGH"},
+			},
+			want: model.SeverityHigh,
+		},
+		{
+			name: "database band raises an approximated v4 vector",
+			vuln: vulnerability{
+				Severity:         []severityEntry{{Type: "CVSS_V4", Score: "CVSS:4.0/AV:L/AC:L/AT:N/PR:L/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N"}},
+				DatabaseSpecific: databaseSpecific{Severity: "HIGH"},
+			},
+			want: model.SeverityHigh,
 		},
 		{
 			name: "database moderate",

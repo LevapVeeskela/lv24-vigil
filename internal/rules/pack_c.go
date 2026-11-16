@@ -495,6 +495,7 @@ func pcSecretFinding(f *File, line int, evidence, secret string) model.Finding {
 	fd := pbFinding(f, line, evidence)
 	if secret != "" {
 		fd.Location.Snippet = strings.ReplaceAll(fd.Location.Snippet, secret, MaskSecret(secret))
+		fd.SecretValues = []string{secret}
 	}
 	return fd
 }

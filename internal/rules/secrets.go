@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -912,12 +913,38 @@ func secFindings(f *File, matches []secMatch, o secFindingOpts) []model.Finding 
 				// expose a different credential on a neighbouring line.
 				Snippet: secRedactSnippet(f, m.line, m.value),
 			},
-			Evidence:    evidence,
-			Remediation: o.remediation,
-			References:  append([]string(nil), o.references...),
+			Evidence:     evidence,
+			Remediation:  o.remediation,
+			References:   append([]string(nil), o.references...),
+			SecretValues: []string{m.value},
 		})
 	}
 	return out
+}
+
+// minRedactableSecret is the shortest detected value RedactSecrets replaces
+// verbatim. A shorter literal is too likely to be an ordinary substring of
+// unrelated text.
+const minRedactableSecret = 6
+
+// RedactSecrets masks credentials in text that is about to leave the scanner:
+// the given raw values (detected by any rule in the same file) and every
+// well-known token shape. A rule masks the value it reports, but a snippet or
+// evidence line of another rule can quote the same line or a neighbouring one.
+func RedactSecrets(text string, values []string) string {
+	if text == "" {
+		return text
+	}
+	ordered := append([]string(nil), values...)
+	sort.SliceStable(ordered, func(i, j int) bool { return len(ordered[i]) > len(ordered[j]) })
+	for _, value := range ordered {
+		value = strings.TrimSpace(value)
+		if len(value) < minRedactableSecret {
+			continue
+		}
+		text = strings.ReplaceAll(text, value, MaskSecret(value))
+	}
+	return secHardRedactor.ReplaceAllStringFunc(text, MaskSecret)
 }
 
 func secRedactSnippet(f *File, line int, secret string) string {

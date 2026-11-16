@@ -72,7 +72,7 @@ These flags are shared by `vigil scan` and `vigil review`, except where noted.
 | `--rules ID[,ID]` | rule IDs | Run only these rules. |
 | `--disable ID[,ID]` | rule IDs | Skip these rules. |
 | `--min-severity LEVEL` | `info`, `low`, `medium`, `high`, `critical` | Hide findings below this level. Default from config. |
-| `--max-findings N` | integer | Cap the number of findings. `0` uses the config default. |
+| `--max-findings N` | integer | Cap the number of findings. `0` uses the config default. The most severe findings are kept; a capped result carries a `findings truncated` warning and `stats.findingsTruncated`. |
 | `--no-baseline` | - | Ignore the suppression baseline. |
 | `--no-inline-suppressions` | - | Ignore `vigil:ignore` comment directives. |
 | `--no-osv` | - | Skip the configured OSV dependency lookup for this scan. |
@@ -363,10 +363,18 @@ vigil sbom . --include-dev                          # keep development dependenc
 
 Builds the inventory from the manifests and lockfiles the OSV scanner already
 understands. It is offline, runs no package manager and does not resolve version
-ranges; a manifest that only declares ranges without a lockfile contributes no
-exact versions. The document is reproducible: the CycloneDX serial number and
-SPDX namespace derive from the inventory, and `SOURCE_DATE_EPOCH` pins the
-timestamp (default: the Unix epoch).
+ranges. A `package.json` without a lockfile contributes the declared lower bound
+of each range (`^1.2.3` and `>=1.2.3` become `1.2.3`); ranges without an
+inclusive lower bound (`<2.0.0`, `>1.0.0`, `*`, tags) and git, file or URL
+dependencies are left out, so prefer a lockfile for an exact inventory. The
+document is reproducible: the CycloneDX serial number and SPDX namespace derive
+from the inventory, and `SOURCE_DATE_EPOCH` pins the timestamp (default: the
+Unix epoch).
+
+The inventory is capped at 200 packages (ecosystem/name order). A larger tree
+is truncated: the command prints a warning, records it in the document
+(`vigil:inventory:warning`) and still exits `0`, so check for the warning
+before treating the SBOM as complete.
 
 ## Dependency advisories
 
@@ -395,7 +403,12 @@ Supported inventory: `package.json`, `package-lock.json`, `pnpm-lock.yaml`,
 `yarn.lock`, `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `uv.lock`,
 `go.mod`, `Cargo.lock`, `composer.lock`, `Gemfile.lock`, `pubspec.lock`,
 `pom.xml`, `gradle.lockfile` and `packages.lock.json`. Manifests that declare
-ranges without a lockfile are not resolved.
+ranges without a lockfile are not resolved: a `package.json` range is queried at
+its declared inclusive lower bound, and a range without one is skipped. Only
+registry versions are sent: git, file, URL and alias specs in a lockfile are
+never queried. Severity comes from the advisory's CVSS vector (the v3 and v2
+base-score formulas; a v4 vector is approximated) combined with the database's
+own rating, whichever is higher.
 
 ## Baseline
 

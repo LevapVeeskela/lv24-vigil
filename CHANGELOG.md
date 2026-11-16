@@ -4,6 +4,73 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## Unreleased
+
+Fixes from an independent adversarial review of 0.10.1. Rule count and MCP tool
+count are unchanged (263 rules, 14 tools). Finding IDs and fingerprints are
+unchanged, so existing baselines keep matching.
+
+### Security
+
+- **Writes into `.git` through a Windows 8.3 alias.** Path validation compared
+  text only, so `GIT~1/hooks/pre-commit` (and `.git::$INDEX_ALLOCATION`) passed
+  as an `output.path`, a baseline path or an MCP report path. A cloned
+  repository's `.vigil.yaml` could make `vigil scan` write a report into
+  `.git/hooks`. Paths are now checked against the name the filesystem reports,
+  and NTFS alternate data streams are refused on Windows.
+- **Raw secrets in other findings.** A secret rule masked the value it
+  reported, but another rule firing on the same or a neighbouring line quoted
+  it in its evidence and snippet (JSON, SARIF, MCP results, stored scans).
+  Detected values and known token shapes are now masked in every finding.
+- **`--max-findings` could drop the most severe finding.** The cap ran before
+  the sort and before OSV advisories were merged, so a critical advisory could
+  fall behind the cap and `--fail-on` passed. The most severe findings are now
+  kept, and a capped result reports `findings truncated` and
+  `stats.findingsTruncated`.
+- **OSV severity was understated.** A CVSS vector was reduced to a band with an
+  additive estimate that rated common 7.5 advisories medium. Vigil now uses the
+  CVSS v3 and v2 base-score formulas and never rates an advisory below its
+  database's own severity.
+- **Lockfile git URLs reached the OSV API and the SBOM.** `package-lock.json`
+  v1 stores git, file and alias specs in `version`; they were sent verbatim,
+  credentials included. Only registry versions are used now, and aliases
+  resolve to the real package.
+- **`-r` includes followed links out of the scan root**, the default OSV client
+  followed cross-origin redirects (replaying the inventory), and include
+  warnings carried absolute local paths into the SBOM.
+- **Planted scan history.** A repository shipping `.vigil/scans` files dated in
+  the future made Vigil prune the scan it had just saved and report the planted
+  one as the last scan.
+- **A project file could redirect the user's key.** `provider` in `.vigil.yaml`
+  switched the endpoint while the `api_key` of the user config was kept. A key
+  set next to a provider is now used for that provider only.
+- **A project `output.path` could overwrite source files.** It now refuses to
+  replace a file that is not a Vigil report.
+- **Terminal escape sequences** from scanned content are replaced in Markdown
+  output and the scan summary.
+- **Redaction gaps**: more credential query keys, scheme-less `user:pass@host`
+  URLs, more secret-looking flag names, URL arguments, and command arguments
+  echoed in a failing `command` provider's stderr.
+
+### Fixed
+
+- `vigil:ignore` with an unrecognized option (a mistyped `untill=`) or an
+  unterminated quote, and a baseline entry with an unknown key (`expiry`), no
+  longer produce a permanent suppression: they fail closed with a warning.
+- `VGL-MCP-001` treats ranges, wildcards and dist-tags (`@^1.0.0`, `@*`,
+  `@next`) as unpinned. `VGL-MCP-002` no longer flags OpenCode `{env:VAR}`
+  references and now covers `*_PASS`/`*_PWD` keys, bearer headers and values
+  longer than 200 characters; MCP evidence masks URL userinfo.
+- `VGL-INJ-065` matches `raw params[:q]` without parentheses.
+- `requirements*.txt` with a UTF-8 BOM or in UTF-16 is read instead of being
+  dropped; `package.json` ranges without an inclusive lower bound are skipped.
+
+### Changed
+
+- `SECURITY.md` lists `0.10.x` as the supported line; the npm README states the
+  real network behaviour; the docs describe the SBOM 200-package cap and the
+  project-file trust boundary.
+
 ## 0.10.1 - 2026-11-16
 
 Patch release. **No code or rule changes**: 263 rules in ten families, 14 MCP

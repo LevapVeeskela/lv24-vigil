@@ -169,6 +169,10 @@ type Finding struct {
 	// Reports that need to distinguish an accepted baseline entry from an
 	// inline directive read this field; older results may leave it empty.
 	SuppressKind string `json:"suppressKind,omitempty"`
+	// SecretValues carries the raw credential values this finding detected
+	// from a rule to the scanner, which masks them in every finding of the
+	// same file and then clears the field. It is never serialized.
+	SecretValues []string `json:"-"`
 }
 
 // Suppression sources recorded in Finding.SuppressKind.
@@ -250,6 +254,10 @@ type Stats struct {
 	RulesRun     int              `json:"rulesRun"`
 	LLMCalls     int              `json:"llmCalls"`
 	LLMTokens    int              `json:"llmTokens,omitempty"`
+	// Truncated counts active findings dropped by the max-findings cap. The
+	// most severe findings are kept, so a non-zero value means the result is
+	// incomplete rather than wrong.
+	Truncated int `json:"findingsTruncated,omitempty"`
 }
 
 // ModelInfo describes the model that produced LLM judgements.
