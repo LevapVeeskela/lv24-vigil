@@ -4,7 +4,7 @@ Ready-to-paste metadata for MCP directories and awesome lists. Every listing is
 an account-gated web action: the text below is prepared, but the submission,
 review and any claim flow must be done by the maintainer in a browser.
 
-Status: the **official MCP Registry is live** (v0.10.0); the directories below
+Status: the **official MCP Registry is live** (v0.10.1); the directories below
 have not accepted Vigil yet. Vigil ships a stdio MCP server (`vigil mcp`),
 14 tools, 4 resources and 5 prompts.
 

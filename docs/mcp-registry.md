@@ -6,7 +6,7 @@ metadata catalogue run by the Model Context Protocol project
 It stores `server.json` documents, not packages: a client that finds Vigil there
 still downloads the npm package and runs the same stdio server.
 
-**Status:** published on 2026-11-16 as version `0.10.0`; the registry reports it
+**Status:** published on 2026-11-16 as version `0.10.1`; the registry reports it
 `active` and latest. Verify:
 
 ```bash
@@ -22,7 +22,7 @@ release workflow and no registry token is stored in CI.
 | Field | Value |
 |---|---|
 | Server name | `io.github.LevapVeeskela/vigil` |
-| Package | npm `lv24-vigil`, version `0.10.0` |
+| Package | npm `lv24-vigil`, version `0.10.1` |
 | Transport | `stdio` |
 | Runtime | `npx`, run argument `-y`, package argument `mcp` |
 | Repository | https://github.com/LevapVeeskela/lv24-vigil |
@@ -40,13 +40,13 @@ follows the `2025-12-11` schema:
     "url": "https://github.com/LevapVeeskela/lv24-vigil",
     "source": "github"
   },
-  "version": "0.10.0",
+  "version": "0.10.1",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "lv24-vigil",
-      "version": "0.10.0",
+      "version": "0.10.1",
       "runtimeHint": "npx",
       "runtimeArguments": [{ "type": "positional", "value": "-y" }],
       "packageArguments": [{ "type": "positional", "value": "mcp" }],
@@ -64,7 +64,7 @@ command used everywhere else in the documentation:
 npx -y lv24-vigil mcp
 ```
 
-Pin a release with `npx -y lv24-vigil@0.10.0 mcp`. Client configuration, tools and
+Pin a release with `npx -y lv24-vigil@0.10.1 mcp`. Client configuration, tools and
 resources are described in [mcp.md](mcp.md).
 
 Query the registry API to check what is published:
@@ -90,17 +90,17 @@ fields are, in part:
 ```json
 {
   "name": "lv24-vigil",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "mcpName": "io.github.LevapVeeskela/vigil"
 }
 ```
 
 Consequence: **the npm version must be published before the registry version.**
-The registry validates the version named in `server.json`, so `0.10.0` on npm must
+The registry validates the version named in `server.json`, so `0.10.1` on npm must
 already carry `mcpName`. Confirm it before publishing:
 
 ```bash
-npm view lv24-vigil@0.10.0 mcpName
+npm view lv24-vigil@0.10.1 mcpName
 # io.github.LevapVeeskela/vigil
 ```
 
@@ -110,7 +110,7 @@ The npm side is produced by the release pipeline:
 
 ## Publish (owner only)
 
-1. Confirm `lv24-vigil@0.10.0` is on npm with the right `mcpName` (command above).
+1. Confirm `lv24-vigil@0.10.1` is on npm with the right `mcpName` (command above).
    If the version predates the `mcpName` field, cut a new version instead of
    editing a published one.
 2. Set `version` and `packages[0].version` in `server.json` to that npm version.
@@ -155,17 +155,17 @@ uploaded, and a registry listing is not a security review of Vigil.
 ## Version bumps
 
 - The registry version is unique per publication and immutable. Re-publishing
-  `0.10.0` is rejected; every release needs a new `server.json` version.
+  `0.10.1` is rejected; every release needs a new `server.json` version.
 - Keep `version` and `packages[0].version` aligned with the npm release, as the
   [registry versioning guide](https://modelcontextprotocol.io/registry/versioning)
   recommends. A mismatch fails ownership validation for the npm package.
 - Release order: bump the Vigil version → publish npm (with `mcpName`) → update
   `server.json` → `mcp-publisher publish`.
 - For a metadata-only change (description, repository URL) when the npm package
-  and code are unchanged, publish a prerelease version such as `0.10.0-1` and keep
-  `packages[0].version` at `0.10.0`. Prereleases sort before the release, so they
+  and code are unchanged, publish a prerelease version such as `0.10.1-1` and keep
+  `packages[0].version` at `0.10.1`. Prereleases sort before the release, so they
   do not become the entry's latest version.
-- Version ranges (`^0.10.0`, `~0.10.0`, `>=0.10.0`, `0.9.x`) are rejected; use an
+- Version ranges (`^0.10.1`, `~0.10.1`, `>=0.10.1`, `0.9.x`) are rejected; use an
   exact version.
 
 ## Troubleshooting
