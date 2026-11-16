@@ -41,15 +41,37 @@ protected". A build pipeline can override what the repository says.
 ## How to run
 
 ```bash
-vigil hardening .                 # human summary, grouped by platform
-vigil hardening . --format json   # full scan result
-vigil hardening . --fail-on high  # exit 2 when a high gap is found
+vigil hardening .                          # human summary, grouped by platform
+vigil hardening . --platform android      # only Android release controls
+vigil hardening . --platform ios          # only iOS
+vigil hardening . --platform all          # default: every platform
+vigil hardening . --format json           # full scan result
+vigil hardening . --fail-on high          # exit 2 when a high gap is found
 ```
 
-MCP: call `vigil_hardening` with `path`, `minSeverity`, `maxFindings` and
-`noBaseline`. The prompt `anti_re_hardening` wraps the tool in a review workflow.
-The command is deterministic, offline, runs no model and ignores the configured
-OSV lookup.
+`--platform` accepts `android`, `ios`, `electron`, `node`, `flutter`, `web`,
+`other` and `all`. The value narrows the rule set before the scan, so
+`--max-findings`, `stats` and the report describe the selected surface only.
+`--rules` may narrow that set further, never widen it.
+
+MCP: call `vigil_hardening` with `path`, `platform`, `minSeverity`,
+`maxFindings` and `noBaseline`. The prompt `anti_re_hardening` wraps the tool in a
+review workflow. The command is deterministic, offline, runs no model and
+ignores the configured OSV lookup.
+
+The summary names the selection and the coverage it kept, reports the findings
+and rule count for each platform, and marks the skipped platforms as filtered:
+
+```text
+  platform  android (10 of 28 anti-RE rules)
+  detected  Android (2 findings, 10 rules), iOS (5 rules, filtered), ...
+  note      only android rules were scanned; run without --platform to review every platform
+```
+
+Platform grouping comes from each rule's `platform` metadata
+(`model.RuleMeta.Platform`), which is the source of truth. The numeric `VGL-ARE`
+ID ranges are only a fallback for rules that predate the field. Native, .NET and
+React Native rules have no dedicated group and appear under `Other`.
 
 ## Capability map
 

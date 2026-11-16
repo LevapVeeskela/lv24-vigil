@@ -171,6 +171,7 @@ func AntiRERules() []Rule {
 		// ---------------------------------------------------------------
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-001",
+			Platform:    "Android",
 			Title:       "Android release build disables code shrinking",
 			Description: "minifyEnabled false in the release build type ships unshrunk, unobfuscated bytecode, which makes decompilation and repackaging much cheaper. Enable R8 for release.",
 			Severity:    model.SeverityMedium,
@@ -182,6 +183,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-002",
+			Platform:    "Android",
 			Title:       "Android release build is signed with a debug key",
 			Description: "A release build type that uses signingConfigs.debug or a debug.keystore is signed with the public Android debug key. Anyone can forge an update for that application id.",
 			Severity:    model.SeverityHigh,
@@ -193,6 +195,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-003",
+			Platform:    "Android",
 			Title:       "Android manifest marks the app debuggable",
 			Description: "android:debuggable=\"true\" in a shipped manifest lets anyone attach a debugger, read process memory and run code in the app context. It must not appear in a release manifest.",
 			Severity:    model.SeverityHigh,
@@ -204,6 +207,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-004",
+			Platform:    "Android",
 			Title:       "Android backup is enabled without a restrictive policy",
 			Description: "android:allowBackup=\"true\" lets adb or cloud backup copy application data off the device, including tokens, databases and preferences. Disable it or constrain it with backup rules.",
 			Severity:    model.SeverityMedium,
@@ -215,6 +219,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-005",
+			Platform:    "Android",
 			Title:       "Android manifest allows cleartext traffic",
 			Description: "android:usesCleartextTraffic=\"true\" permits unencrypted HTTP for every host, so a network attacker can read or modify traffic. Use HTTPS and a network security config instead.",
 			Severity:    model.SeverityMedium,
@@ -226,6 +231,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-006",
+			Platform:    "Android",
 			Title:       "Network security config permits cleartext traffic",
 			Description: "A base-config or domain-config with cleartextTrafficPermitted=\"true\" re-enables unencrypted HTTP for those hosts. Keep cleartext exceptions inside debug-overrides only.",
 			Severity:    model.SeverityMedium,
@@ -240,6 +246,7 @@ func AntiRERules() []Rule {
 		// ---------------------------------------------------------------
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-010",
+			Platform:    "iOS",
 			Title:       "iOS entitlements allow debugger attachment",
 			Description: "get-task-allow is a development entitlement that lets a debugger attach to the process. A distributed build must not carry it.",
 			Severity:    model.SeverityHigh,
@@ -251,6 +258,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-011",
+			Platform:    "iOS",
 			Title:       "App Transport Security allows arbitrary loads",
 			Description: "NSAllowsArbitraryLoads disables App Transport Security for every HTTP connection, allowing cleartext and weak TLS. Use narrow per-domain exceptions instead.",
 			Severity:    model.SeverityMedium,
@@ -265,6 +273,7 @@ func AntiRERules() []Rule {
 		// ---------------------------------------------------------------
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-020",
+			Platform:    "Flutter",
 			Title:       "Flutter release build ships without obfuscation",
 			Description: "flutter build apk/appbundle/ipa (or any --release build) without --obfuscate keeps Dart symbol names in the binary, which makes reverse engineering and patch analysis easier.",
 			Severity:    model.SeverityMedium,
@@ -279,6 +288,7 @@ func AntiRERules() []Rule {
 		// ---------------------------------------------------------------
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-030",
+			Platform:    "Electron",
 			Title:       "Electron renderer disables web security",
 			Description: "webSecurity: false turns off the same-origin policy in the renderer, so any injected content can read other origins and local resources. Keep it enabled.",
 			Severity:    model.SeverityHigh,
@@ -291,6 +301,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-031",
+			Platform:    "Electron",
 			Title:       "Electron renderer exposes Node integration without isolation",
 			Description: "nodeIntegration: true together with contextIsolation: false gives renderer content direct access to Node APIs and the main process. Use a preload script with contextIsolation enabled.",
 			Severity:    model.SeverityHigh,
@@ -303,6 +314,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-040",
+			Platform:    "Node",
 			Title:       "Production Node process starts with the inspector",
 			Description: "--inspect/--inspect-brk opens the V8 inspector, which allows arbitrary code execution in the process once reachable. Production start commands must not enable it.",
 			Severity:    model.SeverityHigh,
@@ -314,6 +326,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-041",
+			Platform:    "Node",
 			Title:       "Production build ships source maps",
 			Description: "Publishing source maps with the production bundle restores original names, comments and structure, which removes most of the cost of reverse engineering the frontend.",
 			Severity:    model.SeverityMedium,
@@ -328,6 +341,7 @@ func AntiRERules() []Rule {
 		// ---------------------------------------------------------------
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-050",
+			Platform:    "Other",
 			Title:       "Rust release profile keeps debug information",
 			Description: "A [profile.release] with debug = true/1/2 or without stripping keeps DWARF line tables, type names and variable names in the shipped executable, which restores most of the source structure for a reverse engineer.",
 			Severity:    model.SeverityMedium,
@@ -339,6 +353,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-051",
+			Platform:    "Other",
 			Title:       ".NET Release build keeps debug symbols or disables optimization",
 			Description: "DebugType portable/full/pdbonly, DebugSymbols true or Optimize false in a Release PropertyGroup ships a debuggable, unoptimized assembly and keeps the PDB mapping, so decompiled CIL reads like the original source.",
 			Severity:    model.SeverityMedium,
@@ -350,6 +365,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-052",
+			Platform:    "iOS",
 			Title:       "iOS Release build enables testability",
 			Description: "ENABLE_TESTABILITY = YES in a Release configuration exposes internal symbols to the runtime and is only meant for the Debug or Test configuration.",
 			Severity:    model.SeverityHigh,
@@ -361,6 +377,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-053",
+			Platform:    "iOS",
 			Title:       "iOS Release build keeps debug symbols or skips stripping",
 			Description: "DEBUG_INFORMATION_FORMAT = dwarf (instead of dwarf-with-dsym) or STRIP_INSTALLED_PRODUCT = NO leaves DWARF data and symbol names inside the shipped app binary. COPY_PHASE_STRIP = NO is the modern Xcode default and is not flagged by itself.",
 			Severity:    model.SeverityMedium,
@@ -372,6 +389,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-054",
+			Platform:    "Android",
 			Title:       "Android WebView debugging is enabled",
 			Description: "setWebContentsDebuggingEnabled(true) in production sources lets anyone with adb attach Chrome DevTools to the app's WebViews and inspect or modify page content.",
 			Severity:    model.SeverityHigh,
@@ -383,6 +401,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-055",
+			Platform:    "Other",
 			Title:       "React Native release disables the Hermes engine",
 			Description: "Disabling Hermes (hermesEnabled=false, enableHermes: false, or :hermes_enabled => false / USE_HERMES=0 in the Podfile) ships the plain JavaScript bundle instead of Hermes bytecode, which is far easier to read and patch after unpacking the application.",
 			Severity:    model.SeverityMedium,
@@ -394,6 +413,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-056",
+			Platform:    "Electron",
 			Title:       "Electron app ships an unpacked ASAR archive",
 			Description: "asar: false (or asar.enabled: false) ships the application sources as plain files on disk instead of an archive, so the whole renderer and main-process code is readable without any tooling.",
 			Severity:    model.SeverityMedium,
@@ -405,6 +425,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-057",
+			Platform:    "Electron",
 			Title:       "Electron fuse enables Node CLI inspect or RunAsNode",
 			Description: "RunAsNode, EnableNodeCliInspectArguments and EnableNodeOptionsEnvironmentVariable let anyone run the packaged binary as plain Node or attach the V8 inspector, which turns the application into a scriptable host.",
 			Severity:    model.SeverityHigh,
@@ -416,6 +437,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-058",
+			Platform:    "Electron",
 			Title:       "Electron fuse disables ASAR integrity or only-load",
 			Description: "Disabling EnableEmbeddedAsarIntegrityValidation or OnlyLoadAppFromAsar lets a modified app.asar load without detection, so the shipped code can be replaced on disk.",
 			Severity:    model.SeverityMedium,
@@ -427,6 +449,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-059",
+			Platform:    "Web",
 			Title:       "JavaScript production build disables minification",
 			Description: "minify/minimize false in a production build config ships readable variable names, comments and module structure, which removes most of the work of recovering the frontend source.",
 			Severity:    model.SeverityMedium,
@@ -441,6 +464,7 @@ func AntiRERules() []Rule {
 		// ---------------------------------------------------------------
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-060",
+			Platform:    "Android",
 			Title:       "Android network security config trusts user-installed CAs",
 			Description: "<certificates src=\"user\"> in a shipped trust-anchors block accepts any CA the device user installs, so an interception proxy can decrypt the app's HTTPS traffic. Release builds must trust only system CAs.",
 			Severity:    model.SeverityHigh,
@@ -456,6 +480,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-061",
+			Platform:    "Android",
 			Title:       "Android release build type enables debugging",
 			Description: "debuggable true / isDebuggable = true in a Gradle release build type (or release manifest placeholder) is merged into the shipped manifest by AGP, so the manifest can look clean while the APK remains attachable.",
 			Severity:    model.SeverityHigh,
@@ -471,6 +496,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-062",
+			Platform:    "Android",
 			Title:       "Android R8/ProGuard rules disable obfuscation",
 			Description: "-dontobfuscate in the release R8/ProGuard rules keeps readable class and member names even when minifyEnabled is true, which silently defeats the shrinking and renaming control.",
 			Severity:    model.SeverityHigh,
@@ -486,6 +512,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-063",
+			Platform:    "Electron",
 			Title:       "Electron starts with a remote debugging port",
 			Description: "--remote-debugging-port (or app.commandLine.appendSwitch('remote-debugging-port')) exposes the Chromium DevTools Protocol, which allows DOM inspection, JavaScript evaluation and network capture over HTTP in a packaged app.",
 			Severity:    model.SeverityHigh,
@@ -501,6 +528,7 @@ func AntiRERules() []Rule {
 
 		New(model.RuleMeta{
 			ID:          "VGL-ARE-064",
+			Platform:    "iOS",
 			Title:       "iOS Release build disables compiler optimization",
 			Description: "SWIFT_OPTIMIZATION_LEVEL = -Onone or GCC_OPTIMIZATION_LEVEL = 0 in a Release configuration keeps inlining, locals and control flow close to the source, which makes the shipped Swift/Objective-C code easier to decompile.",
 			Severity:    model.SeverityMedium,

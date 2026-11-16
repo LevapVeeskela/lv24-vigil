@@ -104,6 +104,8 @@ func firstNonEmpty(values ...string) string {
 }
 
 // canonicalFormat validates a report format and returns its canonical name.
+// JUnit can only be rendered from a stored scan, so asking for it here points
+// at the command that produces it instead of guessing.
 func canonicalFormat(v string) (string, error) {
 	f := strings.ToLower(strings.TrimSpace(v))
 	f = strings.TrimPrefix(f, ".")
@@ -116,6 +118,8 @@ func canonicalFormat(v string) (string, error) {
 		return "sarif", nil
 	case "html", "htm":
 		return "html", nil
+	case "junit":
+		return "", fmt.Errorf("unsupported format %q: JUnit is report-only: use vigil report --format junit", v)
 	default:
 		return "", fmt.Errorf("unsupported format %q (use md, json, sarif or html)", v)
 	}

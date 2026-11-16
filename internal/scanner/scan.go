@@ -489,17 +489,36 @@ func applyBaseline(findings []model.Finding, opts Options) (kept, suppressed []m
 	}
 
 	kept = make([]model.Finding, 0, len(findings))
+	seenWarning := make(map[string]bool)
 	for _, f := range findings {
-		matched, reason := baseline.Match(f)
-		if !matched {
-			kept = append(kept, f)
+		result := baseline.MatchFinding(f)
+		if result.Matched {
+			f.Suppressed = true
+			f.SuppressWhy = result.Reason
+			f.SuppressKind = model.SuppressKindBaseline
+			suppressed = append(suppressed, f)
 			continue
 		}
-		f.Suppressed = true
-		f.SuppressWhy = reason
-		suppressed = append(suppressed, f)
+		if result.Expired {
+			// An expired acceptance is a warning, not a suppression: the
+			// finding returns to the report at full severity.
+			warningPath := result.Path
+			if warningPath == "" {
+				warningPath = f.Location.Path
+			}
+			id := f.ID
+			if id == "" {
+				id = f.ComputeID()
+			}
+			msg := fmt.Sprintf("baseline entry for %s expired on %s at %s", id, result.Expires, warningPath)
+			if !seenWarning[msg] {
+				seenWarning[msg] = true
+				errs = append(errs, msg)
+			}
+		}
+		kept = append(kept, f)
 	}
-	return kept, suppressed, nil
+	return kept, suppressed, errs
 }
 
 func modeOrDefault(mode string) string {

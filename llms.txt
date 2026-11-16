@@ -8,14 +8,16 @@ binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud
 Repository: https://github.com/LevapVeeskela/lv24-vigil
 License: Apache-2.0
 Binary: vigil
-Current release line: 0.9.x: 263 rules in ten families, 14 MCP tools,
-offline `mcp-audit` and `sbom`, inline suppression, plus the
-`vigil_hardening` and `vigil_dependencies` tools. 0.9.3 adds no rules: it
-publishes the official MCP Registry listing (`mcpName` in the npm package plus
-`server.json`, active at 0.9.3) and an AUR package (`vigil-bin`), on top of the
-0.9.2 packaging work: deb/rpm/apk
+Current release line: 0.10.x: 263 rules in ten families, 14 MCP tools,
+offline `mcp-audit` and `sbom`, inline suppression, baseline v2
+(`ticket`, `expires`, `path`, `prune`, active-only SARIF), hardening platform
+presets (`--platform` / MCP `platform`), `vigil config validate|show`,
+report-only JUnit, plus the `vigil_hardening` and `vigil_dependencies` tools.
+0.10.0 adds no rules: it ships baseline v2, platform presets, config inspection
+and JUnit reporting on top of the 0.9.x packaging work: deb/rpm/apk
 packages, a CycloneDX SBOM asset, keyless cosign signing over checksums, build
-provenance, `pre-commit` hooks, OpenSSF Scorecard and the multi-arch image
+provenance, the official MCP Registry listing (`mcpName` plus `server.json`),
+AUR packaging, `pre-commit` hooks, OpenSSF Scorecard and the multi-arch image
 `ghcr.io/levapveeskela/lv24-vigil` (distroless, nonroot).
 
 ## Canonical install
@@ -34,10 +36,10 @@ Go 1.27+:
 
 Native Linux packages (release assets), AUR packaging and the container image:
 
-    sudo apt install ./vigil-0.9.3-linux-amd64.deb      # also .rpm (dnf), .apk (apk)
+    sudo apt install ./vigil-0.10.0-linux-amd64.deb      # also .rpm (dnf), .apk (apk)
     # Arch Linux: vigil-bin PKGBUILD ready; AUR registration temporarily paused
     docker run --rm -v "$PWD:/workspace" \
-      ghcr.io/levapveeskela/lv24-vigil:0.9.3 scan --no-llm --path /workspace
+      ghcr.io/levapveeskela/lv24-vigil:0.10.0 scan --no-llm --path /workspace
 
 The npm package carries MCP Registry metadata (`mcpName`) and the repository
 ships `server.json`, so registry-aware clients add the same stdio server:
@@ -68,13 +70,15 @@ Install only `lv24-vigil`.
     vigil fix <finding-id> --apply          write the diff, never commit
     vigil threat-model [path]               STRIDE markdown, needs a model
     vigil status --json                     provider, model, rules, store, last scan
+    vigil config validate [path] [--json]  load user and project config like a scan
+    vigil config show [--json]              effective config and per-value sources
     vigil rules [--json]                    authoritative rule catalog
-    vigil hardening [path]                  anti-RE hardening gaps (VGL-ARE), offline
+    vigil hardening [path] [--platform P]   anti-RE hardening gaps (VGL-ARE), offline
     vigil mcp-audit [path] [--user]         MCP server config gaps (VGL-MCP), offline
     vigil dependencies [path]               known OSV advisories for declared packages
     vigil sbom [path] [--format cyclonedx|spdx]  dependency inventory, offline
-    vigil baseline list|add|remove|clear
-    vigil report --format md|json|sarif|html
+    vigil baseline list|add|remove|prune|clear
+    vigil report --format md|json|sarif|junit|html
     vigil precheck --sarif FILE --api URL --token JWT
     vigil hook install [--mode pre-commit|pre-push] [--force] [--fail-on LEVEL]
     vigil hook status
@@ -112,6 +116,27 @@ Agent rules:
   without an explicit baseline decision.
 - A `--fail-on` exit code 2 is a policy failure; report it, do not retry it
   away.
+
+## Baselines, config and report formats
+
+The baseline (`.vigil-baseline.json`) is version 2. An entry may carry
+`fingerprint`, `ruleId`, `path`, `ticket` and `expires` (YYYY-MM-DD, UTC);
+version-1 files load and upgrade in memory. `vigil baseline add ID --reason TEXT
+[--ticket T] [--expires DATE] [--path P]`, `list` shows the metadata and
+`prune [--dry-run]` removes expired entries. An expired entry suppresses
+nothing: the finding returns at full severity and the scan warns. SARIF is active-only: a suppressed finding has no SARIF result, while JSON,
+Markdown, HTML and JUnit retain it.
+
+`vigil config validate [path] [--json]` loads the user and project config with
+the same precedence as a scan, exits 1 on errors and never opens the store or a
+model. `vigil config show [--json]` prints effective values with their sources
+(`defaults`, a file or `env:NAME`); credential values are `***`, and URL
+credentials are `REDACTED`.
+
+JUnit is report-only: `vigil report --format junit`. `scan --format junit` is
+rejected with a hint. The document has `testsuites`/`testsuite` named `vigil`;
+active findings map to `failure` (type is the severity) and suppressed findings
+to `skipped`.
 
 ## MCP
 
@@ -168,7 +193,7 @@ Read-only unless noted.
 - vigil_report(scanId?, format?, path?) — render a stored scan; writes only with path.
 - vigil_verify(findingId) — re-check whether a finding is still present.
 - vigil_history(limit?) — recent scans from the local store.
-- vigil_hardening(path?, minSeverity?, maxFindings?, noBaseline?) — run only the VGL-ARE hardening rules.
+- vigil_hardening(path?, platform?, minSeverity?, maxFindings?, noBaseline?) — run only the VGL-ARE hardening rules; platform is all|android|ios|electron|node|flutter|web|other.
 - vigil_mcp_audit(path?, includeUser?, minSeverity?, maxFindings?) — run only the VGL-MCP configuration rules; reads config files only.
 - vigil_dependencies(path?, includeDev?, maxPackages?, osvBaseUrl?) — known OSV advisories for declared packages (network; osvBaseUrl must be https or loopback http).
 
@@ -219,7 +244,9 @@ testability and debug symbols, Electron fuses and ASAR, JavaScript minification,
 Android WebView debugging, Hermes, user-installed CA trust, Gradle debuggable
 releases, ProGuard obfuscation, Electron remote debugging and iOS optimization.
 These are missing controls, not vulnerabilities. The command is deterministic,
-offline and ignores the configured OSV lookup.
+offline and ignores the configured OSV lookup. `--platform` (CLI) or `platform`
+(MCP) narrows the review to `android`, `ios`, `electron`, `node`, `flutter`,
+`web`, `other` or `all`; the summary shows which platforms were filtered.
 
 docs/anti-re-hardening.md maps each rule to the reverse-engineering capability
 it raises the cost against (REA tool inventory), and lists the gaps it does not

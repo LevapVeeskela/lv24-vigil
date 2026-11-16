@@ -99,6 +99,10 @@ type sarifArtifactContent struct {
 	Text string `json:"text"`
 }
 
+// renderSARIF emits active findings only. GitHub code scanning ignores SARIF
+// suppressions and baselineState, so a suppressed result would still open an
+// alert while --fail-on exits 0. JSON, Markdown, HTML and JUnit keep the
+// suppressed list for reviewers.
 func renderSARIF(res *model.ScanResult) ([]byte, error) {
 	findings := activeFindings(res)
 
@@ -181,7 +185,7 @@ func buildSARIFRule(f model.Finding) sarifRule {
 
 func buildSARIFResult(f model.Finding, ruleIndex int, root string) sarifResult {
 	idx := ruleIndex
-	return sarifResult{
+	result := sarifResult{
 		RuleID:    sarifRuleID(f),
 		RuleIndex: &idx,
 		Level:     sarifLevel(f.Severity),
@@ -199,6 +203,7 @@ func buildSARIFResult(f model.Finding, ruleIndex int, root string) sarifResult {
 			Category:   string(f.Category),
 		},
 	}
+	return result
 }
 
 func sarifRegionFor(f model.Finding) sarifRegion {

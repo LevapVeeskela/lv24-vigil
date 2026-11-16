@@ -5,18 +5,19 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/levapveeskela/lv24-vigil/internal/report"
 )
 
 func runReport(args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("report")
-	format := fs.String("format", "", "report format: md, json, sarif or html")
+	format := fs.String("format", "", "report format: md, json, sarif, junit or html")
 	output := fs.String("output", "", "write the report to a file (\"-\" for stdout)")
 	scanID := fs.String("scan", "", "scan ID to render (default: last scan)")
 	positional, err := parseFlagSet(fs, args)
 	if errors.Is(err, flag.ErrHelp) {
-		fmt.Fprint(stdout, "Usage: vigil report [--format FMT] [--output FILE] [--scan ID]\n\nRenders a stored scan. Without --scan the most recent scan is used.\n")
+		fmt.Fprint(stdout, "Usage: vigil report [--format md|json|sarif|junit|html] [--output FILE] [--scan ID]\n\nRenders a stored scan. Without --scan the most recent scan is used.\n")
 		return nil
 	}
 	if err != nil {
@@ -36,7 +37,7 @@ func runReport(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	canonical, err := canonicalFormat(firstNonEmpty(*format, a.Config.Output.Format))
+	canonical, err := canonicalReportFormat(firstNonEmpty(*format, a.Config.Output.Format))
 	if err != nil {
 		return err
 	}
@@ -64,4 +65,19 @@ func runReport(args []string, stdout, stderr io.Writer) error {
 	}
 	fmt.Fprintf(stdout, "wrote %s\n", path)
 	return nil
+}
+
+// canonicalReportFormat accepts every format `vigil report` can render. JUnit
+// is report-only, so it is layered over the format set shared with scan.
+func canonicalReportFormat(v string) (string, error) {
+	f := strings.ToLower(strings.TrimSpace(v))
+	f = strings.TrimPrefix(f, ".")
+	if f == report.FormatJUnit {
+		return report.FormatJUnit, nil
+	}
+	canonical, err := canonicalFormat(v)
+	if err != nil {
+		return "", fmt.Errorf("unsupported format %q (use md, json, sarif, junit or html)", v)
+	}
+	return canonical, nil
 }

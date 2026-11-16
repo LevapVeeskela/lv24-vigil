@@ -55,6 +55,8 @@ func runWithIO(args []string, stdout, stderr io.Writer) error {
 		return runInit(rest, stdout, stderr)
 	case "status", "doctor":
 		return runStatus(rest, stdout, stderr)
+	case "config":
+		return runConfig(rest, stdout, stderr)
 	case "rules":
 		return runRules(rest, stdout, stderr)
 	case "hardening":
@@ -97,6 +99,8 @@ Usage:
   vigil mcp [--root DIR]           run as an MCP server (stdio)
   vigil init [--force]             write a starter .vigil.yaml
   vigil status [--json]            show provider, model and engine health
+  vigil config validate [path]     check the user and project config load
+  vigil config show [--json]       print the effective configuration
   vigil rules [flags]              list detection rules
   vigil hardening [path]           review anti-RE hardening gaps (VGL-ARE)
   vigil mcp-audit [path]           audit MCP server configuration (VGL-MCP)
@@ -136,7 +140,7 @@ Scan flags:
 
 Other flags:
   vigil fix ID --scan ID --apply --root DIR
-  vigil report --format FMT --output FILE --scan ID
+  vigil report --format md|json|sarif|junit|html --output FILE --scan ID
   vigil precheck --sarif FILE --target TARGET --api URL --token JWT
   vigil threat-model --output FILE
   vigil rules --category C --language L --severity S --query Q --json

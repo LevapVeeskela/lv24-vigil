@@ -217,8 +217,10 @@ var projectKeyEnv = map[string]string{
 
 // describeConfigError turns a load error into a report entry with a fix. The
 // fix names keys, files and variables only, never the configured value.
+// Validate errors quote the offending value with %q, so the message is
+// scrubbed before it is printed or serialised.
 func describeConfigError(err error, userPath string) *statusConfigError {
-	out := &statusConfigError{Message: err.Error()}
+	out := &statusConfigError{Message: config.ScrubQuotedScalars(err.Error())}
 	var keyErr *config.ProjectKeyError
 	if !errors.As(err, &keyErr) {
 		out.Fix = "Fix or remove the configuration file named in the message, then run `vigil doctor` again."

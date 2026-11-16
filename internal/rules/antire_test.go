@@ -147,6 +147,97 @@ func TestAntiRERegistry(t *testing.T) {
 	}
 }
 
+func TestAntiREPlatformMetadata(t *testing.T) {
+	// The declared platform is the single source of truth for the CLI and MCP
+	// grouping. Native, .NET and React Native have no dedicated group, so they
+	// belong to Other.
+	want := map[string]string{
+		"VGL-ARE-001": "Android",
+		"VGL-ARE-002": "Android",
+		"VGL-ARE-003": "Android",
+		"VGL-ARE-004": "Android",
+		"VGL-ARE-005": "Android",
+		"VGL-ARE-006": "Android",
+		"VGL-ARE-010": "iOS",
+		"VGL-ARE-011": "iOS",
+		"VGL-ARE-020": "Flutter",
+		"VGL-ARE-030": "Electron",
+		"VGL-ARE-031": "Electron",
+		"VGL-ARE-040": "Node",
+		"VGL-ARE-041": "Node",
+		"VGL-ARE-050": "Other",
+		"VGL-ARE-051": "Other",
+		"VGL-ARE-052": "iOS",
+		"VGL-ARE-053": "iOS",
+		"VGL-ARE-054": "Android",
+		"VGL-ARE-055": "Other",
+		"VGL-ARE-056": "Electron",
+		"VGL-ARE-057": "Electron",
+		"VGL-ARE-058": "Electron",
+		"VGL-ARE-059": "Web",
+		"VGL-ARE-060": "Android",
+		"VGL-ARE-061": "Android",
+		"VGL-ARE-062": "Android",
+		"VGL-ARE-063": "Electron",
+		"VGL-ARE-064": "iOS",
+	}
+	allowed := map[string]bool{
+		"Android": true, "iOS": true, "Electron": true, "Node": true,
+		"Flutter": true, "Web": true, "Other": true,
+	}
+	counts := map[string]int{}
+
+	for _, r := range AntiRERules() {
+		m := r.Meta()
+		if strings.TrimSpace(m.Platform) == "" {
+			t.Errorf("rule %s declares no platform", m.ID)
+			continue
+		}
+		if !allowed[m.Platform] {
+			t.Errorf("rule %s platform = %q, want one of Android, iOS, Electron, Node, Flutter, Web or Other", m.ID, m.Platform)
+		}
+		expected, ok := want[m.ID]
+		if !ok {
+			t.Errorf("rule %s has no expected platform in the test map", m.ID)
+			continue
+		}
+		if m.Platform != expected {
+			t.Errorf("rule %s platform = %q, want %q", m.ID, m.Platform, expected)
+		}
+		counts[m.Platform]++
+	}
+	if len(want) != len(AntiRERules()) {
+		t.Errorf("test map has %d entries, AntiRERules has %d rules", len(want), len(AntiRERules()))
+	}
+	for platform, n := range map[string]int{
+		"Android": 10, "iOS": 5, "Electron": 6, "Node": 2, "Flutter": 1, "Web": 1, "Other": 3,
+	} {
+		if counts[platform] != n {
+			t.Errorf("%s rules = %d, want %d", platform, counts[platform], n)
+		}
+	}
+
+	// The registry path, not only AntiRERules(), must carry the same metadata.
+	registered := map[string]string{}
+	for _, m := range Default().Metas() {
+		if m.Category == model.CategoryAntiRE {
+			registered[m.ID] = m.Platform
+		}
+	}
+	for id, platform := range want {
+		if registered[id] != platform {
+			t.Errorf("registered rule %s platform = %q, want %q", id, registered[id], platform)
+		}
+	}
+
+	// Non-ARE rules must stay platform-free: the field is anti-RE metadata.
+	for _, m := range Default().Metas() {
+		if m.Category != model.CategoryAntiRE && m.Platform != "" {
+			t.Errorf("non-anti-RE rule %s declares platform %q", m.ID, m.Platform)
+		}
+	}
+}
+
 func TestAntiRE001GradleMinify(t *testing.T) {
 	antireTestCases(t, "VGL-ARE-001", []antireCase{
 		{

@@ -107,6 +107,7 @@ func applyInlineSuppressions(findings []model.Finding, files []*rules.File) (kep
 		}
 		f.Suppressed = true
 		f.SuppressWhy = directive.why()
+		f.SuppressKind = model.SuppressKindInline
 		suppressed = append(suppressed, f)
 	}
 	return kept, suppressed, errs

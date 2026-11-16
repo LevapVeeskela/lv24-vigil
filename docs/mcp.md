@@ -100,7 +100,7 @@ The server exposes 14 tools:
 | `vigil_threat_model` | Generate a STRIDE-style threat model from a bounded repository map. | network to the configured model |
 | `vigil_status` | Report provider, model, engine and store status. | none |
 | `vigil_rules` | List the rule catalog with IDs, severities and categories. | none |
-| `vigil_hardening` | Run only the `VGL-ARE` anti-RE hardening rules and group gaps by platform. Maps each gap to the REA reverse-engineering surface it raises the cost against in [anti-re-hardening.md](anti-re-hardening.md). | scan history only |
+| `vigil_hardening` | Run only the `VGL-ARE` anti-RE hardening rules and group gaps by platform. `platform` narrows the review to one surface. Maps each gap to the REA reverse-engineering surface it raises the cost against in [anti-re-hardening.md](anti-re-hardening.md). | scan history only |
 | `vigil_mcp_audit` | Run only the `VGL-MCP` rules over MCP server configuration files. With `includeUser=true` it also reads known home-directory configs. | none |
 | `vigil_dependencies` | Read supported manifests and query OSV.dev for known public advisories. | network request to OSV |
 | `vigil_baseline` | List, add, remove or clear accepted findings in the baseline. | baseline file only |
@@ -121,6 +121,17 @@ result.
 
 `vigil_scan` returns at most 50 findings by default and caps `maxFindings` at
 500. Raise `maxFindings` when you need the full list; the CLI default is 200.
+
+### `vigil_hardening` and platforms
+
+`vigil_hardening` accepts `platform` with `all` (default), `android`, `ios`,
+`electron`, `node`, `flutter`, `web` or `other`. The tool narrows `OnlyRules`
+before the scan, so `maxFindings` and the statistics describe the selection.
+Rules that belong to other platforms are reported as filtered rather than
+scanned; the summary names the selected platform and the finding/rule counts per
+platform. Grouping uses `model.RuleMeta.Platform` as the source of truth, with
+the numeric `VGL-ARE` ID ranges only as a fallback. `vigil_hardening` is
+deterministic and offline; it never consults a configured model.
 
 ### `vigil_fix` and `apply=true`
 

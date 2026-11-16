@@ -26,7 +26,7 @@
 | --- | --- | --- |
 | [Install](#install) · [See it work](#see-it-work) · [Quickstart](#60-second-quickstart) | [MCP setup](#mcp-setup) · [For AI agents](#for-ai-agents) · [Providers](#providers) · [Rules](#rules) | [CI & SARIF](#ci-sarif-and-precheck) · [Safety](#safety) · [Docs](#documentation) |
 
-> **Status: 0.9.x.** The deterministic engine, CLI and MCP server are usable
+> **Status: 0.10.x.** The deterministic engine, CLI and MCP server are usable
 > today. LLM output is advisory, rule coverage keeps growing, and Vigil is not a
 > replacement for a pentest. Treat every finding as a lead to verify, not a
 > verdict.
@@ -89,13 +89,13 @@ vigil fix VGL-XXXXXXXXXX --apply  # write it to the working tree, never commit
 | 🛠 | **Fix diffs** | Produces a validated unified diff; `--apply` writes the working tree only |
 | 🗺 | **Threat model** | Generates a STRIDE-style Markdown threat model |
 | 🔌 | **MCP server** | 14 tools, 4 resources and 5 prompts over stdio |
-| 📊 | **Reports** | Markdown, JSON, SARIF 2.1.0 and self-contained HTML |
-| 🧾 | **Baseline** | Suppresses accepted findings so only new issues fail a gate |
+| 📊 | **Reports** | Markdown, JSON, SARIF 2.1.0, JUnit (report-only) and self-contained HTML |
+| 🧾 | **Baseline** | Suppresses accepted findings so only new issues fail a gate; entries can carry a ticket, path scope and expiry date |
 | 🧰 | **Command provider** | Reuses an already-authenticated local CLI without storing an API key |
 | 🛡 | **Dependency advisories** | Reads lockfiles and queries `api.osv.dev` for known public advisories (opt-in network); `vigil_dependencies` |
 | 🧩 | **MCP config audit** | `VGL-MCP` rules for unpinned server packages, literal secrets, cleartext endpoints, disabled TLS and dangerous mounts; CLI and `vigil_mcp_audit` |
 | 📦 | **SBOM** | CycloneDX 1.6 or SPDX 2.3 JSON from the manifests and lockfiles Vigil already reads; offline |
-| 🔒 | **Anti-RE hardening** | Flags missing release controls and the artifact surfaces a reverse-engineering toolkit (REA) reads: symbols/DWARF, Electron fuses, JS minify, WebView, Hermes, iOS testability, plus debug signing, debuggable builds, backup/cleartext, inspector flags and source maps |
+| 🔒 | **Anti-RE hardening** | Flags missing release controls and the artifact surfaces a reverse-engineering toolkit (REA) reads: symbols/DWARF, Electron fuses, JS minify, WebView, Hermes, iOS testability, plus debug signing, debuggable builds, backup/cleartext, inspector flags and source maps; `--platform` narrows the review |
 | 🚦 | **CI gate** | `--fail-on`, exit code `2`, SARIF upload and `vigil precheck` |
 
 ## Install
@@ -132,7 +132,7 @@ platform packages. Keep optional dependencies enabled — `--no-optional` and
 Do not pin `0.5.0`: the tag and the npm package are immutable and still
 installable, but the CI examples on that tag are stale (`inputs.fail-on`, an
 unguarded GitLab pre-check). The binaries are fine; the templates are not. Use
-`0.9.3` or newer, or `@latest`.
+`0.10.0` or newer, or `@latest`.
 
 Requirements: Node.js 18+ for npm, Go 1.27+ for `go install`; release binaries
 and installers need no runtime.
@@ -178,12 +178,12 @@ Homebrew (macOS and Linux):
 brew install LevapVeeskela/tap/vigil
 ```
 
-Arch Linux: the `vigil-bin` PKGBUILD is ready for 0.9.3 in
+Arch Linux: the `vigil-bin` PKGBUILD is ready for 0.10.0 in
 [`packaging/aur`](packaging/aur), but AUR registration is temporarily paused,
 so the package is not published yet. Status, manual build and verification:
 [docs/aur.md](docs/aur.md).
 
-WinGet: the 0.9.3 manifest is in review; use Scoop or the release binaries
+WinGet: the 0.10.0 manifest is in review; use Scoop or the release binaries
 until it is merged.
 
 MCP: Vigil is listed in the official MCP Registry as
@@ -200,7 +200,7 @@ running as `nonroot`) is published to GitHub Container Registry for every
 release:
 
 ```bash
-docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.9.3 scan --no-llm --path /workspace
+docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.10.0 scan --no-llm --path /workspace
 ```
 
 The local `Dockerfile` builds the same image if you prefer:
@@ -241,12 +241,15 @@ Useful next commands:
 
 ```bash
 vigil status --json                              # machine-readable environment check
+vigil config validate --json                     # check the effective configuration
 vigil scan --format sarif --fail-on high         # CI gate, SARIF on stdout
 vigil review --base origin/main --format sarif   # review only changed lines
 vigil fix VGL-XXXXXXXXXX                         # proposed diff
 vigil fix VGL-XXXXXXXXXX --apply                 # write it, never commit
 vigil threat-model                               # STRIDE-style Markdown, needs a model
+vigil report --format junit > junit.xml          # JUnit for a CI test report
 vigil report --format html > report.html         # render the last stored scan
+vigil hardening . --platform android             # anti-RE gaps for one surface
 vigil mcp-audit . --fail-on high                 # MCP config posture (VGL-MCP)
 vigil sbom . --output sbom.cdx.json              # CycloneDX 1.6 bill of materials
 ```
@@ -316,7 +319,7 @@ The server exposes 14 tools:
 | `vigil_threat_model` | STRIDE-style threat model | model |
 | `vigil_status` | Provider, model, engine, store, baseline, last scan | none |
 | `vigil_rules` | Rule catalog with IDs, severities and categories | none |
-| `vigil_hardening` | VGL-ARE release-hardening gaps, grouped by platform | offline |
+| `vigil_hardening` | VGL-ARE release-hardening gaps, grouped by platform; `platform` narrows one surface | offline |
 | `vigil_mcp_audit` | VGL-MCP configuration gaps in MCP server configs | offline |
 | `vigil_dependencies` | Declared packages checked against OSV | network to OSV |
 | `vigil_baseline` | List, add, remove or clear accepted findings | baseline file |
@@ -477,6 +480,11 @@ For one-off cases, suppress a finding with a comment directive:
 `reason=`, `until=YYYY-MM-DD`, precedence and diff/review behavior:
 [docs/rules.md#inline-suppressions](docs/rules.md#inline-suppressions).
 
+Accepted findings go in the baseline. `vigil baseline add` accepts `--ticket`,
+`--expires YYYY-MM-DD` and `--path`, `list` shows that metadata and `prune`
+removes expired entries, which stop suppressing immediately:
+[docs/rules.md#baseline-and-suppression](docs/rules.md#baseline-and-suppression).
+
 Severity, confidence, baseline and masking details:
 [docs/rules.md](docs/rules.md).
 
@@ -542,7 +550,7 @@ skipping, `autoupdate` and the comparison with `vigil hook install`:
 
 ### GitHub Actions (PR, `main`, manual)
 
-The same action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Use `uses: LevapVeeskela/lv24-vigil@v0.9.3`; add `version: 0.9.3` when the CLI must match the action tag.
+The same action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Use `uses: LevapVeeskela/lv24-vigil@v0.10.0`; add `version: 0.10.0` when the CLI must match the action tag.
 
 Copy [`examples/github-workflow.yml`](examples/github-workflow.yml) to
 `.github/workflows/vigil.yml`:

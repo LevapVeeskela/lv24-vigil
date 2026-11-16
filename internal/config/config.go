@@ -304,7 +304,7 @@ func mergeFile(cfg *Config, path string, allowSecret bool) error {
 	}
 	var fc FileConfig
 	if err := yaml.Unmarshal(data, &fc); err != nil {
-		return fmt.Errorf("parse config %s: %w", path, err)
+		return fmt.Errorf("parse config %s: %w", path, &redactedError{err: err})
 	}
 	if !allowSecret {
 		if fc.APIKey != nil && strings.TrimSpace(*fc.APIKey) != "" {
@@ -365,7 +365,7 @@ func mergeFile(cfg *Config, path string, allowSecret bool) error {
 	if fc.Timeout != nil {
 		d, err := time.ParseDuration(*fc.Timeout)
 		if err != nil {
-			return fmt.Errorf("config %s: timeout: %w", path, err)
+			return fmt.Errorf("config %s: timeout: %w", path, &redactedError{err: err})
 		}
 		cfg.Timeout = d
 		cfg.Sources["timeout"] = path
@@ -373,7 +373,7 @@ func mergeFile(cfg *Config, path string, allowSecret bool) error {
 	if fc.CommandTimeout != nil {
 		d, err := time.ParseDuration(*fc.CommandTimeout)
 		if err != nil {
-			return fmt.Errorf("config %s: command_timeout: %w", path, err)
+			return fmt.Errorf("config %s: command_timeout: %w", path, &redactedError{err: err})
 		}
 		cfg.CommandTimeout = d
 		cfg.Sources["command_timeout"] = path
@@ -458,6 +458,61 @@ func mergeFile(cfg *Config, path string, allowSecret bool) error {
 		}
 	}
 	return nil
+}
+
+// redactedError keeps the error chain while hiding the scalar values quoted in
+// a loader message.
+type redactedError struct{ err error }
+
+func (e *redactedError) Error() string { return scrubQuotedScalars(e.err.Error()) }
+
+func (e *redactedError) Unwrap() error { return e.err }
+
+// ScrubQuotedScalars hides the scalar values quoted in a configuration
+// message. Callers that print a validation error with quoted values (`%q`) use
+// it so a secret pasted under the wrong key cannot reach status output.
+func ScrubQuotedScalars(message string) string { return scrubQuotedScalars(message) }
+
+// scrubQuotedScalars replaces the contents of quoted scalars in a loader error
+// with "***". YAML unmarshal errors quote the offending value in backticks and
+// time.ParseDuration quotes it in double quotes; a value pasted under the wrong
+// key may be a credential. The file, key and line stay readable.
+func scrubQuotedScalars(message string) string {
+	var b strings.Builder
+	b.Grow(len(message))
+	for i := 0; i < len(message); {
+		quote := message[i]
+		if quote != '`' && quote != '"' {
+			b.WriteByte(quote)
+			i++
+			continue
+		}
+		end := -1
+		for j := i + 1; j < len(message); j++ {
+			if message[j] == '\\' && quote == '"' {
+				j++ // a duration error escapes quotes inside the value
+				continue
+			}
+			if message[j] == quote {
+				end = j
+				break
+			}
+		}
+		if end < 0 {
+			// An unterminated quote is kept as-is so a stray character cannot
+			// swallow the rest of the message.
+			b.WriteByte(quote)
+			i++
+			continue
+		}
+		b.WriteByte(quote)
+		if end > i+1 {
+			b.WriteString("***")
+		}
+		b.WriteByte(quote)
+		i = end + 1
+	}
+	return b.String()
 }
 
 // validateProjectPath rejects absolute, traversal and .git paths in a project
@@ -613,6 +668,7 @@ func applyEnv(cfg *Config) error {
 	if cfg.Model == "" {
 		cfg.Model = providerDefaultModel(cfg.Provider)
 	}
+	recordCanonicalSourceKeys(cfg.Sources)
 	return nil
 }
 
@@ -930,8 +986,35 @@ func (c Config) Redacted() Config {
 	return c
 }
 
-// RedactURL removes userinfo and key-like query parameters from a base URL so
-// it can be printed in status output and stored in scan results.
+// urlSecretParts are the query parameter name fragments that mark a value as a
+// credential. The list covers the secret key names used by inspect.go, plus the
+// short spellings query strings commonly use, so `vigil config show` never
+// prints a key that `vigil config validate` would call a secret.
+var urlSecretParts = []string{
+	"password", "passwd", "pwd", "secret", "token", "access_token",
+	"api_key", "apikey", "key", "auth", "credential", "signature", "sig",
+}
+
+// looksSecretQueryKey reports whether a query parameter name carries a
+// credential. It is deliberately conservative: hiding a harmless value costs
+// nothing, while printing a secret cannot be undone.
+func looksSecretQueryKey(name string) bool {
+	k := strings.ToLower(strings.TrimSpace(name))
+	if k == "" {
+		return false
+	}
+	for _, part := range urlSecretParts {
+		if strings.Contains(k, part) {
+			return true
+		}
+	}
+	return false
+}
+
+// RedactURL removes userinfo, the fragment and credential query parameters from
+// a base URL so it can be printed in status output and stored in scan results.
+// A fragment is never needed to reach an endpoint and commonly carries an OAuth
+// token, so it is dropped entirely.
 func RedactURL(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -939,25 +1022,77 @@ func RedactURL(raw string) string {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return raw
+		// A URL net/url refuses to parse cannot be edited field by field:
+		// keep the scheme and host, drop the whole query and fragment.
+		return redactUnparsedURL(raw)
 	}
 	if u.User != nil {
 		u.User = url.User("REDACTED")
 	}
-	q := u.Query()
-	changed := false
-	for k := range q {
-		lk := strings.ToLower(k)
-		if strings.Contains(lk, "key") || strings.Contains(lk, "token") ||
-			strings.Contains(lk, "secret") || strings.Contains(lk, "auth") {
-			q.Set(k, "REDACTED")
-			changed = true
+	u.Fragment = ""
+	u.RawFragment = ""
+	if u.RawQuery != "" {
+		// u.Query() discards ParseQuery errors, which would keep a malformed
+		// secret (for example ?password=p%ss) verbatim in the output. A query
+		// that does not parse is redacted whole instead.
+		q, err := url.ParseQuery(u.RawQuery)
+		if err != nil {
+			u.RawQuery = "REDACTED"
+			return u.String()
+		}
+		changed := false
+		for k := range q {
+			if looksSecretQueryKey(k) {
+				q.Set(k, "REDACTED")
+				changed = true
+			}
+		}
+		if changed {
+			u.RawQuery = q.Encode()
 		}
 	}
-	if changed {
-		u.RawQuery = q.Encode()
-	}
 	return u.String()
+}
+
+// redactUnparsedURL keeps the endpoint of a URL that net/url cannot parse and
+// drops every part that can carry a credential.
+func redactUnparsedURL(raw string) string {
+	base := raw
+	if i := strings.IndexByte(base, '#'); i >= 0 {
+		base = base[:i]
+	}
+	hasQuery := false
+	if i := strings.IndexByte(base, '?'); i >= 0 {
+		base = base[:i]
+		hasQuery = true
+	}
+	base = redactURLUserinfo(base)
+	if hasQuery {
+		return base + "?REDACTED"
+	}
+	return base
+}
+
+// redactURLUserinfo replaces scheme://user:password@host with
+// scheme://REDACTED@host in a raw string. It works without net/url, so it is
+// also the fallback for inputs the parser rejects and for command arguments.
+func redactURLUserinfo(raw string) string {
+	schemeEnd := strings.Index(raw, "://")
+	if schemeEnd < 0 {
+		return raw
+	}
+	prefix := raw[:schemeEnd+3]
+	rest := raw[schemeEnd+3:]
+	authority := rest
+	tail := ""
+	if end := strings.IndexAny(rest, "/?#"); end >= 0 {
+		authority, tail = rest[:end], rest[end:]
+	}
+	at := strings.LastIndexByte(authority, '@')
+	if at < 0 {
+		return raw
+	}
+	return prefix + "REDACTED@" + authority[at+1:] + tail
 }
 
 func setStr(dst *string, env string, sources map[string]string) {

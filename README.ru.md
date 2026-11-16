@@ -27,7 +27,7 @@
 | --- | --- | --- |
 | [Установка](#установка) · [Посмотрите, как это работает](#посмотрите-как-это-работает) · [Быстрый старт](#быстрый-старт-за-60-секунд) | [Настройка MCP](#настройка-mcp) · [Для ИИ-агентов](#для-ии-агентов) · [Провайдеры](#провайдеры) · [Правила](#правила) | [CI и SARIF](#ci-sarif-и-precheck) · [Безопасность](#безопасность) · [Документация](#документация) |
 
-> **Статус: 0.9.x.** Детерминированный движок, CLI и MCP-сервер уже можно
+> **Статус: 0.10.x.** Детерминированный движок, CLI и MCP-сервер уже можно
 > использовать. Вывод модели носит рекомендательный характер, покрытие правил
 > растёт, и Vigil не заменяет пентест. Любая находка — это повод проверить, а не
 > готовый приговор.
@@ -91,13 +91,13 @@ vigil fix VGL-XXXXXXXXXX --apply  # записать в рабочее дере�
 | 🛠 | **Diff для фикса** | Готовит проверенный unified diff; `--apply` пишет только рабочее дерево |
 | 🗺 | **Модель угроз** | Генерирует STRIDE-модель в Markdown |
 | 🔌 | **MCP-сервер** | 14 инструментов, 4 ресурса и 5 промптов по stdio |
-| 📊 | **Отчёты** | Markdown, JSON, SARIF 2.1.0 и самодостаточный HTML |
-| 🧾 | **Baseline** | Подавляет принятые находки, чтобы гейт падал только на новых |
+| 📊 | **Отчёты** | Markdown, JSON, SARIF 2.1.0, JUnit (только `report`) и самодостаточный HTML |
+| 🧾 | **Baseline** | Подавляет принятые находки, чтобы гейт падал только на новых; у записи могут быть тикет, область пути и срок действия |
 | 🧰 | **Провайдер `command`** | Переиспользует уже авторизованный локальный CLI без хранения API-ключа |
 | 🛡 | **Проверка зависимостей** | Читает lockfile и запрашивает `api.osv.dev` по известным публичным advisory (сеть opt-in); `vigil_dependencies` |
 | 🧩 | **Аудит конфигурации MCP** | Правила `VGL-MCP`: незапиненные пакеты серверов, литеральные секреты, cleartext-endpoint, отключённый TLS и опасные mount; CLI и `vigil_mcp_audit` |
 | 📦 | **SBOM** | CycloneDX 1.6 или SPDX 2.3 JSON из манифестов и lockfile, которые Vigil уже читает; офлайн |
-| 🔒 | **Anti-RE hardening** | Ищет отсутствующую защиту релиза и поверхности, которые читает reverse-engineering-инструмент (REA): symbols/DWARF, Electron fuses, JS minify, WebView, Hermes, iOS testability, а также debug-подпись, debuggable, backup/cleartext, inspector и production source maps |
+| 🔒 | **Anti-RE hardening** | Ищет отсутствующую защиту релиза и поверхности, которые читает reverse-engineering-инструмент (REA): symbols/DWARF, Electron fuses, JS minify, WebView, Hermes, iOS testability, а также debug-подпись, debuggable, backup/cleartext, inspector и production source maps; `--platform` сужает проверку |
 | 🚦 | **CI-гейт** | `--fail-on`, код выхода `2`, загрузка SARIF и `vigil precheck` |
 
 ## Установка
@@ -133,7 +133,7 @@ Publishing (OIDC) с аттестацией происхождения.
 
 Не пиньте `0.5.0`: тег и npm-пакет неизменяемы и всё ещё ставятся, но примеры
 CI на этом теге устарели (`inputs.fail-on`, непроверенный GitLab pre-check).
-Бинарники в порядке, шаблоны — нет. Используйте `0.9.3` или новее, либо
+Бинарники в порядке, шаблоны — нет. Используйте `0.10.0` или новее, либо
 `@latest`.
 
 Требования: Node.js 18+ для npm, Go 1.27+ для `go install`; готовым бинарникам и
@@ -180,12 +180,12 @@ Homebrew (macOS ? Linux):
 brew install LevapVeeskela/tap/vigil
 ```
 
-Arch Linux: PKGBUILD `vigil-bin` ????? ??? 0.9.3 ?
+Arch Linux: PKGBUILD `vigil-bin` ????? ??? 0.10.0 ?
 [`packaging/aur`](packaging/aur), ?? ??????????? ? AUR ????????
 ??????????????, ??????? ????? ??? ?? ???????????. ??????, ?????? ?????? ?
 ????????: [docs/aur.md](docs/aur.md).
 
-WinGet: ???????? 0.9.3 ?? ?????; ?? ????? ??????????? Scoop ??? ????????? ??
+WinGet: ???????? 0.10.0 ?? ?????; ?? ????? ??????????? Scoop ??? ????????? ??
 ??????.
 
 MCP: сервер опубликован в официальном MCP Registry (`mcpName` в
@@ -200,7 +200,7 @@ npm-пакете и `server.json`), поэтому клиенты с подде�
 запуск от `nonroot`) публикуется в GitHub Container Registry с каждым релизом:
 
 ```bash
-docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.9.3 scan --no-llm --path /workspace
+docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.10.0 scan --no-llm --path /workspace
 ```
 
 Локальный `Dockerfile` собирает тот же образ, если так удобнее:
@@ -241,12 +241,15 @@ VIGIL_PROVIDER=ollama VIGIL_MODEL=qwen2.5-coder:14b vigil scan
 
 ```bash
 vigil status --json                              # проверка окружения для машин
+vigil config validate --json                     # проверка итоговой конфигурации
 vigil scan --format sarif --fail-on high         # CI-гейт, SARIF в stdout
 vigil review --base origin/main --format sarif   # только изменённые строки
 vigil fix VGL-XXXXXXXXXX                         # предложенный diff
 vigil fix VGL-XXXXXXXXXX --apply                 # записать, без коммита
 vigil threat-model                               # STRIDE-модель в Markdown, нужна модель
+vigil report --format junit > junit.xml          # JUnit для CI-отчёта
 vigil report --format html > report.html         # отрисовать последний скан
+vigil hardening . --platform android             # anti-RE-пробелы одной платформы
 vigil mcp-audit . --fail-on high                 # posture конфигурации MCP (VGL-MCP)
 vigil sbom . --output sbom.cdx.json              # CycloneDX 1.6 bill of materials
 ```
@@ -318,7 +321,7 @@ args = ["-y", "lv24-vigil", "mcp"]
 | `vigil_threat_model` | Модель угроз в стиле STRIDE | модель |
 | `vigil_status` | Провайдер, модель, движок, хранилище, baseline, последний скан | ничего |
 | `vigil_rules` | Каталог правил с ID, критичностью и категориями | ничего |
-| `vigil_hardening` | Пробелы release-hardening по VGL-ARE, сгруппированные по платформам | офлайн |
+| `vigil_hardening` | Пробелы release-hardening по VGL-ARE, сгруппированные по платформам; `platform` сужает одну поверхность | офлайн |
 | `vigil_mcp_audit` | Пробелы конфигурации MCP по VGL-MCP | офлайн |
 | `vigil_dependencies` | Объявленные пакеты, сверенные с OSV | сеть до OSV |
 | `vigil_baseline` | Просмотр, добавление, удаление и очистка принятых находок | файл baseline |
@@ -484,6 +487,11 @@ scan:
 `reason=`, `until=YYYY-MM-DD`, приоритет и поведение в diff/review:
 [docs/rules.md#inline-suppressions](docs/rules.md#inline-suppressions).
 
+Принятые находки попадают в baseline. `vigil baseline add` принимает
+`--ticket`, `--expires YYYY-MM-DD` и `--path`, `list` показывает эти данные, а
+`prune` удаляет истёкшие записи; истёкшая запись сразу перестаёт подавлять:
+[docs/rules.md#baseline-and-suppression](docs/rules.md#baseline-and-suppression).
+
 Severity, confidence, baseline и маскирование: [docs/rules.md](docs/rules.md).
 
 ## Безопасность
@@ -549,7 +557,7 @@ vigil hook uninstall
 
 ### GitHub Actions (PR, `main`, вручную)
 
-Действие также опубликовано в [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Используйте `uses: LevapVeeskela/lv24-vigil@v0.9.3`; добавьте `version: 0.9.3`, если CLI должен совпадать с тегом действия.
+Действие также опубликовано в [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Используйте `uses: LevapVeeskela/lv24-vigil@v0.10.0`; добавьте `version: 0.10.0`, если CLI должен совпадать с тегом действия.
 
 Скопируйте [`examples/github-workflow.yml`](examples/github-workflow.yml) в
 `.github/workflows/vigil.yml`:

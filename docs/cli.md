@@ -17,13 +17,15 @@ vigil
 | `vigil mcp` | Run the MCP server over stdio. |
 | `vigil init` | Write a starter `.vigil.yaml`. |
 | `vigil status` | Show provider, model, rules, store and last scan. Alias: `vigil doctor`. |
+| `vigil config validate [path]` | Load the user and project config exactly like a scan and report problems. |
+| `vigil config show` | Print the effective configuration with the source of every value. |
 | `vigil rules` | List and filter the detection rules. |
-| `vigil hardening [path]` | Run only the anti-RE hardening rules (`VGL-ARE`) and report gaps by platform. |
+| `vigil hardening [path]` | Run only the anti-RE hardening rules (`VGL-ARE`) and report gaps by platform; `--platform` narrows the review. |
 | `vigil mcp-audit [path]` | Run only the MCP configuration rules (`VGL-MCP`) over project and optionally user configs. |
 | `vigil dependencies [path]` | Read supported lockfiles and query OSV.dev for known public advisories. |
 | `vigil sbom [path]` | Build a CycloneDX 1.6 or SPDX 2.3 dependency inventory. |
-| `vigil baseline` | List, add, remove or clear the suppression baseline. |
-| `vigil report` | Render a stored scan. |
+| `vigil baseline` | List, add, remove, prune or clear the suppression baseline. |
+| `vigil report` | Render a stored scan. `--format junit` is available here only. |
 | `vigil precheck` | Upload a SARIF report to the LV24 security control plane as a pre-check. |
 | `vigil hook install` | Install a local pre-commit or pre-push gate. |
 | `vigil hook status` | Show installed Vigil hooks, marker and target command. |
@@ -74,7 +76,7 @@ These flags are shared by `vigil scan` and `vigil review`, except where noted.
 | `--no-baseline` | - | Ignore the suppression baseline. |
 | `--no-inline-suppressions` | - | Ignore `vigil:ignore` comment directives. |
 | `--no-osv` | - | Skip the configured OSV dependency lookup for this scan. |
-| `--format FMT` | `md`, `json`, `sarif`, `html` | Report format. Default from config (`md`). |
+| `--format FMT` | `md`, `json`, `sarif`, `html` | Report format. Default from config (`md`). JUnit is report-only; use `vigil report --format junit`. |
 | `--output FILE` | path or `-` | Write the report to a file. `-` means stdout. |
 | `--fail-on LEVEL` | `info`, `low`, `medium`, `high`, `critical` | Exit `2` when a finding at or above this level exists. |
 | `--quiet` | - | Skip the human summary. |
@@ -186,17 +188,42 @@ Render the last stored scan:
 vigil report
 vigil report --format json
 vigil report --format sarif --output vigil.sarif
+vigil report --format junit --output vigil-junit.xml
 vigil report --format html --output vigil.html
 vigil report --scan scan_20260101T120000_ab12cd
 ```
 
 | Flag | Meaning |
 |---|---|
-| `--format FMT` | `md`, `json`, `sarif` or `html`. Default from config. |
+| `--format FMT` | `md`, `json`, `sarif`, `junit` or `html`. Default from config. |
 | `--output FILE` | Write to a file. `-` means stdout. |
 | `--scan ID` | Scan to render. Default: the most recent scan. |
 
 `vigil report` reads the local store. It does not run a new scan.
+
+### JUnit
+
+JUnit is rendered from a stored scan and is **report-only**: `scan` or `review`
+with `--format junit` fails with `JUnit is report-only: use vigil report
+--format junit`. The document is a `testsuites` root with one `vigil` suite;
+every active finding becomes a `testcase` with a `failure`, every suppressed
+finding becomes a `testcase` with a `skipped` element.
+
+| Element | Mapping |
+|---|---|
+| `tests` | Active plus suppressed findings |
+| `failures` | Active findings; `type` is the severity, the body carries location and bounded evidence |
+| `skipped` | Suppressed findings; `message` is the suppression reason, or `suppressed` when none |
+| `errors` | Always `0` |
+| `classname` / `name` | Rule ID / finding title |
+| `time` | Scan duration in seconds; the suite `timestamp` comes from the scan start |
+
+Use it for CI test reporting:
+
+```bash
+vigil scan . --no-llm --format json        # record the scan
+vigil report --format junit --output junit.xml
+```
 
 ## Pre-check
 
@@ -258,7 +285,9 @@ Filters combine with AND. `--language` keeps rules that declare that language.
 
 ```bash
 vigil hardening .
-vigil hardening ./mobile --format json --fail-on high
+vigil hardening ./mobile --platform android
+vigil hardening . --platform ios --format json --fail-on high
+vigil hardening . --platform all          # default: every platform
 ```
 
 Runs only the `VGL-ARE` rules: release obfuscation, debug signing, debuggable
@@ -266,6 +295,25 @@ builds, backup and cleartext settings, plist transport exceptions, Flutter
 release obfuscation, Electron isolation, Node inspector flags and production
 source maps. It forces deterministic output and skips the configured OSV lookup.
 These are hardening gaps, not vulnerability or exploitability claims.
+
+`--platform` narrows the run before the scan, so `--max-findings` and the stats
+describe the selected surface only. Accepted values: `android`, `ios`,
+`electron`, `node`, `flutter`, `web`, `other` and `all` (default). The rule
+metadata field `platform` is the source of truth; the numeric `VGL-ARE` ID
+ranges are only a fallback for rules without it. Native, .NET and React Native
+rules report as `other`.
+
+The summary always shows the selection, the findings and rule count per
+platform, and marks the platforms the filter skipped:
+
+```text
+  platform  android (10 of 28 anti-RE rules)
+  detected  Android (2 findings, 10 rules), iOS (5 rules, filtered), ...
+  note      only android rules were scanned; run without --platform to review every platform
+```
+
+`--rules` still works, but it can only narrow the selected platform's rules; a
+rule outside that set is rejected.
 
 ## MCP configuration audit
 
@@ -357,29 +405,64 @@ The default subcommand is `list`.
 vigil baseline
 vigil baseline list
 vigil baseline add VGL-XXXXXXXXXX --reason "accepted risk in legacy importer"
+vigil baseline add VGL-XXXXXXXXXX --reason "tracked" --ticket SEC-42 \
+  --expires 2027-01-31 --path internal/legacy/import.go
 vigil baseline remove VGL-XXXXXXXXXX
+vigil baseline prune --dry-run
+vigil baseline prune
 vigil baseline clear --yes
 ```
 
-`add` resolves the finding in the last scan or recent history and records its
-fingerprint too, so the entry survives small line moves. `remove` removes both
-the ID and the matching fingerprint. `clear` refuses to run without `--yes`.
+| Subcommand | Meaning |
+|---|---|
+| `list` | Show every accepted entry with its ticket, expiry, path scope and rule. |
+| `add FINDING_ID` | Accept one finding. Flags: `--reason TEXT`, `--ticket TEXT`, `--expires YYYY-MM-DD`, `--path PATH`. |
+| `remove FINDING_ID` | Remove the matching entry, its fingerprint and the legacy fingerprint mirror. |
+| `prune [--dry-run]` | Remove entries whose expiry date is before today (UTC); `--dry-run` only reports them. |
+| `clear --yes` | Write an empty baseline. |
 
-The default file is `.vigil-baseline.json` in the scan root. The format:
+`add` resolves the finding in the last scan or recent history and, when found,
+records its fingerprint and rule ID too, so the entry survives small line moves.
+`--expires` is a UTC date: a malformed value or one before today is rejected.
+`--path` must be project-relative and, when the finding is found, must match its
+path. `remove` fails when the entry does not exist; `clear` refuses to run
+without `--yes`.
+
+The default file is `.vigil-baseline.json` in the scan root. Version 2 adds
+optional per-entry metadata:
 
 ```json
 {
-  "version": 1,
-  "fingerprints": ["fp_0123456789abcdef"],
+  "version": 2,
+  "fingerprints": [],
   "findings": [
-    { "id": "VGL-XXXXXXXXXX", "reason": "accepted risk in legacy importer" }
+    {
+      "id": "VGL-XXXXXXXXXX",
+      "reason": "accepted risk in legacy importer",
+      "fingerprint": "fp_0123456789abcdef",
+      "ruleId": "VGL-SEC-003",
+      "path": "internal/legacy/import.go",
+      "ticket": "SEC-42",
+      "expires": "2027-01-31"
+    }
   ]
 }
 ```
 
-Suppressed findings are removed from the active findings and recorded separately
-in the scan result. They no longer fail `--fail-on`. Use `--no-baseline` to see
-everything.
+Every field is optional, but an entry must carry an `id` or a `fingerprint`.
+`path` and `ruleId` narrow the match to one file or rule; `ticket` is
+documentation. A version-1 file still loads: it is normalized to version 2 in
+memory, top-level fingerprints become entries with reason `legacy fingerprint`,
+and the next write stores the version-2 shape.
+
+An entry whose `expires` date is before today (UTC) stops suppressing. A
+malformed date also counts as expired, so a typo cannot suppress forever. The
+finding returns at full severity and the scan prints
+`baseline entry for <id> expired on <date> at <path>` as a warning; `prune`
+removes the stale entry. Suppressed findings are removed from the active findings
+and recorded separately in the scan result. They no longer fail `--fail-on`.
+SARIF is active-only, so a suppressed finding has no SARIF result; JSON,
+Markdown, HTML and JUnit still show it. Use `--no-baseline` to see everything.
 
 ## Init
 
@@ -441,10 +524,14 @@ tools. stdout is the protocol stream; diagnostics go to stderr.
 | `md` | Human review, pull request comments, terminal output |
 | `json` | Automation, custom dashboards, archival |
 | `sarif` | GitHub code scanning and other SARIF consumers |
+| `junit` | CI test reporting; `vigil report --format junit` only |
 | `html` | A standalone report with no external assets |
 
 The JSON report contains the scan ID, timestamps, root, mode, findings, stats,
-model information and any errors. SARIF is 2.1.0.
+model information and any errors. SARIF is 2.1.0 and active-only: suppressed
+findings are omitted so GitHub code scanning does not open alerts for accepted
+risks; JSON, Markdown, HTML and JUnit retain them. JUnit is described under
+[Report](#report).
 
 ## Exit codes
 
@@ -456,6 +543,32 @@ model information and any errors. SARIF is 2.1.0.
 
 A scan that finds issues but does not use `--fail-on` still exits `0`. This is
 intentional: the report is the output, the exit code is the policy gate.
+
+## Configuration inspection
+
+```bash
+vigil config validate
+vigil config validate ./services/api --json
+vigil config show
+vigil config show --json
+```
+
+`validate` loads the user and project configuration with the same loader and
+precedence as a scan (defaults < user config < project config < environment) and
+reports a problem with its file, key, message and fix. An optional path selects
+the project root, like a scan path. `show` prints every effective value with the
+source it came from. Both accept `--json` and exit `1` when the configuration
+does not load (`show` prints the error first).
+
+Secrets are always redacted: `api_key`, `command_env` values and credential flags
+appear as `***`; credentials inside `base_url` or `scan.osv_base_url` (userinfo,
+fragment and secret query keys) appear as `REDACTED`. Neither command opens the
+scan store or contacts a model.
+
+The JSON shapes are stable: `validate` emits `{ok, files, error}`, `show` emits
+`{files, entries[{key, value, source, secret}], error}`. `error` is `null` when
+the configuration is valid. A source is `defaults`, a config file path or
+`env:NAME`.
 
 ## Configuration
 

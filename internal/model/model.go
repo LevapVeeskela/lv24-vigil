@@ -165,7 +165,17 @@ type Finding struct {
 	Fix         *Fix          `json:"fix,omitempty"`
 	Suppressed  bool          `json:"suppressed,omitempty"`
 	SuppressWhy string        `json:"suppressedReason,omitempty"`
+	// SuppressKind names the suppression source: "baseline" or "inline".
+	// Reports that need to distinguish an accepted baseline entry from an
+	// inline directive read this field; older results may leave it empty.
+	SuppressKind string `json:"suppressKind,omitempty"`
 }
+
+// Suppression sources recorded in Finding.SuppressKind.
+const (
+	SuppressKindBaseline = "baseline"
+	SuppressKindInline   = "inline"
+)
 
 // ComputeID derives a stable, content-addressed identifier. It is stable across
 // runs as long as the rule, path, and normalised evidence stay the same, which
@@ -218,11 +228,15 @@ type RuleMeta struct {
 	Description string   `json:"description"`
 	Severity    Severity `json:"severity"`
 	Category    Category `json:"category"`
-	Languages   []string `json:"languages,omitempty"`
-	CWE         []string `json:"cwe,omitempty"`
-	OWASP       []string `json:"owasp,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	References  []string `json:"references,omitempty"`
+	// Platform names the surface an anti-RE rule belongs to (Android, iOS,
+	// Electron, Node, Flutter, Web or Other). It is empty for every rule that
+	// is not a VGL-ARE hardening rule, so callers must treat "" as "none".
+	Platform   string   `json:"platform,omitempty"`
+	Languages  []string `json:"languages,omitempty"`
+	CWE        []string `json:"cwe,omitempty"`
+	OWASP      []string `json:"owasp,omitempty"`
+	Tags       []string `json:"tags,omitempty"`
+	References []string `json:"references,omitempty"`
 }
 
 // Stats summarises a scan.

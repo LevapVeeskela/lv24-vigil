@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -76,6 +77,33 @@ func TestStatusRedactsBaseURLSecrets(t *testing.T) {
 				t.Errorf("%v leaked %q:\n%s", args, secret, out)
 			}
 		}
+	}
+}
+
+func TestStatusScrubsQuotedConfigValues(t *testing.T) {
+	cases := []struct{ name, body string }{
+		{"provider", "provider: sk-provider-secret\n"},
+		{"format", "output:\n  format: sk-format-secret\n"},
+		{"min severity", "scan:\n  min_severity: sk-severity-secret\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := newTestRepo(t)
+			writeTestFile(t, dir, ".vigil.yaml", tc.body)
+
+			for _, args := range [][]string{{"status"}, {"status", "--json"}} {
+				out, stderr, err := runCLI(t, args...)
+				if !errors.Is(err, errStatusConfig) {
+					t.Fatalf("%v: err = %v, want errStatusConfig\nstderr:\n%s", args, err, stderr)
+				}
+				if strings.Contains(out, "sk-") {
+					t.Errorf("%v printed the configured value:\n%s", args, out)
+				}
+				if !strings.Contains(out, "***") {
+					t.Errorf("%v did not mark the scrubbed value:\n%s", args, out)
+				}
+			}
+		})
 	}
 }
 

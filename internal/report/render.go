@@ -1,4 +1,4 @@
-// Package report renders scan results as Markdown, JSON, SARIF or HTML.
+// Package report renders scan results as Markdown, JSON, SARIF, JUnit or HTML.
 //
 // Renderers are pure: they never mutate the result, never read the clock and
 // never touch the network. The same input always produces the same bytes.
@@ -30,6 +30,7 @@ const (
 	FormatMarkdown = "md"
 	FormatJSON     = "json"
 	FormatSARIF    = "sarif"
+	FormatJUnit    = "junit"
 	FormatHTML     = "html"
 )
 
@@ -56,10 +57,12 @@ func Render(format string, res *model.ScanResult, opts Options) ([]byte, error) 
 		return renderJSON(res)
 	case FormatSARIF:
 		return renderSARIF(res)
+	case FormatJUnit:
+		return renderJUnit(res)
 	case FormatHTML:
 		return renderHTML(res, opts)
 	default:
-		return nil, fmt.Errorf("report: unsupported format %q (want md, json, sarif or html)", format)
+		return nil, fmt.Errorf("report: unsupported format %q (want md, json, sarif, junit or html)", format)
 	}
 }
 
@@ -86,6 +89,8 @@ func normalizeFormat(format string) string {
 		return FormatJSON
 	case "sarif":
 		return FormatSARIF
+	case "junit":
+		return FormatJUnit
 	case "html", "htm":
 		return FormatHTML
 	default:

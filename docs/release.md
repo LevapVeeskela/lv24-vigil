@@ -185,8 +185,8 @@ refuses an older npm). Use the same or newer npm for the `npm trust` commands.
 
 ## Verify a release
 
-`v0.9.3` ships the same asset list as `v0.9.2`: six static binaries, six Linux
-packages (deb/rpm/apk × amd64/arm64), `vigil-sbom-0.9.3.cdx.json`,
+`v0.10.0` ships the same asset list as `v0.9.3`: six static binaries, six Linux
+packages (deb/rpm/apk × amd64/arm64), `vigil-sbom-0.10.0.cdx.json`,
 `checksums.txt` and its cosign bundle, and the GHCR image for both
 architectures. Download what you need from the release page; the
 commands below verify it without trusting the download.
@@ -230,17 +230,17 @@ signature. Compare its digest with the `container` run summary, or inspect the
 attestations directly:
 
 ```bash
-docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.9.3 \
+docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.10.0 \
   --format '{{json .Manifest}}' | jq -r .digest
 ```
 
 Installed CLI:
 
 ```bash
-npm view lv24-vigil version          # 0.9.3
-npm view lv24-vigil dist-tags        # { latest: '0.9.3' }
-npm i -g lv24-vigil@0.9.3            # or @latest
-vigil version                        # vigil 0.9.3 (<commit>, <date>, go<version>)
+npm view lv24-vigil version          # 0.10.0
+npm view lv24-vigil dist-tags        # { latest: '0.10.0' }
+npm i -g lv24-vigil@0.10.0            # or @latest
+vigil version                        # vigil 0.10.0 (<commit>, <date>, go<version>)
 ```
 
 Platform packages, one line each:
@@ -270,7 +270,7 @@ Provenance:
 npm view lv24-vigil dist.attestations
 ```
 
-For `0.9.3` this returns a `https://slsa.dev/provenance/v1` attestation built
+For `0.10.0` this returns a `https://slsa.dev/provenance/v1` attestation built
 from `.github/workflows/npm-publish.yml` on a GitHub-hosted runner. The npm page
 shows the matching provenance badge.
 
@@ -316,6 +316,7 @@ vigil version                                                 # reports the tag 
 
 ### Decision log
 
+- **0.10.0 adds baseline v2, hardening platform presets, config commands and JUnit (2026-11-16).** No rule changes (**263** rules, ten families, 14 MCP tools): the baseline file moves to version 2 with `ticket`, `expires`, `path` and `prune` (an expired entry stops suppressing), and SARIF is active-only so accepted risks do not open code-scanning alerts; `vigil hardening --platform` and the `platform` MCP argument narrow the VGL-ARE review to android, ios, electron, node, flutter, web or other; `vigil config validate|show` checks and explains the effective configuration without opening the store or a model; and `vigil report --format junit` adds a report-only JUnit document. Release assets are unchanged from 0.9.3, and the action default moves to `0.10.0`.
 - **0.9.3 adds the official MCP Registry listing and AUR packaging (2026-11-15).** No code or rule changes (**263** rules, ten families, 14 MCP tools): the same engine as 0.9.2, with distribution-only additions. Vigil is now listed in the official MCP Registry as `io.github.LevapVeeskela/vigil` (`mcpName` plus `server.json`), so registry-aware clients can resolve the stdio server; the AUR `vigil-bin` packaging is prepared for the published release (publication awaits AUR registration); and `docs/mcp-registry.md`, `docs/aur.md` and `docs/mcp-directories.md` document registry publishing, AUR maintenance and the directory/CII submissions. Release assets are unchanged, and the action default moves to `0.9.3`.
 - **0.9.2 fixes the release pipeline (2026-11-15).** Move cosign installation after the GoReleaser build so goreleaser-action verifies its own download with the bundled cosign; 0.9.1 failed before publishing. No code or rule changes.
 - **0.9.1 makes the release installable everywhere and attributable
@@ -507,8 +508,15 @@ reasoning and the procedure if a rewrite is ever required are in
 ## Current state
 
 `0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
-path. All seven npm packages and PyPI are live at `0.9.3`, and `latest` points
-at it. `v0.9.3` is a distribution-metadata release with **no code or rule
+path. All seven npm packages and PyPI are live at `0.10.0`, and `latest` points
+at it. `v0.10.0` is a feature release with **no rule changes** (263 rules in ten
+families, 14 MCP tools): baseline format v2 (ticket, expiry, path and prune,
+plus SARIF suppressions), hardening platform presets (`--platform` and the MCP
+`platform` argument), `vigil config validate|show`, and report-only JUnit
+(`vigil report --format junit`). Release assets are unchanged from 0.9.3; verify
+them with `cosign verify-blob` and `gh attestation verify`, images by digest.
+
+`v0.9.3` is a distribution-metadata release with **no code or rule
 changes** (263 rules in ten families, 14 MCP tools): it adds the official MCP
 Registry listing (`mcpName` in the npm package plus `server.json`), the AUR
 `vigil-bin` package, and registry/AUR/directory documentation
@@ -544,7 +552,7 @@ attempt. `v0.5.2` contains the corrected CI templates and the post-0.5.1 docs.
 The composite action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
 as **Vigil security scan** (Security + Code quality).
 
-**Do not pin `0.5.0`.** Use `0.9.3` or newer, or `@latest`. The `v0.5.0` tag is
+**Do not pin `0.5.0`.** Use `0.10.0` or newer, or `@latest`. The `v0.5.0` tag is
 immutable and still resolves, so pinning it silently keeps the stale templates;
 its GitHub release body carries the warning. The npm package version is marked
 with a deprecation notice (a metadata change, not a republish) once the npm 2FA

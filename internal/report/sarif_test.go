@@ -41,7 +41,7 @@ func TestSARIFStructure(t *testing.T) {
 	}
 
 	if len(run.Tool.Driver.Rules) != 3 {
-		t.Fatalf("rules = %d, want 3 (deduplicated by id)", len(run.Tool.Driver.Rules))
+		t.Fatalf("rules = %d, want 3 (active findings, deduplicated by id)", len(run.Tool.Driver.Rules))
 	}
 	seen := map[string]bool{}
 	for _, rule := range run.Tool.Driver.Rules {
@@ -55,7 +55,7 @@ func TestSARIFStructure(t *testing.T) {
 	}
 
 	if len(run.Results) != 4 {
-		t.Fatalf("results = %d, want 4", len(run.Results))
+		t.Fatalf("results = %d, want 4 (active findings only)", len(run.Results))
 	}
 	wantLevels := []string{"error", "warning", "note", "note"}
 	for i, want := range wantLevels {
@@ -187,7 +187,10 @@ func TestSARIFEmptyResult(t *testing.T) {
 	}
 }
 
-func TestSARIFExcludesSuppressedFindings(t *testing.T) {
+// GitHub code scanning does not honour SARIF suppressions, so a suppressed
+// result would open an alert while the same run exits 0 under --fail-on.
+// Regression: suppressed findings used to be emitted as SARIF results.
+func TestSARIFOmitsSuppressedFindings(t *testing.T) {
 	out, err := renderSARIF(sampleResult())
 	if err != nil {
 		t.Fatal(err)
@@ -196,16 +199,35 @@ func TestSARIFExcludesSuppressedFindings(t *testing.T) {
 	if err := json.Unmarshal(out, &log); err != nil {
 		t.Fatal(err)
 	}
-	if len(log.Runs[0].Results) != 4 {
-		t.Fatalf("results = %d, want only the 4 active findings", len(log.Runs[0].Results))
+	results := log.Runs[0].Results
+	if len(results) != 4 {
+		t.Fatalf("results = %d, want only the 4 active findings", len(results))
+	}
+	for _, result := range results {
+		if result.RuleID == "secrets/hardcoded" {
+			t.Fatalf("suppressed finding is a SARIF result: %+v", result)
+		}
 	}
 	for _, rule := range log.Runs[0].Tool.Driver.Rules {
 		if rule.ID == "secrets/hardcoded" {
-			t.Error("suppressed finding contributed a SARIF rule")
+			t.Fatal("suppressed finding contributed a SARIF rule")
 		}
 	}
-	if strings.Contains(string(out), "VGL-SUP000005") {
-		t.Error("suppressed finding appears in SARIF output")
+	for _, banned := range []string{"internal/config/secret.go", `"suppressions"`, `"baselineState"`} {
+		if strings.Contains(string(out), banned) {
+			t.Errorf("SARIF output still contains %s:\n%s", banned, out)
+		}
+	}
+
+	// The other formats keep the accepted finding visible to reviewers.
+	for _, format := range []string{"json", "md", "html"} {
+		rendered, err := Render(format, sampleResult(), Options{})
+		if err != nil {
+			t.Fatalf("Render(%s): %v", format, err)
+		}
+		if !strings.Contains(string(rendered), "VGL-SUP000005") {
+			t.Errorf("%s dropped the suppressed finding", format)
+		}
 	}
 }
 

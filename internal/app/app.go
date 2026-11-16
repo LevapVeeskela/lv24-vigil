@@ -55,7 +55,7 @@ func New(root string, logger *slog.Logger) (*App, error) {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	abs, err := resolveRoot(root)
+	abs, err := ResolveRoot(root)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,11 @@ func New(root string, logger *slog.Logger) (*App, error) {
 	return a, nil
 }
 
-func resolveRoot(root string) (string, error) {
+// ResolveRoot turns root into an absolute, existing directory. A file path is
+// resolved to its directory, the same way a scan treats a positional path.
+// Commands that inspect configuration without building the full runtime use it
+// so they read exactly the files a scan would read.
+func ResolveRoot(root string) (string, error) {
 	if strings.TrimSpace(root) == "" {
 		root = "."
 	}

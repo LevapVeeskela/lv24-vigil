@@ -498,8 +498,8 @@ func TestBaselineLifecycle(t *testing.T) {
 		t.Errorf("baseline list does not show the entry:\n%s", listText)
 	}
 	baseline := structuredInto[baselinePayload](t, listed)
-	if baseline.Version != 1 {
-		t.Errorf("baseline version = %d, want 1", baseline.Version)
+	if baseline.Version != 2 {
+		t.Errorf("baseline version = %d, want 2", baseline.Version)
 	}
 	if len(baseline.Findings) != 1 || len(baseline.Fingerprints) != 1 {
 		t.Errorf("baseline has %d findings and %d fingerprints, want 1 and 1", len(baseline.Findings), len(baseline.Fingerprints))

@@ -63,7 +63,7 @@ published hook instead of the native one:
 ```yaml
 repos:
   - repo: https://github.com/LevapVeeskela/lv24-vigil
-    rev: v0.9.3
+    rev: v0.10.0
     hooks:
       - id: vigil-scan
 ```
@@ -198,7 +198,7 @@ vigil:
 runners should call `actions/setup-node` first.
 
 The action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
-as **Vigil security scan** (Security + Code quality). Pin `version: 0.9.3` when
+as **Vigil security scan** (Security + Code quality). Pin `version: 0.10.0` when
 the CLI must match the action tag; when omitted, the action installs its own
 release version, not npm `latest`.
 
@@ -206,13 +206,13 @@ release version, not npm `latest`.
 - uses: actions/checkout@v7
 
 - id: vigil
-  uses: LevapVeeskela/lv24-vigil@v0.9.3
+  uses: LevapVeeskela/lv24-vigil@v0.10.0
   with:
     path: .
     fail-on: high
     no-llm: true
     format: sarif
-    version: 0.9.3
+    version: 0.10.0
 
 - if: always()
   uses: github/codeql-action/upload-sarif@v4

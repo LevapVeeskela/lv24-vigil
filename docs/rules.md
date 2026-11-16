@@ -32,6 +32,12 @@ the deterministic catalog, so it does not appear in `vigil rules`. OSV findings
 use `VGL-OSV-<advisory>` and only appear when `scan.osv` is enabled or when the
 dedicated `vigil_dependencies` tool / `vigil dependencies` command is used.
 
+Every `VGL-ARE` rule declares its `platform` in rule metadata (`Android`, `iOS`,
+`Flutter`, `Electron`, `Node`, `Web` or `Other`). That field is the source of
+truth for `vigil hardening --platform` and for the MCP `platform` argument; the
+numeric ID ranges are only a fallback for rules that declare none. Mapping and
+limits: [anti-re-hardening.md](anti-re-hardening.md).
+
 ## Representative rules
 
 | ID | Severity | Title |
@@ -169,8 +175,10 @@ inert instead of covering every rule. An `until` value that is not a valid
 
 Inline suppressions apply after deduplication and before the baseline. An
 inline directive wins over a baseline entry, and the finding stays in the
-suppressed list with `suppressed: true`. Disable inline directives for one run
-with `--no-inline-suppressions`, or in configuration:
+suppressed list with `suppressed: true`, visible in JSON, Markdown and HTML.
+SARIF output is active-only (see below), so a suppressed finding has no SARIF
+result. Disable inline
+directives for one run with `--no-inline-suppressions`, or in configuration:
 
 ```yaml
 scan:
@@ -195,35 +203,69 @@ default file is `.vigil-baseline.json`:
 
 ```json
 {
-  "version": 1,
-  "fingerprints": ["fp_0123456789abcdef"],
+  "version": 2,
+  "fingerprints": [],
   "findings": [
-    { "id": "VGL-XXXXXXXXXX", "reason": "accepted risk in legacy importer" }
+    {
+      "id": "VGL-XXXXXXXXXX",
+      "reason": "accepted risk in legacy importer",
+      "fingerprint": "fp_0123456789abcdef",
+      "ruleId": "VGL-SEC-003",
+      "path": "internal/legacy/import.go",
+      "ticket": "SEC-42",
+      "expires": "2027-01-31"
+    }
   ]
 }
 ```
 
-Matching is intentionally loose:
+Version 2 entries accept optional `fingerprint`, `ruleId`, `path`, `ticket` and
+`expires` (`YYYY-MM-DD`, UTC). A version-1 file still loads and is upgraded in
+memory; its top-level fingerprints become entries with reason
+`legacy fingerprint`. Matching is intentionally loose:
 
 - an exact finding ID is a match;
 - a fingerprint is a match and survives small line moves;
+- `path` and `ruleId`, when set, scope the entry to one file or rule;
 - the reason is carried into the suppressed finding.
 
-Suppressed findings are not deleted. They are recorded separately in the scan
-result, so a reviewer can still see what was accepted.
+`expires` bounds the acceptance: an entry whose date is before today (UTC) stops
+suppressing, the finding returns at full severity and the scan emits a
+`baseline entry for <id> expired on <date> at <path>` warning. A malformed date
+counts as expired, so a typo cannot suppress forever. `ticket` is documentation
+only.
 
 Manage the file with:
 
 ```bash
 vigil baseline list
 vigil baseline add VGL-XXXXXXXXXX --reason "accepted risk in legacy importer"
+vigil baseline add VGL-XXXXXXXXXX --reason "tracked" --ticket SEC-42 \
+  --expires 2027-01-31 --path internal/legacy/import.go
 vigil baseline remove VGL-XXXXXXXXXX
+vigil baseline prune --dry-run
+vigil baseline prune
 vigil baseline clear --yes
 ```
 
-`add` records the finding fingerprint as well, so the entry survives small line
-moves. `clear` requires `--yes`. You can also edit the file by hand. See
-[cli.md](cli.md).
+`add` resolves the finding in the last scan or recent history and, when found,
+records the finding fingerprint and rule ID as well, so the entry survives small
+line moves. `--expires` must be a valid date that is not in the past, and
+`--path` must be project-relative and, when the finding is found, match its path.
+`remove` also drops the entry's fingerprint mirror, and for a version-1
+ID-only entry the remaining `legacy fingerprint` entry; if several legacy
+fingerprints remain it names the ones to remove. `prune` removes expired
+entries (`--dry-run` only reports them). `clear` requires `--yes`. You can also
+edit the file by hand. See [cli.md](cli.md).
+
+Suppressed findings are not deleted. They are recorded separately in the scan
+result, so a reviewer can still see what was accepted. JSON, Markdown and HTML
+keep them in the suppressed list with their reason.
+
+SARIF is active-only: suppressed findings produce no SARIF result and no
+`suppressions` or `baselineState` entries. GitHub code scanning ignores those
+fields, so emitting a suppressed result would open an alert while `--fail-on`
+exits 0. Use the JSON, Markdown or HTML report to review acceptances.
 
 ## What the rules do not do
 

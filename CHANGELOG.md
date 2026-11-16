@@ -4,6 +4,35 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## 0.10.0 - 2026-11-16
+
+Minor release. **No rule changes**: 263 rules in ten families, 14 MCP tools.
+
+### Added
+
+- Baseline format v2: entries carry `fingerprint`, `ruleId`, `path`, `ticket`
+  and `expires`; version-1 files load and upgrade in memory.
+  `vigil baseline add` accepts `--ticket`, `--expires` and `--path`,
+  `list` shows that metadata and `vigil baseline prune [--dry-run]` removes
+  expired entries, which stop suppressing immediately. SARIF reports emit
+  `suppressions` for baseline (`external`) and inline (`inSource`) ignores,
+  with `baselineState` on baseline results.
+- Anti-RE hardening platform presets: `RuleMeta.Platform`,
+  `vigil hardening --platform android|ios|electron|node|flutter|web|other|all`
+  and the `platform` argument on `vigil_hardening` narrow the VGL-ARE review.
+- `vigil config validate [path] [--json]` loads the user and project config
+  with scan precedence, exits 1 on errors and never opens the store or a model;
+  `vigil config show [--json]` prints effective values with their sources and
+  masks credentials.
+- Report-only JUnit: `vigil report --format junit` renders a stored scan as
+  `testsuites`/`testsuite` named `vigil`; `scan --format junit` is rejected with
+  a hint.
+
+### Changed
+
+- Version references and the composite action default move to `0.10.0`. Release
+  assets are unchanged from 0.9.3.
+
 ## 0.9.3 - 2026-11-15
 
 Distribution metadata release. **No code or rule changes**: 263 rules, 14 MCP
