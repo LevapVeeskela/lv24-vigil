@@ -52,7 +52,7 @@ PyPI launcher, GitHub binaries, deb/rpm/apk, Homebrew, Scoop, GHCR).
 | HTTPS | All project, documentation, package and API endpoints use HTTPS | repository links |
 | English | Documentation, CLI output and reports are in English | repository |
 | Signed releases | Keyless cosign signature over `checksums.txt`; GitHub build provenance attestations for every release asset; BuildKit provenance and SBOM for the container image | [`docs/release.md`](release.md#verify-a-release) |
-| SBOM | CycloneDX 1.6 release asset (SPDX 2.3 also supported); generated offline by `vigil sbom` | `vigil-sbom-0.9.3.cdx.json` |
+| SBOM | CycloneDX 1.6 release asset (SPDX 2.3 also supported); generated offline by `vigil sbom` | `vigil-sbom-0.10.0.cdx.json` |
 | Provenance | GitHub-native attestations name the workflow, commit and digest; `gh attestation verify` fails on a rebuilt or altered file | [`docs/release.md`](release.md) |
 
 ## Release integrity answers in detail
@@ -64,24 +64,24 @@ packages. It is signed with cosign in keyless mode; the bundle is
 Each file in the release also has a GitHub build provenance attestation.
 
 ```bash
-gh release download v0.9.3 --pattern checksums.txt --pattern checksums.txt.sigstore.json
+gh release download v0.10.0 --pattern checksums.txt --pattern checksums.txt.sigstore.json
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
-  --certificate-identity "https://github.com/LevapVeeskela/lv24-vigil/.github/workflows/release.yml@refs/tags/v0.9.3" \
+  --certificate-identity "https://github.com/LevapVeeskela/lv24-vigil/.github/workflows/release.yml@refs/tags/v0.10.0" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
 
-gh attestation verify vigil_0.9.3_linux_amd64 --repo LevapVeeskela/lv24-vigil
+gh attestation verify vigil_0.10.0_linux_amd64 --repo LevapVeeskela/lv24-vigil
 ```
 
 **SBOM.** Generate and inspect it locally:
 
 ```bash
-vigil sbom . --format cyclonedx --output vigil-sbom-0.9.3.cdx.json
-vigil sbom . --format spdx --output vigil-sbom-0.9.3.spdx.json
+vigil sbom . --format cyclonedx --output vigil-sbom-0.10.0.cdx.json
+vigil sbom . --format spdx --output vigil-sbom-0.10.0.spdx.json
 ```
 
-The release publishes `vigil-sbom-0.9.3.cdx.json`. It inventories declared
+The release publishes `vigil-sbom-0.10.0.cdx.json`. It inventories declared
 dependencies; it does not resolve version ranges or prove the absence of
 vulnerabilities.
 
@@ -106,7 +106,7 @@ than overstating an answer.
 | Gap | Action |
 |---|---|
 | No `CODE_OF_CONDUCT.md` | Add a code of conduct (for example Contributor Covenant) and link it from `CONTRIBUTING.md` |
-| `SECURITY.md` supported-versions table still says `0.1.x` | Update it to the current `0.9.x` line and state the support window |
+| `SECURITY.md` supported-versions table still says `0.1.x` | Update it to the current `0.10.x` line and state the support window |
 | No published coverage number or threshold | Add coverage reporting to CI if the questionnaire asks for it; do not claim a percentage that is not measured |
 | AUR package not published | Complete the account/SSH steps in [aur.md](aur.md); this is not a CII criterion |
 | No CII project yet | Register, paste the answers, save, and copy the assigned project id |

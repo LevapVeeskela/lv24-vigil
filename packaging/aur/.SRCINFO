@@ -1,6 +1,6 @@
 pkgbase = vigil-bin
 	pkgdesc = Local-first security auditor with 263 deterministic rules and an MCP server
-	pkgver = 0.9.3
+	pkgver = 0.10.0
 	pkgrel = 1
 	url = https://github.com/LevapVeeskela/lv24-vigil
 	arch = x86_64
@@ -9,11 +9,11 @@ pkgbase = vigil-bin
 	provides = vigil
 	conflicts = vigil
 	options = !strip
-	source = LICENSE::https://github.com/LevapVeeskela/lv24-vigil/raw/v0.9.3/LICENSE
-	source_x86_64 = vigil_0.9.3_linux_amd64::https://github.com/LevapVeeskela/lv24-vigil/releases/download/v0.9.3/vigil_0.9.3_linux_amd64
-	source_aarch64 = vigil_0.9.3_linux_arm64::https://github.com/LevapVeeskela/lv24-vigil/releases/download/v0.9.3/vigil_0.9.3_linux_arm64
+	source = LICENSE::https://github.com/LevapVeeskela/lv24-vigil/raw/v0.10.0/LICENSE
+	source_x86_64 = vigil_0.10.0_linux_amd64::https://github.com/LevapVeeskela/lv24-vigil/releases/download/v0.10.0/vigil_0.10.0_linux_amd64
+	source_aarch64 = vigil_0.10.0_linux_arm64::https://github.com/LevapVeeskela/lv24-vigil/releases/download/v0.10.0/vigil_0.10.0_linux_arm64
 	sha256sums = 46601daebe32a15c144660cf135cfa3b610459085b7118c2d499f4f8b6f2ce61
-	sha256sums_x86_64 = 0c2ad3d2ca632780ff2142bc28231b1edfd004d8e3d0cfe2d8f8a45c2bc24868
-	sha256sums_aarch64 = 6b1587de4c44892836c78791081a35a555888de8a4baf91fdd1af800a257ae86
+	sha256sums_x86_64 = a58716d27d746e5260f64280fd167aceeff652ecad2b51705aa41a93f671037c
+	sha256sums_aarch64 = 5bf9945da19f73095d268c868deb70f1f003808c19ed3dcb119cb6e9c6b6dab9
 
 pkgname = vigil-bin
