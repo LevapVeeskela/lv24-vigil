@@ -37,9 +37,10 @@ commands are in [Re-verify](#re-verify).
 - `vigil-sbom-0.10.1.cdx.json` (CycloneDX 1.6 self-SBOM);
 - `checksums.txt` and `checksums.txt.sigstore.json` (keyless cosign bundle).
 
-SLSA build provenance covers every asset but is stored as a GitHub attestation,
-not as a sixteenth file, so a raw asset count of 15 is expected. Asset list,
-signature identity and the full verification flow:
+SLSA build provenance covers every asset and is also stored in GitHub's
+attestation store. The next release additionally attaches the bundle as
+`provenance.intoto.jsonl`, so future asset counts will be 16; 0.10.1 itself has
+15. Asset list, signature identity and the full verification flow:
 [release.md](release.md#verify-a-release).
 
 ## Pending gates

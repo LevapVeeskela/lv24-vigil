@@ -22,9 +22,10 @@ on:
         required: true
         type: string
 
+# Least privilege: the workflow reads the repository; only the publishing job
+# is allowed to write packages.
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: container-${{ github.ref }}
@@ -34,6 +35,10 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      # Required to push the image and its attestations to GHCR.
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

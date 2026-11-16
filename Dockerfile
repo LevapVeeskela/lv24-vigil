@@ -5,7 +5,12 @@
 #
 # The runtime image is distroless/static (no shell, no package manager) and
 # runs as the nonroot user. The build stage cross-compiles for TARGETARCH.
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
+#
+# Base images are pinned by digest (OpenSSF Pinned-Dependencies). These are
+# multi-arch index digests, verified with `docker buildx imagetools inspect`
+# (MediaType: application/vnd.oci.image.index.v1+json), so the multi-arch
+# cross-compile below still resolves per-platform manifests.
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -27,7 +32,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
       -X github.com/levapveeskela/lv24-vigil/internal/version.Date=${DATE}" \
     -o /out/vigil ./cmd/vigil
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 
 LABEL org.opencontainers.image.source="https://github.com/LevapVeeskela/lv24-vigil" \
       org.opencontainers.image.description="Vigil: security audit for your code, on your own model" \

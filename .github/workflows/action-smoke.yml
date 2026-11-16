@@ -7,13 +7,19 @@ name: action-smoke
 on:
   workflow_dispatch:
 
+# Least privilege: the workflow only needs to read the repository. The
+# security-events write scope is granted to the job that uploads SARIF, so a
+# widening of one job cannot leak into others.
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required by github/codeql-action/upload-sarif below.
+      security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

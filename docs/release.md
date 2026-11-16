@@ -90,6 +90,7 @@ Every release carries these files:
 | `vigil-sbom-<version>.cdx.json` | CycloneDX 1.6 self-SBOM of the tagged source; its digest is in the provenance attestation |
 | `checksums.txt` | SHA-256 of the six binaries and the six Linux packages |
 | `checksums.txt.sigstore.json` | Keyless cosign bundle over `checksums.txt` |
+| `provenance.intoto.jsonl` | SLSA provenance bundle attached from the next release onward (0.10.1 has 15 assets) |
 
 The same tag also publishes `ghcr.io/levapveeskela/lv24-vigil` for
 `linux/amd64` and `linux/arm64` (tags `X.Y.Z`, `X.Y`, `latest`, `sha-<commit>`),

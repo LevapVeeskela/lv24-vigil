@@ -52,7 +52,14 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag || github.event.workflow_run.head_branch }}
+          # Scorecard (Dangerous-Workflow) treats a `workflow_run` checkout of
+          # the triggering branch as execution of untrusted code. The tag is
+          # only a name here: every artifact comes from the already-published,
+          # validated release through `gh release download "$TAG"` below, and a
+          # manual dispatch re-publishes that existing release. Checking out the
+          # default branch therefore keeps the npm/* scripts that do run under
+          # repository review and never executes release-branch content.
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
 
       - name: Download release assets

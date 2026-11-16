@@ -100,9 +100,27 @@ jobs:
           ls -l release-assets/checksums.txt.sigstore.json
 
       - name: Attest release assets
+        id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: release-assets/*
+
+      - name: Export provenance bundle as a release asset
+        # Scorecard's Signed-Releases check looks for a provenance/signature
+        # file attached to the release itself, not only for an entry in the
+        # repository attestation store. The bundle covers every asset attested
+        # in the step above; it is written afterwards so it is not a subject of
+        # itself. The publish step below uploads it through the existing
+        # `gh release create release-assets/*` glob.
+        env:
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -n "$BUNDLE"
+          test -s "$BUNDLE"
+          cp "$BUNDLE" release-assets/provenance.intoto.jsonl
+          test -s release-assets/provenance.intoto.jsonl
+          ls -l release-assets/provenance.intoto.jsonl
 
       - name: Publish GitHub release
         env:

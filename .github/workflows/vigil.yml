@@ -10,9 +10,10 @@ on:
       - master
   pull_request:
 
+# Least privilege: reading the repository is the workflow default. The SARIF
+# upload job widens itself to security-events: write where it is actually used.
 permissions:
   contents: read
-  security-events: write
 
 concurrency:
   group: vigil-${{ github.workflow }}-${{ github.ref }}
@@ -23,6 +24,10 @@ jobs:
     name: self-scan
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      # Required by github/codeql-action/upload-sarif below.
+      security-events: write
     env:
       # Optional LV24 security pre-check. Both are empty by default, which
       # makes the pre-check step a no-op: forks and clean checkouts stay green
