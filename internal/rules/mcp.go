@@ -33,17 +33,32 @@ var (
 	// URLs survive tokenisation.
 	mcpTokenRe = regexp.MustCompile(`"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s,\[\]{}"']+`)
 
-	mcpSecretKVRe = regexp.MustCompile(`(?i)["']?([A-Za-z0-9_.-]*(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTHORIZATION|COOKIE|AUTH)[A-Za-z0-9_.-]*)["']?\s*[:=]\s*(?:["']([^"']{8,200})["']|([A-Za-z0-9+/=_.,\-]{8,200}))`)
-	mcpSecretEnRe = regexp.MustCompile(`(?i)["']([A-Za-z0-9_.-]*(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTHORIZATION|COOKIE|AUTH)[A-Za-z0-9_.-]*)=([^"'=\s]{8,200})["']`)
-	mcpSecretArRe = regexp.MustCompile(`(?i)["'](--?[A-Za-z0-9-]*(?:token|key|secret|passw(?:or)?d|credential)[A-Za-z0-9-]*)["']?\s*[,:=]\s*["']([^"']{8,200})["']`)
+	mcpSecretKVRe = regexp.MustCompile(`(?i)["']?([A-Za-z0-9_.-]*(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|PASS|PWD|CREDENTIAL|AUTHORIZATION|COOKIE|AUTH)[A-Za-z0-9_.-]*)["']?\s*[:=]\s*(?:["']([^"']{8,1000})["']|([A-Za-z0-9+/=_.,\-]{8,1000}))`)
+	mcpSecretEnRe = regexp.MustCompile(`(?i)["']([A-Za-z0-9_.-]*(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|PASS|PWD|CREDENTIAL|AUTHORIZATION|COOKIE|AUTH)[A-Za-z0-9_.-]*)=([^"'=\s]{8,1000})["']`)
+	mcpSecretArRe = regexp.MustCompile(`(?i)["'](--?[A-Za-z0-9-]*(?:token|key|secret|passw(?:or)?d|credential)[A-Za-z0-9-]*)["']?\s*[,:=]\s*["']([^"']{8,1000})["']`)
 	// A scheme-prefixed credential ("Authorization: Bearer <token>") needs no
 	// credential-looking key next to it, so it is masked wherever it occurs.
 	// The token class excludes quotes, commas and closing braces so a JSON
 	// value keeps its structure when the mask is written back.
 	mcpAuthSchemeRe = regexp.MustCompile(`(?i)\b(?:bearer|basic)\s+([^\s"',}\]]{12,})`)
+	// mcpAuthValueRe matches a whole header value of the form "<scheme> <token>".
+	mcpAuthValueRe = regexp.MustCompile(`(?i)^(?:bearer|basic|token)\s+(\S+)$`)
+	// mcpURLUserinfoRe captures the password of a URL with userinfo
+	// ("postgres://user:password@host"), whatever the key next to it is called.
+	mcpURLUserinfoRe = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.\-]*://[^\s/:@"']*:([^\s/@"']+)@`)
+
+	// An "@" pin is exact only as a full semantic version or a content digest;
+	// "@1", "@^1.0.0", "@*" and dist-tags such as "@next" still float.
+	mcpExactAtVersionRe = regexp.MustCompile(`^v?\d+\.\d+\.\d+(?:[-+.][0-9A-Za-z.\-+]+)?$`)
+	mcpExactEqVersionRe = regexp.MustCompile(`^\d[0-9A-Za-z.+!_\-]*$`)
+	mcpDigestPinRe      = regexp.MustCompile(`^(?:sha256:)?[0-9a-f]{40,64}$`)
 
 	mcpCurlPipeShellRe = regexp.MustCompile(`(?i)\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba|z)?sh\b`)
 )
+
+// mcpMaxSecretValue bounds a literal credential. JWTs and long-lived API
+// tokens routinely exceed 200 characters, so the bound only excludes blobs.
+const mcpMaxSecretValue = 1000
 
 const mcpRemediationPin = "Pin the package to an exact version (or a digest where the registry supports one) and review updates before bumping it. An unpinned MCP server is code from a mutable tag that runs with your local privileges."
 
@@ -255,7 +270,8 @@ func mcpRedactSecrets(text string) string {
 	text = mcpMaskSecretMatches(text, mcpSecretKVRe, 2, 3)
 	text = mcpMaskSecretMatches(text, mcpSecretEnRe, 2)
 	text = mcpMaskSecretMatches(text, mcpSecretArRe, 2)
-	return mcpMaskSecretMatches(text, mcpAuthSchemeRe, 1)
+	text = mcpMaskSecretMatches(text, mcpAuthSchemeRe, 1)
+	return mcpMaskSecretMatches(text, mcpURLUserinfoRe, 1)
 }
 
 // mcpMaskSecretMatches replaces the captured value groups of re with a masked
@@ -304,6 +320,10 @@ func mcpSecretNeedsMask(value string) bool {
 		return false
 	}
 	lv := strings.ToLower(v)
+	// OpenCode resolves "{env:NAME}" and "{file:path}" when it starts a server.
+	if strings.HasPrefix(lv, "{env:") || strings.HasPrefix(lv, "{file:") {
+		return false
+	}
 	for _, prefix := range []string{"env:", "secret:", "vault:", "file:", "ref:", "op://"} {
 		if strings.HasPrefix(lv, prefix) {
 			return false
@@ -873,15 +893,15 @@ func mcpPackagePinned(spec string) bool {
 		return false
 	}
 	if idx := strings.Index(spec, "=="); idx >= 0 {
-		v := strings.ToLower(strings.TrimSpace(spec[idx+2:]))
-		return v != "" && !strings.HasPrefix(v, "latest")
+		// "==1.*" is a PEP 440 prefix match, not an exact version.
+		return mcpExactEqVersionRe.MatchString(strings.TrimSpace(spec[idx+2:]))
 	}
 	at := strings.LastIndex(spec, "@")
 	if at <= 0 {
 		return false
 	}
-	v := strings.ToLower(strings.TrimSpace(spec[at+1:]))
-	return v != "" && !strings.HasPrefix(v, "latest")
+	v := strings.TrimSpace(spec[at+1:])
+	return mcpExactAtVersionRe.MatchString(v) || mcpDigestPinRe.MatchString(strings.ToLower(v))
 }
 
 // mcpLiteralSecret implements VGL-MCP-002.
@@ -916,6 +936,7 @@ func mcpLiteralSecret(f *File) []model.Finding {
 			}
 			seen[key] = true
 			fd := mcpFinding(f, i+1, c.key+"="+MaskSecret(value))
+			fd.SecretValues = []string{value}
 			fd.Location.Snippet = mcpRedactSecrets(
 				strings.ReplaceAll(strings.TrimSpace(f.Line(i+1)), value, MaskSecret(value)))
 			fd.Confidence = model.ConfidenceMedium
@@ -930,8 +951,16 @@ func mcpLiteralSecret(f *File) []model.Finding {
 }
 
 func mcpSecretCandidate(key, value string) bool {
-	if len(value) < 12 || len(value) > 200 {
+	if len(value) < 12 || len(value) > mcpMaxSecretValue {
 		return false
+	}
+	// "Authorization: Bearer <token>" is one credential although the value
+	// has a space; judge the token after the scheme.
+	if m := mcpAuthValueRe.FindStringSubmatch(strings.TrimSpace(value)); m != nil {
+		value = m[1]
+		if len(value) < 12 {
+			return false
+		}
 	}
 	if strings.ContainsAny(value, " \t") {
 		return false

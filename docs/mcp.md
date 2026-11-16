@@ -211,6 +211,11 @@ Agent: [calls vigil_fix with apply=true, then vigil_verify]
   inside the project root) and the local scan history written by
   `vigil_scan`/`vigil_review`. A fix never commits or stages. Write paths are
   confined to the server root, including through symlinks and junctions.
+- `--root` is the project root, not a read sandbox. The read tools
+  (`vigil_scan`, `vigil_review`, `vigil_hardening`, `vigil_dependencies`)
+  accept a `path` outside it, as the CLI does; only `vigil_mcp_audit`,
+  `vigil_threat_model` and the write paths are confined. Do not hand the server
+  to an agent you would not let read your files.
 - Scanned code is untrusted input. Prompts delimit it as data and model output is
   validated before it becomes a finding or a diff.
 - If code must not leave the machine, configure a local Ollama or LM Studio model

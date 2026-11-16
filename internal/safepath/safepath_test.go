@@ -32,7 +32,11 @@ func TestCleanRelAcceptsRepositoryPaths(t *testing.T) {
 		"./a/./b.txt":           "a/b.txt",
 		"a//b":                  "a/b",
 		"src\\windows\\path.go": "src/windows/path.go",
-		"file.name:with-colon":  "file.name:with-colon",
+	}
+	// A colon is an ordinary file-name character except on Windows, where it
+	// addresses an NTFS alternate data stream and is refused.
+	if runtime.GOOS != "windows" {
+		cases["file.name:with-colon"] = "file.name:with-colon"
 	}
 	for input, want := range cases {
 		got, err := CleanRel(input)

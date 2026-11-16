@@ -10,10 +10,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
 	"github.com/levapveeskela/lv24-vigil/internal/app"
+	"github.com/levapveeskela/lv24-vigil/internal/config"
 	"github.com/levapveeskela/lv24-vigil/internal/model"
 	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 )
@@ -198,6 +200,67 @@ func resolveConfigOutputPath(root, path string) (string, error) {
 		return "", fmt.Errorf("output.path %q: %w", path, err)
 	}
 	return resolved, nil
+}
+
+// guardProjectOutputPath refuses to let an output.path that comes from a
+// project file replace a file that is not a Vigil report. The project file is
+// committed by whoever owns the repository, and a scan must never modify
+// source files: without this a cloned repository could point output.path at
+// app.py and have a plain "vigil scan" overwrite it. A path from the user
+// config, the environment or --output is the user's own choice.
+func guardProjectOutputPath(source, configured, resolved string) error {
+	if source == "" || strings.HasPrefix(source, "env:") {
+		return nil
+	}
+	if userPath, err := config.UserConfigPath(); err == nil && samePathFold(source, userPath) {
+		return nil
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+		return nil
+	}
+	f, err := os.Open(resolved)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	head := make([]byte, 4096)
+	n, _ := io.ReadFull(f, head)
+	if looksLikeVigilReport(head[:n]) {
+		return nil
+	}
+	return fmt.Errorf("output.path %q (set in %s) would overwrite a file that is not a Vigil report; remove the file, change output.path, or pass --output to choose the target yourself", configured, source)
+}
+
+// looksLikeVigilReport recognises the head of a report in any format this
+// command writes, so a report path is replaced by the next scan as usual.
+func looksLikeVigilReport(head []byte) bool {
+	text := string(head)
+	trimmed := strings.TrimLeft(text, "\ufeff \t\r\n")
+	switch {
+	case strings.HasPrefix(trimmed, "# Vigil security report"):
+		return true
+	case strings.Contains(text, "<title>Vigil security report"):
+		return true
+	case strings.HasPrefix(trimmed, "{") && strings.Contains(text, `"schemaVersion"`):
+		return true
+	case strings.HasPrefix(trimmed, "{") && strings.Contains(text, `"$schema"`) && strings.Contains(text, "sarif"):
+		return true
+	default:
+		return false
+	}
+}
+
+func samePathFold(a, b string) bool {
+	ca, errA := filepath.Abs(a)
+	cb, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(filepath.Clean(ca), filepath.Clean(cb))
+	}
+	return filepath.Clean(ca) == filepath.Clean(cb)
 }
 
 // writeFile writes a report or document with the conventional 0644 mode. It

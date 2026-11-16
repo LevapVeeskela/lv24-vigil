@@ -58,6 +58,10 @@ func TestCommandHelperProcess(t *testing.T) {
 	case "fail-secret":
 		fmt.Fprintln(os.Stderr, "token="+os.Getenv("VIGIL_TEST_SECRET"))
 		os.Exit(1)
+	case "fail-argv":
+		// A failing CLI commonly echoes its own command line.
+		fmt.Fprintln(os.Stderr, "401 Unauthorized: "+strings.Join(args[1:], " "))
+		os.Exit(1)
 	case "hang":
 		time.Sleep(10 * time.Second)
 	case "big":
@@ -503,5 +507,33 @@ func TestCommandPromptIncludesSystemAndJSONInstruction(t *testing.T) {
 	}
 	if !strings.Contains(resp.Text, "single valid JSON object") {
 		t.Errorf("prompt lost the JSON instruction: %q", resp.Text)
+	}
+}
+
+// Regression: only command_env values were masked in the stderr tail. A
+// credential passed as a flag value reached the scan errors, the stored scan
+// and every later report when the tool echoed its command line on failure.
+func TestCommandStderrRedactsArgvSecret(t *testing.T) {
+	const secret = "sk-test-ARGV-0123456789"
+	for _, extra := range [][]string{
+		{"--api-key", secret},
+		{"--token=" + secret},
+		{"--url", "https://llm.example/v1?api_key=" + secret},
+	} {
+		cfg := commandTestConfig(t, helperCommand(t, "fail-argv", extra...))
+		client := newTestCommandClient(t, cfg)
+
+		_, err := client.Complete(context.Background(), Request{
+			Messages: []Message{{Role: RoleUser, Content: "prompt"}},
+		})
+		if err == nil {
+			t.Fatalf("%q: Complete succeeded, want an exit error", extra)
+		}
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("%q: the error leaks the argv secret: %v", extra, err)
+		}
+		if !strings.Contains(err.Error(), "401 Unauthorized") {
+			t.Errorf("%q: the error lost the tool's message: %v", extra, err)
+		}
 	}
 }

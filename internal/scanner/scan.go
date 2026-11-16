@@ -196,6 +196,9 @@ func (s *Scanner) scanFiles(ctx context.Context, input []*rules.File, opts Optio
 	findings, ruleErrs, runErr := s.runRules(ctx, files, selected, opts.Concurrency)
 	res.Errors = append(res.Errors, ruleErrs...)
 	findings = dedupeFindings(findings)
+	// IDs and fingerprints are fixed by dedupe, so masking the text afterwards
+	// keeps every baseline entry valid.
+	redactDetectedSecrets(findings)
 
 	// Inline directives are applied after dedupe and before the baseline, so
 	// an ignored finding is reported as suppressed and the baseline still
@@ -220,6 +223,7 @@ func (s *Scanner) scanFiles(ctx context.Context, input []*rules.File, opts Optio
 	model.SortFindings(kept)
 	model.SortFindings(suppressed)
 	if opts.MaxFindings > 0 && len(kept) > opts.MaxFindings {
+		res.Stats.Truncated += len(kept) - opts.MaxFindings
 		kept = kept[:opts.MaxFindings]
 	}
 
@@ -393,6 +397,30 @@ func prepareInputFiles(input []*rules.File) ([]*rules.File, int) {
 		out = append(out, f)
 	}
 	return out, skipped
+}
+
+// redactDetectedSecrets masks credentials in the evidence and snippet of every
+// finding. A rule masks the value it reports, but another rule that fires on
+// the same or a neighbouring line quotes the source verbatim, so the raw value
+// would still reach JSON, SARIF, the MCP result and the stored scan. The raw
+// values rules hand over in SecretValues are dropped here and never leave the
+// scanner.
+func redactDetectedSecrets(findings []model.Finding) {
+	byPath := make(map[string][]string)
+	for i := range findings {
+		if len(findings[i].SecretValues) == 0 {
+			continue
+		}
+		p := findings[i].Location.Path
+		byPath[p] = append(byPath[p], findings[i].SecretValues...)
+	}
+	for i := range findings {
+		f := &findings[i]
+		values := byPath[f.Location.Path]
+		f.Location.Snippet = rules.RedactSecrets(f.Location.Snippet, values)
+		f.Evidence = rules.RedactSecrets(f.Evidence, values)
+		f.SecretValues = nil
+	}
 }
 
 func dedupeFindings(in []model.Finding) []model.Finding {

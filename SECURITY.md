@@ -7,11 +7,11 @@ page explains what to report and what to expect.
 
 | Version | Supported |
 |---|---|
-| 0.1.x | yes |
+| 0.10.x | yes |
 | older | no |
 
-The project is at 0.1.0. Fixes land on the current minor line; there is no
-long-term support branch yet.
+Fixes land on the current minor line (0.10.x); there is no long-term support
+branch yet. Upgrade to the latest patch release before reporting.
 
 ## Reporting a vulnerability
 

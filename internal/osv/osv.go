@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -159,7 +160,7 @@ func Audit(ctx context.Context, root string, opts Options) (*AuditResult, error)
 
 	client := opts.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: opts.Timeout}
+		client = &http.Client{Timeout: opts.Timeout, CheckRedirect: sameOriginRedirect}
 	}
 
 	var matches []packageVuln
@@ -239,6 +240,24 @@ func Scan(ctx context.Context, root string, opts Options) ([]model.Finding, erro
 
 // maxAuditErrorChars bounds the query error text stored in AuditResult.Errors.
 const maxAuditErrorChars = 300
+
+// sameOriginRedirect refuses a redirect that changes the scheme or host. A 307
+// or 308 replays the POST body, so following one would hand the dependency
+// inventory to a host the user never configured, and an https to http hop
+// would send it in clear text.
+func sameOriginRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) == 0 {
+		return nil
+	}
+	if len(via) >= 5 {
+		return errors.New("stopped after 5 redirects")
+	}
+	origin := via[0].URL
+	if !strings.EqualFold(req.URL.Scheme, origin.Scheme) || !strings.EqualFold(req.URL.Host, origin.Host) {
+		return fmt.Errorf("refusing a redirect to another origin (%s://%s)", req.URL.Scheme, req.URL.Host)
+	}
+	return nil
+}
 
 func boundedError(err error) string {
 	if err == nil {

@@ -396,6 +396,7 @@ func pbDefaultPasswordRule(f *File) []model.Finding {
 			evidence = evidence[:idx] + MaskSecret(value) + evidence[idx+len(value):]
 		}
 		fd := pbFinding(f, i+1, evidence)
+		fd.SecretValues = []string{value}
 		fd.Severity = pbSev(f, model.SeverityCritical)
 		fd.Confidence = model.ConfidenceHigh
 		out = append(out, fd)

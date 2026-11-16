@@ -267,6 +267,41 @@ func nonEmpty(values ...string) []string {
 	return out
 }
 
+// SanitizeTerminal replaces control characters that a terminal would act on.
+// Scanned content is untrusted: ESC, BEL and the C1 controls can clear the
+// screen, redraw a clean-looking report or set the window title and clipboard.
+// Line feeds and tabs are kept; everything else in C0, DEL and C1 becomes
+// U+FFFD so the reader can see that something was removed.
+func SanitizeTerminal(s string) string {
+	clean := true
+	for _, r := range s {
+		if isTerminalControl(r) {
+			clean = false
+			break
+		}
+	}
+	if clean {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if isTerminalControl(r) {
+			b.WriteRune('\uFFFD')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+func isTerminalControl(r rune) bool {
+	if r == '\n' || r == '\t' {
+		return false
+	}
+	return r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f)
+}
+
 func oneLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }

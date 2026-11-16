@@ -240,10 +240,22 @@ func (a *App) Scan(ctx context.Context, req model.ScanRequest) (*model.ScanResul
 		}
 	}
 
-	// The LLM pass can add findings, so re-apply the severity filter, sort and
-	// cap once more before the result is stored.
-	res.Findings = model.Filter(res.Findings, opts.MinSeverity, opts.MaxFindings)
+	// OSV and the LLM pass can add findings, so re-apply the severity filter,
+	// sort and cap once more before the result is stored. The sort comes first:
+	// the cap must drop the least severe findings, not whatever was appended
+	// last, or a critical advisory could fall behind the cap and a --fail-on
+	// gate would pass.
+	res.Findings = model.Filter(res.Findings, opts.MinSeverity, 0)
 	model.SortFindings(res.Findings)
+	if opts.MaxFindings > 0 && len(res.Findings) > opts.MaxFindings {
+		res.Stats.Truncated += len(res.Findings) - opts.MaxFindings
+		res.Findings = res.Findings[:opts.MaxFindings]
+	}
+	if res.Stats.Truncated > 0 {
+		res.Errors = append(res.Errors, fmt.Sprintf(
+			"findings truncated: kept the %d most severe of %d (max_findings cap); raise --max-findings to see the rest",
+			len(res.Findings), len(res.Findings)+res.Stats.Truncated))
+	}
 	res.FinishedAt = time.Now().UTC()
 	res.Stats.DurationMS = res.FinishedAt.Sub(res.StartedAt).Milliseconds()
 	fillStats(&res.Stats, res.Findings)

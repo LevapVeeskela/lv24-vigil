@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ type Entry struct {
 var secretKeyParts = []string{
 	"api_key", "api-key", "apikey", "token", "password", "passwd", "secret",
 	"header", "credential", "authorization", "auth",
+	"key", "jwt", "bearer", "session", "pass", "cookie",
 }
 
 // nonSecretKeys are configuration keys whose names contain a secret-looking
@@ -230,11 +232,28 @@ func attachedShortValue(arg string) (string, bool) {
 // `--api-key=VALUE` and userinfo inside a URL, so a printed command line never
 // leaks a key. Flag names and ordinary arguments are kept.
 func redactArgv(argv []string) string {
-	out := make([]string, len(argv))
+	out, _ := redactArgvParts(argv)
+	return strings.Join(out, " ")
+}
+
+// ArgvSecretValues returns the argument values redactArgv hides. A caller that
+// echoes the output of the command (its stderr, for example) uses them to mask
+// the same credentials there, because a failing tool often prints its own
+// command line.
+func ArgvSecretValues(argv []string) []string {
+	_, hidden := redactArgvParts(argv)
+	return hidden
+}
+
+// redactArgvParts returns the printable form of every argument and the
+// credential values that were hidden while producing it.
+func redactArgvParts(argv []string) (out, hidden []string) {
+	out = make([]string, len(argv))
 	redactNext := false
 	for i, arg := range argv {
 		if redactNext {
 			out[i] = "***"
+			hidden = append(hidden, arg)
 			redactNext = false
 			continue
 		}
@@ -243,17 +262,55 @@ func redactArgv(argv []string) string {
 			// value. A project path such as scan.exclude=*.go is not secret.
 			if argvFlagTakesSecretValue(name) || SecretKey(strings.TrimLeft(name, "-")) {
 				out[i] = name + "=***"
+				hidden = append(hidden, value)
 				continue
 			}
 		}
 		if attached, ok := attachedShortValue(arg); ok {
 			out[i] = attached
+			hidden = append(hidden, arg[2:])
 			continue
 		}
-		out[i] = redactURLUserinfo(arg)
+		out[i] = redactArgvURL(arg)
+		if out[i] != arg {
+			hidden = append(hidden, urlCredentialValues(arg)...)
+		}
 		if argvFlagTakesSecretValue(arg) && i+1 < len(argv) {
 			redactNext = true
 		}
 	}
-	return strings.Join(out, " ")
+	return out, hidden
+}
+
+// redactArgvURL hides the credentials of an argument that is a URL: userinfo,
+// credential query parameters and the fragment. Anything else only has URL
+// userinfo masked, so free text is never rewritten.
+func redactArgvURL(arg string) string {
+	if strings.ContainsAny(arg, " \t") || !strings.Contains(arg, "://") {
+		return redactURLUserinfo(arg)
+	}
+	return RedactURL(arg)
+}
+
+// urlCredentialValues lists the userinfo password and the credential query
+// values of a URL argument.
+func urlCredentialValues(arg string) []string {
+	u, err := url.Parse(arg)
+	if err != nil {
+		return nil
+	}
+	var values []string
+	if u.User != nil {
+		if password, ok := u.User.Password(); ok && password != "" {
+			values = append(values, password)
+		}
+	}
+	if q, err := url.ParseQuery(u.RawQuery); err == nil {
+		for key, vals := range q {
+			if looksSecretQueryKey(key) {
+				values = append(values, vals...)
+			}
+		}
+	}
+	return values
 }
