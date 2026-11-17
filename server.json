@@ -7,13 +7,13 @@
     "url": "https://github.com/LevapVeeskela/lv24-vigil",
     "source": "github"
   },
-  "version": "0.10.1",
+  "version": "0.10.2",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "lv24-vigil",
-      "version": "0.10.1",
+      "version": "0.10.2",
       "runtimeHint": "npx",
       "runtimeArguments": [
         {
