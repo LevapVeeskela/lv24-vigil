@@ -4,14 +4,24 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
-## Unreleased
+## 0.10.2 - 2026-11-17
 
-Fixes from an independent adversarial review of 0.10.1. Rule count and MCP tool
-count are unchanged (263 rules, 14 tools). Finding IDs and fingerprints are
-unchanged, so existing baselines keep matching.
+Security patch release: **upgrade from 0.10.1**. It carries the fixes from an
+independent adversarial review of 0.10.1 and is built with a patched Go
+toolchain. Rule count and MCP tool count are unchanged (263 rules, 14 tools).
+Finding IDs and fingerprints are unchanged, so existing baselines keep matching.
 
 ### Security
 
+- **Go toolchain 1.27.4.** The 0.10.1 binaries, npm packages and Linux packages
+  were built with Go 1.27.0, for which `govulncheck` reports reachable
+  standard-library vulnerabilities in `net/http`, HTTP/2, `crypto/tls`,
+  `crypto/x509` and `net/textproto` (fixed in 1.27.2 to 1.27.4). `go.mod` now
+  pins the build with `toolchain go1.27.4`, the version the container image
+  already used; the language minimum stays `go 1.27.0`, so building from
+  source with an older Go 1.27 still works and is switched to 1.27.4 by the
+  `go` command. CI runs `govulncheck` in the required `test` job so a
+  vulnerable toolchain or dependency fails before a tag is cut.
 - **Writes into `.git` through a Windows 8.3 alias.** Path validation compared
   text only, so `GIT~1/hooks/pre-commit` (and `.git::$INDEX_ALLOCATION`) passed
   as an `output.path`, a baseline path or an MCP report path. A cloned
