@@ -50,7 +50,8 @@ jobs:
         run: go test ./...
 
       - name: govulncheck
-        # Fails when the Go toolchain pinned in go.mod, or a dependency, has a
+        # Fails when the Go toolchain pinned in go.mod (the toolchain line,
+        # which setup-go and the go command both follow), or a dependency, has a
         # known vulnerability this code can reach. 0.10.1 shipped binaries built
         # with a toolchain that had 14 such advisories. The fix is a toolchain
         # or dependency bump, not a retry.
