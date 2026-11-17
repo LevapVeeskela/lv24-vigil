@@ -43,6 +43,14 @@ Go 1.27+:
 
     go install github.com/levapveeskela/lv24-vigil/cmd/vigil@latest
 
+Homebrew (macOS, Linux), Scoop (Windows) and the Python launcher (needs
+Node.js 18+; it runs the npm CLI through npx):
+
+    brew install LevapVeeskela/tap/vigil
+    scoop bucket add lv24 https://github.com/LevapVeeskela/scoop-bucket
+    scoop install lv24/vigil
+    pipx install lv24-vigil          # or: uvx lv24-vigil scan --no-llm
+
 Native Linux packages (release assets), AUR packaging and the container image:
 
     sudo apt install ./vigil-0.10.2-linux-amd64.deb      # also .rpm (dnf), .apk (apk)
@@ -141,6 +149,16 @@ the same precedence as a scan, exits 1 on errors and never opens the store or a
 model. `vigil config show [--json]` prints effective values with their sources
 (`defaults`, a file or `env:NAME`); credential values are `***`, and URL
 credentials are `REDACTED`.
+
+`vigil scan --format json` returns `schemaVersion`, `id`, `root`, `mode`,
+`findings`, `suppressed`, `stats`, `errors`, `engine` and `version`. A finding
+carries `id`, `ruleId`, `title`, `severity` (`info` to `critical`),
+`confidence`, `category`, `cwe`, `owasp`, `location` (`path`, `startLine`,
+`endLine`, `snippet`), `evidence`, `remediation`, `fingerprint` and `source`
+(`rule`, `llm` or `hybrid`). The `id` changes when the line moves; the
+`fingerprint` does not. Accepted findings are in `suppressed`, warnings are in
+`errors`, and a non-zero `stats.findingsTruncated` means `max_findings` capped
+the list (the most severe findings are kept).
 
 JUnit is report-only: `vigil report --format junit`. `scan --format junit` is
 rejected with a hint. The document has `testsuites`/`testsuite` named `vigil`;

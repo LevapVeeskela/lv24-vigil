@@ -2,15 +2,17 @@
 
 # Vigil
 
+[![release](https://img.shields.io/github/v/release/LevapVeeskela/lv24-vigil?color=0b6b5f&logo=github)](https://github.com/LevapVeeskela/lv24-vigil/releases)
 [![npm](https://img.shields.io/npm/v/lv24-vigil?label=npm&color=cb3837&logo=npm)](https://www.npmjs.com/package/lv24-vigil)
+[![PyPI](https://img.shields.io/pypi/v/lv24-vigil?label=PyPI&color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/lv24-vigil/)
 [![downloads](https://img.shields.io/npm/dm/lv24-vigil?color=cb3837)](https://www.npmjs.com/package/lv24-vigil)
 [![GitHub Marketplace](https://img.shields.io/badge/GitHub_Marketplace-Vigil-6C5CE7?logo=github)](https://github.com/marketplace/actions/vigil-security-scan)
-[![release](https://img.shields.io/github/v/release/LevapVeeskela/lv24-vigil?color=0b6b5f&logo=github)](https://github.com/LevapVeeskela/lv24-vigil/releases)
+[![CI](https://github.com/LevapVeeskela/lv24-vigil/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LevapVeeskela/lv24-vigil/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/LevapVeeskela/lv24-vigil/badge)](https://securityscorecards.dev/viewer/?uri=github.com/LevapVeeskela/lv24-vigil)
 [![license](https://img.shields.io/badge/license-Apache--2.0-2ea44f)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](go.mod)
 [![MCP](https://img.shields.io/badge/MCP-stdio-6C5CE7)](docs/mcp.md)
 [![OpenCode Go](https://img.shields.io/badge/OpenCode_Go-supported-6C5CE7)](docs/providers.md)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/LevapVeeskela/lv24-vigil/badge)](https://securityscorecards.dev/viewer/?uri=github.com/LevapVeeskela/lv24-vigil)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com)
 [![Go Reference](https://pkg.go.dev/badge/github.com/levapveeskela/lv24-vigil.svg)](https://pkg.go.dev/github.com/levapveeskela/lv24-vigil)
 
@@ -25,12 +27,14 @@
 
 | 🚀 Старт | 🧠 Использование | 🛠 Эксплуатация |
 | --- | --- | --- |
-| [Установка](#установка) · [Посмотрите, как это работает](#посмотрите-как-это-работает) · [Быстрый старт](#быстрый-старт-за-60-секунд) | [Настройка MCP](#настройка-mcp) · [Для ИИ-агентов](#для-ии-агентов) · [Провайдеры](#провайдеры) · [Правила](#правила) | [CI и SARIF](#ci-sarif-и-precheck) · [Безопасность](#безопасность) · [Документация](#документация) |
+| [Установка](#установка) · [Посмотрите, как это работает](#посмотрите-как-это-работает) · [Быстрый старт](#быстрый-старт-за-60-секунд) · [Как это устроено](#как-это-устроено) | [Настройка MCP](#настройка-mcp) · [Для ИИ-агентов](#для-ии-агентов) · [Провайдеры](#провайдеры) · [Правила](#правила) · [Конфигурация](#конфигурация) | [CI и SARIF](#ci-sarif-и-precheck) · [Безопасность](#безопасность) · [Диагностика](#диагностика) · [Документация](#документация) |
 
-> **Статус: 0.10.2.** Детерминированный движок, CLI и MCP-сервер уже можно
-> использовать. Вывод модели носит рекомендательный характер, покрытие правил
-> растёт, и Vigil не заменяет пентест. Любая находка — это повод проверить, а не
-> готовый приговор.
+> **Статус: 0.10.2 — релиз с исправлениями безопасности; обновитесь с 0.10.1.**
+> В нём исправления по итогам состязательного ревью, и он собран на
+> исправленном Go toolchain ([changelog](CHANGELOG.md)). Детерминированный
+> движок, CLI и MCP-сервер уже можно использовать. Вывод модели носит
+> рекомендательный характер, покрытие правил растёт, и Vigil не заменяет
+> пентест. Любая находка — это повод проверить, а не готовый приговор.
 
 ## Посмотрите, как это работает
 
@@ -100,10 +104,55 @@ vigil fix VGL-XXXXXXXXXX --apply  # записать в рабочее дере�
 | 🔒 | **Anti-RE hardening** | Ищет отсутствующую защиту релиза и поверхности, которые читает reverse-engineering-инструмент (REA): symbols/DWARF, Electron fuses, JS minify, WebView, Hermes, iOS testability, а также debug-подпись, debuggable, backup/cleartext, inspector и production source maps; `--platform` сужает проверку |
 | 🚦 | **CI-гейт** | `--fail-on`, код выхода `2`, загрузка SARIF и `vigil precheck` |
 
+## Как это устроено
+
+```text
+ ваш репозиторий
+      |   обход дерева: списки исключений, лимит файла 2 MiB, определение
+      |   бинарников; symlink-и и файлы с hardlink-ами пропускаются
+      v
+ 263 детерминированных правила ----> находки: правило, severity, CWE, OWASP,
+      |                              замаскированное evidence, стабильные ID
+      |                              и fingerprint
+      |
+      |   inline vigil:ignore и baseline переносят принятые находки
+      |   в "suppressed"; ничего не удаляется
+      v
+ опционально, на вашей модели ----> триаж, deep review, diff исправления,
+      |                             модель угроз
+      v
+ Markdown . JSON . SARIF . JUnit . HTML   код выхода 0 / 1 / 2
+ один и тот же движок за CLI и 14 MCP-инструментами
+```
+
+- **Первому шагу сеть не нужна.** Правила только читают файлы: код не
+  выполняется, ничего не отправляется, и отсутствие модели ничего не меняет.
+- **Модель — дополнение, а не детектор.** Когда она настроена, Vigil отправляет
+  ограниченный контекст на выбранный вами endpoint и проверяет ответ, прежде чем
+  он станет находкой или diff-ом.
+- **Вывод стабилен.** Одно и то же дерево даёт те же находки и те же ID, поэтому
+  на них могут опираться baseline, CI-гейт и агент.
+
+Архитектура и ограничения: [docs/architecture.md](docs/architecture.md).
+
 ## Установка
 
-**Единственный пакет, который нужно ставить, — `lv24-vigil`.** При установке он
-выбирает бинарник для вашей платформы и не запускает install-скрипты.
+**Единственный пакет, который нужно ставить, — `lv24-vigil`.** Выберите канал
+под свою машину: любой из них заканчивается одной и той же командой `vigil`.
+
+| Вы работаете в | Самый быстрый путь | Также доступно |
+| --- | --- | --- |
+| **Windows** | `npm i -g lv24-vigil` или `scoop install lv24/vigil` | `.exe` со страницы [релизов](https://github.com/LevapVeeskela/lv24-vigil/releases), установщик PowerShell, Python-лаунчер, контейнер |
+| **macOS** | `npm i -g lv24-vigil` или `brew install LevapVeeskela/tap/vigil` | релизный бинарник (Intel и Apple silicon), shell-установщик, `go install` |
+| **Linux** | `npm i -g lv24-vigil` или `brew install LevapVeeskela/tap/vigil` | `.deb` / `.rpm` / `.apk`, релизный бинарник, shell-установщик, `go install`, контейнер |
+| **CI** | `uses: LevapVeeskela/lv24-vigil@v0.10.2` или [шаблон GitLab](examples/gitlab-ci.yml) | `npx -y lv24-vigil`, образ контейнера |
+| **MCP-клиенте** | `npx -y lv24-vigil mcp` | `vigil mcp` после любой установки ниже |
+| **Только Python-инструментах** | `pipx install lv24-vigil` или `uvx lv24-vigil` | нужен Node.js 18+; см. [Python](#python) |
+
+Бинарники есть для Windows, macOS и Linux на `x64` и `arm64`. Что реально
+опубликовано в каждом канале: [docs/distribution.md](docs/distribution.md).
+
+### npm (рекомендуется)
 
 ```bash
 npm i -g lv24-vigil@latest
@@ -117,8 +166,6 @@ npx -y lv24-vigil scan --no-llm
 npx -y lv24-vigil mcp
 ```
 
-### Выбор пакета
-
 | Пакет | Ставить напрямую? | Что это |
 | --- | --- | --- |
 | **`lv24-vigil`** | ✅ **Да** | Лаунчер, CLI и точка входа MCP; выбирает нужный бинарник |
@@ -126,18 +173,69 @@ npx -y lv24-vigil mcp
 | `lv24-vigil` на PyPI | Опционально | Тонкий Python-лаунчер, делегирует в npm; нужен Node.js 18+ |
 
 В npm-дистрибутиве семь пакетов: лаунчер `lv24-vigil` и шесть платформенных.
-Не отключайте optional dependencies — с `--no-optional` или `--omit=optional`
+Он не запускает install-скрипты и ничего не скачивает при установке. Не
+отключайте optional dependencies — с `--no-optional` или `--omit=optional`
 платформенный пакет не установится, и `vigil` завершится с ошибкой
 `platform package ... is not installed`. Релизы публикуются через npm Trusted
 Publishing (OIDC) с аттестацией происхождения.
 
-Не пиньте `0.5.0`: тег и npm-пакет неизменяемы и всё ещё ставятся, но примеры
-CI на этом теге устарели (`inputs.fail-on`, непроверенный GitLab pre-check).
-Бинарники в порядке, шаблоны — нет. Используйте `0.10.2` или новее, либо
-`@latest`.
-
 Требования: Node.js 18+ для npm, Go 1.27+ для `go install`; готовым бинарникам и
 установщикам среда выполнения не нужна.
+
+<details>
+<summary>Не пиньте <code>0.5.0</code></summary>
+
+Тег `v0.5.0` и npm-пакет неизменяемы и всё ещё ставятся, но примеры CI на этом
+теге устарели (`inputs.fail-on`, непроверенный GitLab pre-check). Бинарники в
+порядке, шаблоны — нет. Используйте `0.10.2` или новее, либо `@latest`.
+
+</details>
+
+### Python
+
+Тонкий лаунчер на PyPI запускает тот же CLI через `npx`. Ему нужны Node.js 18+
+и Python 3.9+; собственного бинарника в нём нет.
+
+```bash
+pipx install lv24-vigil            # или: pip install lv24-vigil
+uvx lv24-vigil scan --no-llm       # разовый запуск без установки
+```
+
+Закрепление версии (`VIGIL_NPM_VERSION`) и коды выхода:
+[docs/pypi.md](docs/pypi.md).
+
+### Homebrew и Scoop
+
+```bash
+brew install LevapVeeskela/tap/vigil   # macOS и Linux; собирается из исходников
+```
+
+```powershell
+scoop bucket add lv24 https://github.com/LevapVeeskela/scoop-bucket
+scoop install lv24/vigil               # Windows, x64 и arm64
+```
+
+### Пакеты для Linux
+
+Каждый релиз содержит `.deb`, `.rpm` и `.apk` для `amd64` и `arm64`. Скачайте
+файл со
+[страницы релизов](https://github.com/LevapVeeskela/lv24-vigil/releases) и
+установите по пути:
+
+```bash
+sudo apt install ./vigil-0.10.2-linux-amd64.deb                # Debian, Ubuntu
+sudo dnf install --nogpgcheck ./vigil-0.10.2-linux-amd64.rpm   # Fedora, RHEL, openSUSE
+sudo apk add --allow-untrusted ./vigil-0.10.2-linux-amd64.apk  # Alpine
+```
+
+У пакетов нет ключа дистрибутива, поэтому `dnf` и `apk` требуют дополнительный
+флаг; целостность обеспечивает подписанный `checksums.txt`
+([Проверка скачанного](#проверка-скачанного)).
+
+Arch Linux: PKGBUILD `vigil-security-bin` в [`packaging/aur`](packaging/aur)
+обновляется из опубликованных релизных файлов, но регистрация в AUR временно
+приостановлена, поэтому пакет ещё не опубликован. Статус, ручная сборка и
+проверка: [docs/aur.md](docs/aur.md).
 
 ### Go
 
@@ -149,7 +247,7 @@ go install github.com/levapveeskela/lv24-vigil/cmd/vigil@latest
 
 Убедитесь, что `$(go env GOPATH)/bin` есть в `PATH`.
 
-### Готовые установщики
+### Бинарники и установщики
 
 Установщики находят релиз, проверяют SHA-256, ставят атомарно и сохраняют
 предыдущий бинарник:
@@ -164,35 +262,6 @@ bash installers/unix/install.sh          # macOS / Linux
 Каждый релиз также публикует шесть готовых бинарников и `checksums.txt` на
 [странице релизов](https://github.com/LevapVeeskela/lv24-vigil/releases). Опции
 и ручная проверка: [docs/install.md](docs/install.md).
-
-### Другие каналы
-
-Scoop (Windows):
-
-```powershell
-scoop bucket add lv24 https://github.com/LevapVeeskela/scoop-bucket
-scoop install lv24/vigil
-```
-
-Homebrew (macOS ? Linux):
-
-```bash
-brew install LevapVeeskela/tap/vigil
-```
-
-Arch Linux: PKGBUILD `vigil-security-bin` в [`packaging/aur`](packaging/aur)
-обновляется из опубликованных релизных файлов, но регистрация в AUR временно
-приостановлена, поэтому пакет ещё не опубликован. Статус, ручная сборка и
-проверка: [docs/aur.md](docs/aur.md).
-
-WinGet: манифест на проверке; до его слияния используйте Scoop или релизные
-бинарники.
-
-MCP: сервер опубликован в официальном MCP Registry (`mcpName` в
-npm-пакете и `server.json`), поэтому клиенты с поддержкой реестра ставят его как
-`npx -y lv24-vigil mcp`. Структура реестра, публикация и проверка:
-[docs/mcp-registry.md](docs/mcp-registry.md). Другие каталоги MCP и статус
-каждой заявки: [docs/mcp-directories.md](docs/mcp-directories.md).
 
 ### Контейнер
 
@@ -213,13 +282,62 @@ docker run --rm -v "$PWD:/workspace" -w /workspace lv24-vigil scan --no-llm
 Теги, закрепление по digest, аттестации provenance/SBOM и ограничения:
 [docs/install.md](docs/install.md#container) и [docs/container.md](docs/container.md).
 
-### Проверка
+### Реестры и каталоги
+
+MCP: сервер опубликован в официальном MCP Registry как
+`io.github.LevapVeeskela/vigil`; в npm-пакете есть `mcpName`, а в репозитории —
+`server.json`, поэтому клиенты с поддержкой реестра ставят его как
+`npx -y lv24-vigil mcp`. Структура реестра, публикация и проверка:
+[docs/mcp-registry.md](docs/mcp-registry.md). Другие каталоги MCP и статус
+каждой заявки: [docs/mcp-directories.md](docs/mcp-directories.md).
+
+WinGet: манифест на проверке; до его слияния используйте Scoop или релизные
+бинарники.
+
+### Обновление и удаление
+
+| Канал | Обновить | Удалить |
+| --- | --- | --- |
+| npm | `npm i -g lv24-vigil@latest` | `npm uninstall -g lv24-vigil` |
+| pipx / pip | `pipx upgrade lv24-vigil` · `pip install -U lv24-vigil` | `pipx uninstall lv24-vigil` · `pip uninstall lv24-vigil` |
+| Homebrew | `brew upgrade vigil` | `brew uninstall vigil` |
+| Scoop | `scoop update vigil` | `scoop uninstall vigil` |
+| deb / rpm / apk | установить новый файл пакета | `sudo apt remove vigil` · `sudo dnf remove vigil` · `sudo apk del vigil` |
+| Go | `go install github.com/levapveeskela/lv24-vigil/cmd/vigil@latest` | удалить `vigil` из `$(go env GOPATH)/bin` |
+| Установщик | запустить ещё раз | `install.sh --uninstall` · `install.ps1 -Uninstall` |
+| Контейнер | `docker pull ghcr.io/levapveeskela/lv24-vigil:<version>` | `docker rmi ghcr.io/levapveeskela/lv24-vigil:<version>` |
+
+Vigil не ставит демон, сервис или задачу по расписанию. История сканов лежит в
+репозитории в `.vigil/scans` или в пользовательском кэше; удалите её, если
+нужен чистый лист.
+
+### Проверка установки
 
 ```bash
 vigil version   # метаданные сборки
 vigil status    # провайдер, модель, правила, хранилище и последний скан
 vigil rules     # авторитетный каталог правил
 ```
+
+### Проверка скачанного
+
+Каждый релиз защищён четырьмя способами: keyless-подпись cosign над
+`checksums.txt`, аттестация происхождения сборки GitHub для каждого файла,
+CycloneDX SBOM и npm provenance для пакетов.
+
+```bash
+gh release download v0.10.2 --pattern checksums.txt --pattern checksums.txt.sigstore.json
+cosign verify-blob \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity "https://github.com/LevapVeeskela/lv24-vigil/.github/workflows/release.yml@refs/tags/v0.10.2" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt                                   # печатает: Verified OK
+sha256sum -c checksums.txt --ignore-missing       # скачанные вами файлы
+gh attestation verify vigil_0.10.2_linux_amd64 --repo LevapVeeskela/lv24-vigil
+```
+
+Digest контейнера, npm provenance и полная процедура:
+[docs/release.md](docs/release.md#verify-a-release).
 
 ## Быстрый старт за 60 секунд
 
@@ -258,6 +376,44 @@ vigil sbom . --output sbom.cdx.json              # CycloneDX 1.6 bill of materia
 предыдущего скана или отчёта. Коды выхода: `0` — чисто, `1` — ошибка, `2` —
 находки на уровне `--fail-on` или выше. Полный справочник:
 [docs/cli.md](docs/cli.md).
+
+## Конфигурация
+
+Vigil работает без конфигурации. Когда она понадобится, `vigil init` создаст
+прокомментированный `.vigil.yaml`, который безопасно коммитить:
+
+```yaml
+scan:
+  mode: standard            # quick | standard | deep (deep добавляет LLM deep review)
+  min_severity: low
+  max_findings: 200
+  exclude: ["node_modules/**", "dist/**", "*.min.js"]
+  disable_rules: []         # например [VGL-DEP-001]
+  # baseline: .vigil-baseline.json
+output:
+  format: md                # md | json | sarif | html
+```
+
+Значения применяются в таком порядке, побеждает последнее: встроенные значения
+по умолчанию → пользовательский конфиг → проектный `.vigil.yaml` → переменные
+окружения → флаги командной строки. Пользовательский конфиг — это
+`~/.config/vigil/config.yaml` в Linux,
+`~/Library/Application Support/vigil/config.yaml` в macOS и
+`%AppData%\vigil\config.yaml` в Windows.
+
+- **Ключи не живут в проектном файле.** `api_key`, `base_url`, провайдер
+  `command` и `scan.osv_base_url` принимаются только из пользовательского
+  конфига или окружения. Проектный файл, который их задаёт, отклоняется.
+- **Проектный файл — это содержимое репозитория.** Он может сузить скан
+  (`exclude`, `disable_rules`, `min_severity`), поэтому его изменения стоит
+  ревьюить как код.
+- **Посмотрите, что действует.** `vigil config validate` проверяет оба файла, а
+  `vigil config show --json` печатает каждое итоговое значение с его источником
+  и скрытыми секретами.
+
+Справка: [docs/providers.md](docs/providers.md#configuration-order) ·
+[docs/cli.md](docs/cli.md) · граница доверия:
+[docs/security-model.md](docs/security-model.md).
 
 ## Настройка MCP
 
@@ -354,10 +510,12 @@ args = ["-y", "lv24-vigil", "mcp"]
   "install": "npm i -g lv24-vigil",
   "binary": "vigil",
   "mcp": { "command": "npx", "args": ["-y", "lv24-vigil", "mcp"] },
+  "mcp_registry_name": "io.github.LevapVeeskela/vigil",
   "deterministic_only": "vigil scan --no-llm",
   "json_report": "vigil scan --format json",
   "sarif": "vigil scan --format sarif --fail-on high",
   "status_json": "vigil status --json",
+  "config_check": "vigil config validate --json",
   "fix_dry_run": "vigil fix <finding-id>",
   "fix_apply": "vigil fix <finding-id> --apply",
   "mcp_tools": [
@@ -366,12 +524,79 @@ args = ["-y", "lv24-vigil", "mcp"]
     "vigil_mcp_audit", "vigil_dependencies", "vigil_baseline", "vigil_report",
     "vigil_verify", "vigil_history"
   ],
+  "writes_source_files": ["vigil fix --apply", "vigil_fix apply=true"],
+  "network": {
+    "none": ["vigil scan --no-llm", "vigil hardening", "vigil mcp-audit", "vigil sbom"],
+    "osv": ["vigil dependencies", "vigil_dependencies", "scan.osv: true"],
+    "model": ["scan and review with a model", "vigil fix", "vigil threat-model", "vigil_explain"]
+  },
   "exit_codes": { "0": "clean", "1": "error", "2": "findings at or above --fail-on" },
   "docs_index": "llms.txt"
 }
 ```
 
-Правила, которые важны при управлении:
+### Какой инструмент выбрать
+
+| Вам нужно | MCP-инструмент | CLI |
+| --- | --- | --- |
+| Просканировать репозиторий | `vigil_scan` | `vigil scan <path> --no-llm --format json` |
+| Посмотреть только изменённые строки | `vigil_review` | `vigil review --base origin/main --format json` |
+| Разобраться в одной находке | `vigil_explain` | — |
+| Получить исправление как diff | `vigil_fix` с `apply=false` | `vigil fix <finding-id>` |
+| Убедиться, что исправление сработало | `vigil_verify` | просканировать снова |
+| Проверить зависимости по известным advisory | `vigil_dependencies` | `vigil dependencies . --format json` |
+| Проверить конфиги MCP-серверов | `vigil_mcp_audit` | `vigil mcp-audit . --format json` |
+| Оценить защиту релиза | `vigil_hardening` | `vigil hardening . --format json` |
+| Список правил или проверка окружения | `vigil_rules`, `vigil_status` | `vigil rules --json`, `vigil status --json` |
+| Принять находку | `vigil_baseline` | `vigil baseline add <finding-id> --reason TEXT` |
+| Отрендерить или перечислить сохранённые сканы | `vigil_report`, `vigil_history` | `vigil report --format json` |
+
+### Аргументы MCP-инструментов
+
+| Инструмент | Аргументы | Что пишет | Сеть |
+| --- | --- | --- | --- |
+| `vigil_scan` | `path`, `mode`, `minSeverity`, `maxFindings`, `include`, `exclude`, `onlyRules`, `disableRules`, `changedOnly`, `baseRef`, `diff`, `useLlm`, `deepReview`, `threatModel`, `noBaseline` | историю сканов | модель при `useLlm`; OSV при включённом `scan.osv` |
+| `vigil_review` | `path`, `baseRef`, `changedOnly`, `diff`, `useLlm` | историю сканов | модель при `useLlm` |
+| `vigil_hardening` | `path`, `platform`, `minSeverity`, `maxFindings`, `noBaseline` | историю сканов | нет |
+| `vigil_mcp_audit` | `path`, `includeUser`, `minSeverity`, `maxFindings` | ничего | нет |
+| `vigil_dependencies` | `path`, `includeDev`, `maxPackages`, `osvBaseUrl` | ничего | OSV |
+| `vigil_explain` | `findingId`, `scanId` | ничего | модель |
+| `vigil_fix` | `findingId`, `scanId`, `apply` | исходники при `apply=true` | модель |
+| `vigil_threat_model` | `path` | ничего | модель |
+| `vigil_verify` | `findingId`, `scanId`, `paths` | ничего | нет |
+| `vigil_baseline` | `action`, `findingId`, `scanId`, `reason` | файл baseline | нет |
+| `vigil_report` | `format`, `path`, `scanId` | файл отчёта, если задан `path` | нет |
+| `vigil_rules` | `category`, `language`, `severity`, `query` | ничего | нет |
+| `vigil_status`, `vigil_history` | — , `limit` | ничего | нет |
+
+### Как выглядит находка
+
+`vigil scan --format json` возвращает `schemaVersion`, `id`, `root`, `mode`,
+`findings`, `suppressed`, `stats`, `errors`, `engine` и `version`. Одна находка:
+
+```json
+{
+  "id": "VGL-A421AAF486",
+  "ruleId": "VGL-INJ-014",
+  "title": "SQL query built with Python string formatting",
+  "severity": "high",
+  "confidence": "high",
+  "category": "injection",
+  "cwe": ["CWE-89"],
+  "owasp": ["A03:2021 - Injection"],
+  "location": { "path": "app.py", "startLine": 6, "endLine": 6, "snippet": "..." },
+  "evidence": "return conn.execute(\"SELECT * FROM users WHERE name = '%s'\" % name).fetchone()",
+  "remediation": "Use parameterized queries or an ORM that binds parameters.",
+  "fingerprint": "fp_89db402212f46ea0",
+  "source": "rule"
+}
+```
+
+`severity` — это `info`, `low`, `medium`, `high` или `critical`; `source` —
+`rule`, `llm` или `hybrid`. Передавайте `id` в `vigil fix`, `vigil_explain` и
+`vigil_verify`. `fingerprint` переживает сдвиг строки, `id` — нет.
+
+### Правила, которые важны при управлении
 
 1. **Ставьте только `lv24-vigil`.** Никогда не устанавливайте
    `@lv24/vigil-<os>-<cpu>` напрямую: это optional dependency, который выбирает
@@ -390,6 +615,9 @@ args = ["-y", "lv24-vigil", "mcp"]
 6. **Телеметрии нет.** Нет облака Vigil, аккаунта, аналитики и проверки
    обновлений. Единственная явная отправка — `vigil precheck`, и для неё нужен
    staff JWT.
+7. **Читайте результат целиком.** Код выхода `2` — это срабатывание политики, а
+   не сбой. Принятые находки лежат в `suppressed`, предупреждения — в `errors`,
+   а ненулевой `stats.findingsTruncated` означает, что список был обрезан.
 
 Полный индекс для агентов: [`llms.txt`](llms.txt) · онбординг:
 [`AGENTS.md`](AGENTS.md) · рецепты клиентов: [docs/mcp.md](docs/mcp.md).
@@ -516,6 +744,10 @@ Severity, confidence, baseline и маскирование: [docs/rules.md](docs
   (включая symlink, junction и hardlink); бинарные и symlink-патчи и правки
   `.git` отклоняются; счётчики строк в hunk-ах должны совпадать;
   `git apply --check` выполняется до любой записи.
+- **Проектный файл — это содержимое репозитория.** Закоммиченный `.vigil.yaml`
+  не может задать ключ, endpoint или команду, а его `output.path` не может
+  заменить файл, который не является отчётом Vigil. Сузить скан он всё же
+  может, поэтому его изменения стоит ревьюить как код.
 - **Телеметрии нет.** Нет облака Vigil, аккаунта, аналитики, crash reporter и
   проверки обновлений. Единственная опциональная отправка — `vigil precheck`,
   для неё нужен явный staff JWT.
@@ -679,6 +911,21 @@ vigil precheck --sarif vigil.sarif --api "$SECURITY_API" --token "$STAFF_JWT" \
 `STAFF_JWT` — это staff JWT со scope `ops:security-scans`, а не API-ключ.
 Precheck не запускает скан. Полное руководство: [docs/ci.md](docs/ci.md) ·
 пример: [examples/github-workflow.yml](examples/github-workflow.yml).
+
+## Диагностика
+
+| Что вы видите | Что это значит | Что делать |
+| --- | --- | --- |
+| `platform package ... is not installed` | npm пропустил optional dependencies | Переустановите без `--no-optional` / `--omit=optional` |
+| «LLM disabled» или `no LLM provider configured` | Нет рабочей модели; детерминированный скан всё равно выполнен | Задайте ключ провайдера или передайте `--no-llm`, чтобы сделать это явным |
+| `provider "..." requires an API key` | Конфиг называет провайдера, для которого у вас нет ключа | Экспортируйте ключ этого провайдера или смените `provider` |
+| Код выхода `2` | Есть находки не ниже `--fail-on`; это не сбой | Исправьте, примите в baseline или подавите находку; повторный запуск не поможет |
+| `findings truncated` в предупреждениях | Список упёрся в `max_findings`; оставлены самые серьёзные | Увеличьте `--max-findings` |
+| Находка ложная | Правило сработало на безопасном коде | `// vigil:ignore RULE-ID reason="..."` на этой строке или `vigil baseline add <finding-id> --reason TEXT` |
+| В MCP-клиенте нет инструментов | Сервер не стартовал или у конфига неверная форма | Запустите `vigil mcp` вручную; `command` и `args` должны быть массивами; перезапустите клиент |
+| Агент сканирует не тот каталог | Сервер берёт корнем свой рабочий каталог | Запускайте клиент из репозитория или передайте `vigil mcp --root DIR` |
+
+Остальные случаи с точными сообщениями: [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Документация
 

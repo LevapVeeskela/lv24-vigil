@@ -124,6 +124,9 @@ Cursor: use the `mcpServers` JSON shape in
 - **No telemetry.** `vigil precheck` is the only explicit upload and needs a
   staff JWT with `ops:security-scans`.
 - **Exit codes:** `0` clean, `1` error, `2` findings at or above `--fail-on`.
+- **Read the whole result.** Accepted findings are in `suppressed`, warnings are
+  in `errors`, and a non-zero `stats.findingsTruncated` means the list was
+  capped by `max_findings`; the most severe findings are kept.
 - **Dependency advisories are known public OSV records only.** A clean result is
   not proof of safety, and no tool here can detect a zero-day. Never describe
   `vigil_dependencies` as zero-day coverage.
