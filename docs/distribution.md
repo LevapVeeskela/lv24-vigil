@@ -1,53 +1,58 @@
 # Distribution status
 
-Where Vigil `0.10.1` is actually published, what each channel installs, and
+Where Vigil `0.10.2` is actually published, what each channel installs, and
 which channels are still gated. This page records the live state, not the
 intended roadmap: a channel is "available" only when the published artifact was
 resolved on the date below.
 
-**Last verified: 2026-11-16.** Current release: **0.10.1**. Verification
+**Last verified: 2026-11-17.** Current release: **0.10.2**. Verification
 commands are in [Re-verify](#re-verify).
 
 ## Channels
 
 | Channel | Version | Status | Install | Verify |
 | --- | --- | --- | --- | --- |
-| [GitHub Release](https://github.com/LevapVeeskela/lv24-vigil/releases/tag/v0.10.1) | `v0.10.1` | **Available** — latest, 15 assets | Binaries, deb/rpm/apk and installers: [install.md](install.md) | `gh attestation verify <asset> --repo LevapVeeskela/lv24-vigil` |
-| [npm](https://www.npmjs.com/package/lv24-vigil) | `0.10.1` | **Available** — `latest`, 7/7 packages (launcher + 6 platform) | `npm i -g lv24-vigil@0.10.1` | `npm view lv24-vigil version` |
-| [PyPI](https://pypi.org/project/lv24-vigil/) | `0.10.1` | **Available** — thin launcher, delegates to npm (Node.js 18+) | `pip install lv24-vigil==0.10.1` | `pip show lv24-vigil` |
-| [GHCR](https://github.com/LevapVeeskela/lv24-vigil/pkgs/container/lv24-vigil) | `0.10.1` | **Available** — multi-arch `linux/amd64`, `linux/arm64`; tags `0.10.1`, `0.10`, `latest`, `sha-1510bae` | `docker pull ghcr.io/levapveeskela/lv24-vigil:0.10.1` | `docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.10.1` |
-| [Go proxy](https://pkg.go.dev/github.com/levapveeskela/lv24-vigil) | `v0.10.1` | **Available** — module `github.com/levapveeskela/lv24-vigil` | `go install github.com/levapveeskela/lv24-vigil/cmd/vigil@v0.10.1` | `go list -m github.com/levapveeskela/lv24-vigil@v0.10.1` |
-| [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan) | `v0.10.1` | **Available** — action listing live, `v0.10.1` tag present | `uses: LevapVeeskela/lv24-vigil@v0.10.1` | Listing page shows the tag; add `version: 0.10.1` when the CLI must match |
-| [Scoop](https://github.com/LevapVeeskela/scoop-bucket) | `0.10.1` | **Available** — manifest tracks releases | `scoop bucket add lv24 https://github.com/LevapVeeskela/scoop-bucket`<br>`scoop install lv24/vigil` | `scoop info lv24/vigil` then `vigil version` |
-| [Homebrew](https://github.com/LevapVeeskela/homebrew-tap) | `0.10.1` | **Available** — builds from the tagged source tarball | `brew install LevapVeeskela/tap/vigil` | `brew info LevapVeeskela/tap/vigil` |
-| [GitLab mirror](https://gitlab.com/lv24-company/lv24-vigil) | `main`, `v0.10.1` | **Available** — private mirror, `main` and `v0.10.1` present; not an install channel | `git clone https://gitlab.com/lv24-company/lv24-vigil.git` | `git ls-remote --tags https://gitlab.com/lv24-company/lv24-vigil.git` |
-| [WinGet](https://github.com/microsoft/winget-pkgs/pull/480713) | `0.10.1` | **Pending** — PR 480713 open; checks 01–10 + CLA pass, awaiting moderator; not installable | — | `gh pr checks 480713 -R microsoft/winget-pkgs` |
-| [Official MCP Registry](https://registry.modelcontextprotocol.io) | `0.10.1` | **Available** — published 2026-11-16, active and latest | `npx -y lv24-vigil@0.10.1 mcp` | `curl "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.LevapVeeskela/vigil"` |
-| [AUR](aur.md) | `0.10.1` PKGBUILD, `vigil-security-bin` | **Not published** — registration paused (HTTP 503); renamed from the occupied `vigil-bin` to the free `vigil-security-bin` | — **never run `yay -S vigil-bin`** (unrelated package); `yay -S vigil-security-bin` only after it appears | `curl -s "https://aur.archlinux.org/rpc/v5/info?arg[]=vigil-bin&arg[]=vigil-security-bin"` |
+| [GitHub Release](https://github.com/LevapVeeskela/lv24-vigil/releases/tag/v0.10.2) | `v0.10.2` | **Available** — latest, 16 assets | Binaries, deb/rpm/apk and installers: [install.md](install.md) | `gh attestation verify <asset> --repo LevapVeeskela/lv24-vigil` |
+| [npm](https://www.npmjs.com/package/lv24-vigil) | `0.10.2` | **Available** — `latest`, 7/7 packages (launcher + 6 platform) | `npm i -g lv24-vigil@0.10.2` | `npm view lv24-vigil version` |
+| [PyPI](https://pypi.org/project/lv24-vigil/) | `0.10.2` | **Available** — thin launcher, delegates to npm (Node.js 18+) | `pip install lv24-vigil==0.10.2` | `pip show lv24-vigil` |
+| [GHCR](https://github.com/LevapVeeskela/lv24-vigil/pkgs/container/lv24-vigil) | `0.10.2` | **Available** — multi-arch `linux/amd64`, `linux/arm64`; tags `0.10.2`, `0.10`, `latest`, `sha-add7d06` | `docker pull ghcr.io/levapveeskela/lv24-vigil:0.10.2` | `docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.10.2` |
+| [Go proxy](https://pkg.go.dev/github.com/levapveeskela/lv24-vigil) | `v0.10.2` | **Available** — module `github.com/levapveeskela/lv24-vigil` | `go install github.com/levapveeskela/lv24-vigil/cmd/vigil@v0.10.2` | `go list -m github.com/levapveeskela/lv24-vigil@v0.10.2` |
+| [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan) | `v0.10.2` | **Available** — action listing live, `v0.10.2` tag present | `uses: LevapVeeskela/lv24-vigil@v0.10.2` | Listing page shows the tag; add `version: 0.10.2` when the CLI must match |
+| [Scoop](https://github.com/LevapVeeskela/scoop-bucket) | `0.10.1` | **Behind** — the bucket manifest still installs 0.10.1; update it to 0.10.2 | `scoop bucket add lv24 https://github.com/LevapVeeskela/scoop-bucket`<br>`scoop install lv24/vigil` | `scoop info lv24/vigil` then `vigil version` |
+| [Homebrew](https://github.com/LevapVeeskela/homebrew-tap) | `0.10.1` | **Behind** — the formula still builds the `v0.10.1` source tarball; update it to 0.10.2 | `brew install LevapVeeskela/tap/vigil` | `brew info LevapVeeskela/tap/vigil` |
+| [GitLab mirror](https://gitlab.com/lv24-company/lv24-vigil) | `main`, `v0.10.2` | **Available** — private mirror, `main` and `v0.10.2` present; not an install channel | `git clone https://gitlab.com/lv24-company/lv24-vigil.git` | `git ls-remote --tags https://gitlab.com/lv24-company/lv24-vigil.git` |
+| [WinGet](https://github.com/microsoft/winget-pkgs/pull/480713) | `0.10.1` | **Pending** — PR 480713 (0.10.1) open, awaiting moderator; not installable. 0.10.2 is not submitted | — | `gh pr checks 480713 -R microsoft/winget-pkgs` |
+| [Official MCP Registry](https://registry.modelcontextprotocol.io) | `0.10.1` | **Behind** — 0.10.1 is active and latest; 0.10.2 is in `server.json` and needs the owner's `mcp-publisher publish` | `npx -y lv24-vigil@0.10.2 mcp` | `curl "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.LevapVeeskela/vigil"` |
+| [AUR](aur.md) | `0.10.2` PKGBUILD, `vigil-security-bin` | **Not published** — registration paused (HTTP 503); renamed from the occupied `vigil-bin` to the free `vigil-security-bin` | — **never run `yay -S vigil-bin`** (unrelated package); `yay -S vigil-security-bin` only after it appears | `curl -s "https://aur.archlinux.org/rpc/v5/info?arg[]=vigil-bin&arg[]=vigil-security-bin"` |
 | Glama, Smithery, mcp.so, PulseMCP | — | **Not listed** — account-gated submissions, metadata ready | — | [mcp-directories.md](mcp-directories.md) |
 | [CII Best Practices](https://bestpractices.coreinfrastructure.org) | — | **Not registered** — checklist prepared, no project id | — | No badge in the README; [cii-best-practices.md](cii-best-practices.md) |
 | [analysis-tools.dev](https://analysis-tools.dev) | — | **Not eligible** — the directory requires at least 6 months public, 20 stars and more than one human contributor; revisit later | — | — |
 
-## Release assets (15)
+## Release assets (16)
 
-`v0.10.1` counts 15 release assets:
+`v0.10.2` counts 16 release assets:
 
 - 6 static binaries: `linux`/`darwin`/`windows` on `amd64`/`arm64`;
 - 6 Linux packages: deb, rpm and apk on `amd64`/`arm64`;
-- `vigil-sbom-0.10.1.cdx.json` (CycloneDX 1.6 self-SBOM);
-- `checksums.txt` and `checksums.txt.sigstore.json` (keyless cosign bundle).
+- `vigil-sbom-0.10.2.cdx.json` (CycloneDX 1.6 self-SBOM);
+- `checksums.txt` and `checksums.txt.sigstore.json` (keyless cosign bundle);
+- `provenance.intoto.jsonl` (SLSA build provenance bundle).
 
-SLSA build provenance covers every asset and is also stored in GitHub's
-attestation store. The next release additionally attaches the bundle as
-`provenance.intoto.jsonl`, so future asset counts will be 16; 0.10.1 itself has
-15. Asset list, signature identity and the full verification flow:
+SLSA build provenance covers every asset except the bundle itself and is also
+stored in GitHub's attestation store. 0.10.2 is the first release that attaches
+the bundle as `provenance.intoto.jsonl`; 0.10.1 and earlier have 15 assets. The
+0.10.2 binaries are built with Go 1.27.4 (`go version -m <binary>`); 0.10.1 was
+built with Go 1.27.0. Asset list, signature identity and the full verification
+flow:
 [release.md](release.md#verify-a-release).
 
 ## Pending gates
 
 | Gate | What is missing | Owner action |
 | --- | --- | --- |
-| WinGet | PR 480713 checks 01–10 + CLA pass; `mergeStateStatus` is BLOCKED pending moderator review | Wait for review; if changes are requested, add commits. Never force-push this branch: it permanently blocks reopening (see [release.md](release.md)) |
+| WinGet | PR 480713 (0.10.1) passes its checks and waits for moderator review; 0.10.2 has no manifest yet | Wait for review; if changes are requested, add commits. Never force-push this branch: it permanently blocks reopening (see [release.md](release.md)). Submit 0.10.2 as a new version once the package exists |
+| Scoop, Homebrew | The bucket manifest and the formula still point at 0.10.1 | Update `bucket/vigil.json` and `Formula/vigil.rb` to 0.10.2 with the new hashes |
+| Official MCP Registry | The registry entry is 0.10.1; `server.json` is 0.10.2 | `mcp-publisher login github`, then `mcp-publisher publish`; [mcp-registry.md](mcp-registry.md) |
 | AUR | Registration paused (HTTP 503, no manual queue); the original `vigil-bin` name belongs to `valeriansaliou/vigil`, so this package is renamed `vigil-security-bin` | Wait for the aur-general/Arch announcement; do not script retries; [aur.md](aur.md) |
 | MCP directories | No listing accepted yet; every submission is an account-gated web action | Use the prepared metadata in [mcp-directories.md](mcp-directories.md) for Glama, Smithery, mcp.so, PulseMCP and the awesome lists |
 | CII Best Practices | No project registered, so no project id and no badge | Register, answer the prepared questionnaire, replace `PROJECT_ID`; [cii-best-practices.md](cii-best-practices.md) |
@@ -58,11 +63,11 @@ attestation store. The next release additionally attaches the bundle as
 Run these read-only checks to confirm the table without trusting this page:
 
 ```bash
-gh release view v0.10.1 --json tagName,assets --jq '.tagName, (.assets | length)'
+gh release view v0.10.2 --json tagName,assets --jq '.tagName, (.assets | length)'
 npm view lv24-vigil version
 curl -s https://pypi.org/pypi/lv24-vigil/json | jq -r .info.version
-docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.10.1
-go list -m github.com/levapveeskela/lv24-vigil@v0.10.1
+docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.10.2
+go list -m github.com/levapveeskela/lv24-vigil@v0.10.2
 brew info LevapVeeskela/tap/vigil
 scoop info lv24/vigil
 curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.LevapVeeskela/vigil"
