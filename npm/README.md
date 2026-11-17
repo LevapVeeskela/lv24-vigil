@@ -53,7 +53,7 @@ Keep optional dependencies enabled: `--no-optional` and `--omit=optional` leave
 | | Command |
 | --- | --- |
 | Update | `npm i -g lv24-vigil@latest` |
-| Pin a release | `npm i -g lv24-vigil@0.10.2` |
+| Pin a release | `npm i -g lv24-vigil@0.10.3` |
 | Remove | `npm uninstall -g lv24-vigil` |
 | Check provenance | `npm view lv24-vigil dist.attestations` |
 

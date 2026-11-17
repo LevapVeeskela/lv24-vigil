@@ -8,11 +8,13 @@ binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud
 Repository: https://github.com/LevapVeeskela/lv24-vigil
 License: Apache-2.0
 Binary: vigil
-Current release line: 0.10.2: 263 rules in ten families, 14 MCP tools,
+Current release line: 0.10.3: 263 rules in ten families, 14 MCP tools,
 offline `mcp-audit` and `sbom`, inline suppression, baseline v2
 (`ticket`, `expires`, `path`, `prune`, active-only SARIF), hardening platform
 presets (`--platform` / MCP `platform`), `vigil config validate|show`,
 report-only JUnit, plus the `vigil_hardening` and `vigil_dependencies` tools.
+0.10.3 is a documentation release: the same code as 0.10.2 with refreshed npm
+and PyPI pages. No code or rule changes.
 0.10.2 is a security patch release: upgrade from 0.10.1. It fixes the defects
 an adversarial review reproduced (a report written into `.git` through a
 Windows 8.3 alias, raw secrets quoted by other findings, a `--max-findings` cap
@@ -53,10 +55,10 @@ Node.js 18+; it runs the npm CLI through npx):
 
 Native Linux packages (release assets), AUR packaging and the container image:
 
-    sudo apt install ./vigil-0.10.2-linux-amd64.deb      # also .rpm (dnf), .apk (apk)
+    sudo apt install ./vigil-0.10.3-linux-amd64.deb      # also .rpm (dnf), .apk (apk)
     # Arch Linux: vigil-security-bin PKGBUILD ready; AUR registration temporarily paused
     docker run --rm -v "$PWD:/workspace" \
-      ghcr.io/levapveeskela/lv24-vigil:0.10.2 scan --no-llm --path /workspace
+      ghcr.io/levapveeskela/lv24-vigil:0.10.3 scan --no-llm --path /workspace
 
 The npm package carries MCP Registry metadata (`mcpName`) and the repository
 ships `server.json`, so registry-aware clients add the same stdio server:

@@ -29,12 +29,13 @@
 | --- | --- | --- |
 | [Установка](#установка) · [Посмотрите, как это работает](#посмотрите-как-это-работает) · [Быстрый старт](#быстрый-старт-за-60-секунд) · [Как это устроено](#как-это-устроено) | [Настройка MCP](#настройка-mcp) · [Для ИИ-агентов](#для-ии-агентов) · [Провайдеры](#провайдеры) · [Правила](#правила) · [Конфигурация](#конфигурация) | [CI и SARIF](#ci-sarif-и-precheck) · [Безопасность](#безопасность) · [Диагностика](#диагностика) · [Документация](#документация) |
 
-> **Статус: 0.10.2 — релиз с исправлениями безопасности; обновитесь с 0.10.1.**
-> В нём исправления по итогам состязательного ревью, и он собран на
-> исправленном Go toolchain ([changelog](CHANGELOG.md)). Детерминированный
-> движок, CLI и MCP-сервер уже можно использовать. Вывод модели носит
-> рекомендательный характер, покрытие правил растёт, и Vigil не заменяет
-> пентест. Любая находка — это повод проверить, а не готовый приговор.
+> **Статус: 0.10.3.** Если у вас 0.10.1 или старше — обновитесь: 0.10.2 был
+> релизом с исправлениями безопасности по итогам состязательного ревью и с
+> исправленным Go toolchain, а 0.10.3 — тот же код с обновлёнными страницами
+> пакетов ([changelog](CHANGELOG.md)). Детерминированный движок, CLI и
+> MCP-сервер уже можно использовать. Вывод модели носит рекомендательный
+> характер, покрытие правил растёт, и Vigil не заменяет пентест. Любая находка —
+> это повод проверить, а не готовый приговор.
 
 ## Посмотрите, как это работает
 
@@ -145,7 +146,7 @@ vigil fix VGL-XXXXXXXXXX --apply  # записать в рабочее дере�
 | **Windows** | `npm i -g lv24-vigil` или `scoop install lv24/vigil` | `.exe` со страницы [релизов](https://github.com/LevapVeeskela/lv24-vigil/releases), установщик PowerShell, Python-лаунчер, контейнер |
 | **macOS** | `npm i -g lv24-vigil` или `brew install LevapVeeskela/tap/vigil` | релизный бинарник (Intel и Apple silicon), shell-установщик, `go install` |
 | **Linux** | `npm i -g lv24-vigil` или `brew install LevapVeeskela/tap/vigil` | `.deb` / `.rpm` / `.apk`, релизный бинарник, shell-установщик, `go install`, контейнер |
-| **CI** | `uses: LevapVeeskela/lv24-vigil@v0.10.2` или [шаблон GitLab](examples/gitlab-ci.yml) | `npx -y lv24-vigil`, образ контейнера |
+| **CI** | `uses: LevapVeeskela/lv24-vigil@v0.10.3` или [шаблон GitLab](examples/gitlab-ci.yml) | `npx -y lv24-vigil`, образ контейнера |
 | **MCP-клиенте** | `npx -y lv24-vigil mcp` | `vigil mcp` после любой установки ниже |
 | **Только Python-инструментах** | `pipx install lv24-vigil` или `uvx lv24-vigil` | нужен Node.js 18+; см. [Python](#python) |
 
@@ -187,7 +188,7 @@ Publishing (OIDC) с аттестацией происхождения.
 
 Тег `v0.5.0` и npm-пакет неизменяемы и всё ещё ставятся, но примеры CI на этом
 теге устарели (`inputs.fail-on`, непроверенный GitLab pre-check). Бинарники в
-порядке, шаблоны — нет. Используйте `0.10.2` или новее, либо `@latest`.
+порядке, шаблоны — нет. Используйте `0.10.3` или новее, либо `@latest`.
 
 </details>
 
@@ -223,9 +224,9 @@ scoop install lv24/vigil               # Windows, x64 и arm64
 установите по пути:
 
 ```bash
-sudo apt install ./vigil-0.10.2-linux-amd64.deb                # Debian, Ubuntu
-sudo dnf install --nogpgcheck ./vigil-0.10.2-linux-amd64.rpm   # Fedora, RHEL, openSUSE
-sudo apk add --allow-untrusted ./vigil-0.10.2-linux-amd64.apk  # Alpine
+sudo apt install ./vigil-0.10.3-linux-amd64.deb                # Debian, Ubuntu
+sudo dnf install --nogpgcheck ./vigil-0.10.3-linux-amd64.rpm   # Fedora, RHEL, openSUSE
+sudo apk add --allow-untrusted ./vigil-0.10.3-linux-amd64.apk  # Alpine
 ```
 
 У пакетов нет ключа дистрибутива, поэтому `dnf` и `apk` требуют дополнительный
@@ -269,7 +270,7 @@ bash installers/unix/install.sh          # macOS / Linux
 запуск от `nonroot`) публикуется в GitHub Container Registry с каждым релизом:
 
 ```bash
-docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.10.2 scan --no-llm --path /workspace
+docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.10.3 scan --no-llm --path /workspace
 ```
 
 Локальный `Dockerfile` собирает тот же образ, если так удобнее:
@@ -326,14 +327,14 @@ vigil rules     # авторитетный каталог правил
 CycloneDX SBOM и npm provenance для пакетов.
 
 ```bash
-gh release download v0.10.2 --pattern checksums.txt --pattern checksums.txt.sigstore.json
+gh release download v0.10.3 --pattern checksums.txt --pattern checksums.txt.sigstore.json
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
-  --certificate-identity "https://github.com/LevapVeeskela/lv24-vigil/.github/workflows/release.yml@refs/tags/v0.10.2" \
+  --certificate-identity "https://github.com/LevapVeeskela/lv24-vigil/.github/workflows/release.yml@refs/tags/v0.10.3" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt                                   # печатает: Verified OK
 sha256sum -c checksums.txt --ignore-missing       # скачанные вами файлы
-gh attestation verify vigil_0.10.2_linux_amd64 --repo LevapVeeskela/lv24-vigil
+gh attestation verify vigil_0.10.3_linux_amd64 --repo LevapVeeskela/lv24-vigil
 ```
 
 Digest контейнера, npm provenance и полная процедура:
@@ -789,7 +790,7 @@ vigil hook uninstall
 
 ### GitHub Actions (PR, `main`, вручную)
 
-Действие также опубликовано в [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Используйте `uses: LevapVeeskela/lv24-vigil@v0.10.2`; добавьте `version: 0.10.2`, если CLI должен совпадать с тегом действия.
+Действие также опубликовано в [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Используйте `uses: LevapVeeskela/lv24-vigil@v0.10.3`; добавьте `version: 0.10.3`, если CLI должен совпадать с тегом действия.
 
 Скопируйте [`examples/github-workflow.yml`](examples/github-workflow.yml) в
 `.github/workflows/vigil.yml`:

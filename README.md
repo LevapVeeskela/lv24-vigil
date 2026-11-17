@@ -28,9 +28,10 @@
 | --- | --- | --- |
 | [Install](#install) · [See it work](#see-it-work) · [Quickstart](#60-second-quickstart) · [How it works](#how-it-works) | [MCP setup](#mcp-setup) · [For AI agents](#for-ai-agents) · [Providers](#providers) · [Rules](#rules) · [Configuration](#configuration) | [CI & SARIF](#ci-sarif-and-precheck) · [Safety](#safety) · [Troubleshooting](#troubleshooting) · [Docs](#documentation) |
 
-> **Status: 0.10.2 — a security patch release; upgrade from 0.10.1.** It
-> carries the fixes from an adversarial review and is built with a patched Go
-> toolchain ([changelog](CHANGELOG.md)). The deterministic engine, CLI and MCP
+> **Status: 0.10.3.** If you are on 0.10.1 or older, upgrade: 0.10.2 was a
+> security patch release with the fixes from an adversarial review and a
+> patched Go toolchain, and 0.10.3 is the same code with refreshed package
+> pages ([changelog](CHANGELOG.md)). The deterministic engine, CLI and MCP
 > server are usable today. LLM output is advisory, rule coverage keeps growing,
 > and Vigil is not a replacement for a pentest. Treat every finding as a lead
 > to verify, not a verdict.
@@ -142,7 +143,7 @@ your machine; every one of them ends at the same `vigil` command.
 | **Windows** | `npm i -g lv24-vigil` or `scoop install lv24/vigil` | `.exe` from [Releases](https://github.com/LevapVeeskela/lv24-vigil/releases), PowerShell installer, Python launcher, container |
 | **macOS** | `npm i -g lv24-vigil` or `brew install LevapVeeskela/tap/vigil` | release binary (Intel and Apple silicon), shell installer, `go install` |
 | **Linux** | `npm i -g lv24-vigil` or `brew install LevapVeeskela/tap/vigil` | `.deb` / `.rpm` / `.apk`, release binary, shell installer, `go install`, container |
-| **CI** | `uses: LevapVeeskela/lv24-vigil@v0.10.2` or the [GitLab template](examples/gitlab-ci.yml) | `npx -y lv24-vigil`, container image |
+| **CI** | `uses: LevapVeeskela/lv24-vigil@v0.10.3` or the [GitLab template](examples/gitlab-ci.yml) | `npx -y lv24-vigil`, container image |
 | **An MCP client** | `npx -y lv24-vigil mcp` | `vigil mcp` after any install below |
 | **Python tooling only** | `pipx install lv24-vigil` or `uvx lv24-vigil` | needs Node.js 18+; see [Python](#python) |
 
@@ -184,7 +185,7 @@ and installers need no runtime.
 
 The `v0.5.0` tag and npm package are immutable and still installable, but the
 CI examples on that tag are stale (`inputs.fail-on`, an unguarded GitLab
-pre-check). The binaries are fine; the templates are not. Use `0.10.2` or
+pre-check). The binaries are fine; the templates are not. Use `0.10.3` or
 newer, or `@latest`.
 
 </details>
@@ -221,9 +222,9 @@ the file from the
 install it by path:
 
 ```bash
-sudo apt install ./vigil-0.10.2-linux-amd64.deb                # Debian, Ubuntu
-sudo dnf install --nogpgcheck ./vigil-0.10.2-linux-amd64.rpm   # Fedora, RHEL, openSUSE
-sudo apk add --allow-untrusted ./vigil-0.10.2-linux-amd64.apk  # Alpine
+sudo apt install ./vigil-0.10.3-linux-amd64.deb                # Debian, Ubuntu
+sudo dnf install --nogpgcheck ./vigil-0.10.3-linux-amd64.rpm   # Fedora, RHEL, openSUSE
+sudo apk add --allow-untrusted ./vigil-0.10.3-linux-amd64.apk  # Alpine
 ```
 
 The packages carry no distribution key, which is why `dnf` and `apk` need the
@@ -269,7 +270,7 @@ running as `nonroot`) is published to GitHub Container Registry for every
 release:
 
 ```bash
-docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.10.2 scan --no-llm --path /workspace
+docker run --rm -v "$PWD:/workspace" ghcr.io/levapveeskela/lv24-vigil:0.10.3 scan --no-llm --path /workspace
 ```
 
 The local `Dockerfile` builds the same image if you prefer:
@@ -326,14 +327,14 @@ Every release is covered four ways: a keyless cosign signature over
 CycloneDX SBOM, and npm provenance for the packages.
 
 ```bash
-gh release download v0.10.2 --pattern checksums.txt --pattern checksums.txt.sigstore.json
+gh release download v0.10.3 --pattern checksums.txt --pattern checksums.txt.sigstore.json
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
-  --certificate-identity "https://github.com/LevapVeeskela/lv24-vigil/.github/workflows/release.yml@refs/tags/v0.10.2" \
+  --certificate-identity "https://github.com/LevapVeeskela/lv24-vigil/.github/workflows/release.yml@refs/tags/v0.10.3" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt                                   # prints: Verified OK
 sha256sum -c checksums.txt --ignore-missing       # the files you downloaded
-gh attestation verify vigil_0.10.2_linux_amd64 --repo LevapVeeskela/lv24-vigil
+gh attestation verify vigil_0.10.3_linux_amd64 --repo LevapVeeskela/lv24-vigil
 ```
 
 Container digests, npm provenance and the full flow:
@@ -782,7 +783,7 @@ skipping, `autoupdate` and the comparison with `vigil hook install`:
 
 ### GitHub Actions (PR, `main`, manual)
 
-The same action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Use `uses: LevapVeeskela/lv24-vigil@v0.10.2`; add `version: 0.10.2` when the CLI must match the action tag.
+The same action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan). Use `uses: LevapVeeskela/lv24-vigil@v0.10.3`; add `version: 0.10.3` when the CLI must match the action tag.
 
 Copy [`examples/github-workflow.yml`](examples/github-workflow.yml) to
 `.github/workflows/vigil.yml`:
