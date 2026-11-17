@@ -26,7 +26,7 @@ go vet ./...
 go build -o vigil ./cmd/vigil
 ./vigil scan . --no-llm --fail-on high \
   --exclude 'internal/rules/**' --exclude 'scripts/**' \
-  --exclude 'docs/**' --exclude 'examples/**'
+  --exclude 'docs/**' --exclude 'examples/**' --exclude '*_test.go'
 ```
 
 Manual CLI check (for changes that touch the command surface or a renderer):

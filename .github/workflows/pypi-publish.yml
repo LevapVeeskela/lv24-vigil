@@ -46,7 +46,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install build tools
-        run: pip install build twine
+        # Hash-pinned: every wheel is verified against the lock before it runs
+        # in the job that holds the PyPI OIDC permission. The lock also pins
+        # setuptools, the build backend of python/pyproject.toml.
+        run: pip install --require-hashes -r .github/requirements/pypi-publish.txt
 
       - name: Resolve and validate version
         id: version
@@ -127,7 +130,9 @@ jobs:
 
       - name: Build sdist and wheel
         working-directory: python
-        run: python -m build
+        # --no-isolation uses the pinned setuptools installed above. An isolated
+        # build would download an unpinned backend into a throwaway environment.
+        run: python -m build --no-isolation
 
       - name: Validate distribution metadata
         run: twine check python/dist/*

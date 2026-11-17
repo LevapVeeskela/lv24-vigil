@@ -45,7 +45,7 @@ PyPI launcher, GitHub binaries, deb/rpm/apk, Homebrew, Scoop, GHCR).
 | Documentation | README (English and Russian), `docs/`, compact machine index | [`README.md`](../README.md), [`docs/`](.), [`llms.txt`](../llms.txt) |
 | Installation docs | npm, PyPI, release binaries, packages, container, AUR (pending) | [`docs/install.md`](install.md), [`docs/container.md`](container.md), [`docs/aur.md`](aur.md) |
 | Build system | Go 1.27+, `go build ./cmd/vigil`, Makefile targets | [`Makefile`](../Makefile), [`go.mod`](../go.mod) |
-| Tests | `go test ./...`; 6,730 test, fuzz and benchmark functions in 2,838 `*_test.go` files; CI runs the suite on every push and pull request | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) |
+| Tests | `go test ./...`; 817 test and 4 fuzz functions in 94 `*_test.go` files (count them with `git ls-files '*_test.go'`, so untracked checkouts are not included); CI runs the suite on pushes to `main` and on pull requests, except docs-only changes | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) |
 | New features have tests | Project policy: new rules, validators and fixes ship with tests | [`CONTRIBUTING.md`](../CONTRIBUTING.md) |
 | Security policy | Documented scope, out-of-scope list, response expectations, safe harbour | [`SECURITY.md`](../SECURITY.md) |
 | Vulnerability reporting | GitHub private vulnerability reporting; no public issue for an unfixed report; coordinated disclosure | https://github.com/LevapVeeskela/lv24-vigil/security/advisories/new |
@@ -106,7 +106,6 @@ than overstating an answer.
 | Gap | Action |
 |---|---|
 | No `CODE_OF_CONDUCT.md` | Add a code of conduct (for example Contributor Covenant) and link it from `CONTRIBUTING.md` |
-| `SECURITY.md` supported-versions table still says `0.1.x` | Update it to the current `0.10.x` line and state the support window |
 | No published coverage number or threshold | Add coverage reporting to CI if the questionnaire asks for it; do not claim a percentage that is not measured |
 | AUR package not published | Complete the account/SSH steps in [aur.md](aur.md); this is not a CII criterion |
 | No CII project yet | Register, paste the answers, save, and copy the assigned project id |
