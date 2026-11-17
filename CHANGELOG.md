@@ -4,6 +4,21 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## Unreleased
+
+### Changed
+
+- README refresh for people and for agents. The GitHub README (English and
+  Russian) gains a per-platform install table, Python (`pipx`, `uvx`), Linux
+  packages, update and uninstall commands, release verification, a
+  configuration section, a short "how it works" diagram and a troubleshooting
+  table. The agent section adds a task-to-tool table, the arguments of all 14
+  MCP tools and the JSON shape of a finding. `llms.txt` and `AGENTS.md` carry
+  the same install channels and result shape.
+- The npm and PyPI READMEs are rewritten in the same style, and the PyPI
+  package gets classifiers and more keywords. Both pages change on the
+  registries with the next release, not before.
+
 ## 0.10.2 - 2026-11-17
 
 Security patch release: **upgrade from 0.10.1**. It carries the fixes from an
