@@ -186,10 +186,10 @@ refuses an older npm). Use the same or newer npm for the `npm trust` commands.
 
 ## Verify a release
 
-`v0.10.2` ships the asset list of `v0.10.1` plus `provenance.intoto.jsonl`: six
-static binaries, six Linux packages (deb/rpm/apk × amd64/arm64),
-`vigil-sbom-0.10.2.cdx.json`, `checksums.txt` and its cosign bundle, the
-provenance bundle, and the GHCR image for both architectures. Download what you need from the release page;
+`v0.10.3` ships the same 16 assets as `v0.10.2`: six static binaries, six Linux
+packages (deb/rpm/apk × amd64/arm64), `vigil-sbom-0.10.3.cdx.json`,
+`checksums.txt` and its cosign bundle, the provenance bundle
+(`provenance.intoto.jsonl`), and the GHCR image for both architectures. Download what you need from the release page;
 the commands below verify it without trusting the download.
 
 Signatures are keyless: there is no long-lived signing key in the repository or
@@ -231,17 +231,17 @@ signature. Compare its digest with the `container` run summary, or inspect the
 attestations directly:
 
 ```bash
-docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.10.2 \
+docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.10.3 \
   --format '{{json .Manifest}}' | jq -r .digest
 ```
 
 Installed CLI:
 
 ```bash
-npm view lv24-vigil version          # 0.10.2
-npm view lv24-vigil dist-tags        # { latest: '0.10.2' }
-npm i -g lv24-vigil@0.10.2            # or @latest
-vigil version                        # vigil 0.10.2 (<commit>, <date>, go<version>)
+npm view lv24-vigil version          # 0.10.3
+npm view lv24-vigil dist-tags        # { latest: '0.10.3' }
+npm i -g lv24-vigil@0.10.3            # or @latest
+vigil version                        # vigil 0.10.3 (<commit>, <date>, go<version>)
 ```
 
 Platform packages, one line each:
@@ -271,7 +271,7 @@ Provenance:
 npm view lv24-vigil dist.attestations
 ```
 
-For `0.10.2` this returns a `https://slsa.dev/provenance/v1` attestation built
+For `0.10.3` this returns a `https://slsa.dev/provenance/v1` attestation built
 from `.github/workflows/npm-publish.yml` on a GitHub-hosted runner. The npm page
 shows the matching provenance badge.
 
@@ -317,7 +317,8 @@ vigil version                                                 # reports the tag 
 
 ### Decision log
 
-- **0.10.2 is a security patch release; upgrade from 0.10.1 (2026-11-17).** No rule or tool changes (**263** rules, ten families, 14 MCP tools). Two things made the patch release necessary. First, an adversarial review of 0.10.1 reproduced defects in shipped code: a project `output.path` reaching `.git` through a Windows 8.3 alias, raw secrets quoted in the snippets of other findings, a `--max-findings` cap applied before the sort that could drop a critical OSV advisory, understated OSV severities, and lockfile git URLs sent to the OSV API and the SBOM; the full list is in the CHANGELOG. Second, the 0.10.1 binaries were built with Go 1.27.0, for which `govulncheck` reports reachable standard-library vulnerabilities; `go.mod` now carries `toolchain go1.27.4` and CI runs `govulncheck` in the required `test` job. The toolchain line was chosen over a higher `go` directive so that building from source with an older Go 1.27 keeps working. 0.10.2 is also the first release with 16 assets (`provenance.intoto.jsonl`) and the first PyPI publish through the hash-pinned build tools. Finding IDs and fingerprints are unchanged.
+- **0.10.3 publishes the refreshed package pages (2026-11-17).** No code or rule changes since 0.10.2 (**263** rules, ten families, 14 MCP tools). The npm and PyPI READMEs ship inside the packages, so the table above applies: `npm/README.md` and `python/README.md` changed, and a release is the only way to put the new text on the registries. The release also carries the new PyPI classifiers and keywords. The binaries are rebuilt from the same sources with Go 1.27.4; users of 0.10.2 gain nothing in behavior, and users of 0.10.1 or older should upgrade for the 0.10.2 fixes.
+- **0.10.2 is a security patch release; upgrade from 0.10.1 (2026-11-17).** No rule or tool changes (**263** rules, ten families, 14 MCP tools). Two things made the patch release necessary. First, an adversarial review of 0.10.1 reproduced defects in shipped code: a project `output.path` reaching `.git` through a Windows 8.3 alias, raw secrets quoted in the snippets of other findings, a `--max-findings` cap applied before the sort that could drop a critical OSV advisory, understated OSV severities, and lockfile git URLs sent to the OSV API and the SBOM; the full list is in the CHANGELOG. Second, the 0.10.1 binaries were built with Go 1.27.0, for which `govulncheck` reports reachable standard-library vulnerabilities; `go.mod` now carries `toolchain go1.27.4` and CI runs `govulncheck` in the required `test` job. The toolchain line was chosen over a higher `go` directive so that building from source with an older Go 1.27 keeps working. 0.10.3 is also the first release with 16 assets (`provenance.intoto.jsonl`) and the first PyPI publish through the hash-pinned build tools. Finding IDs and fingerprints are unchanged.
 - **0.10.1 validates the cosign-installer v4 path and ships the post-0.10.0 docs (2026-11-16).** No code or rule changes (**263** rules, ten families, 14 MCP tools): the release workflow installs cosign through `sigstore/cosign-installer` v4 with `cosign-release: v2.4.1`, and 0.10.1 confirms that the keyless `checksums.txt.sigstore.json` bundle still verifies with `cosign verify-blob --bundle`. The documentation catches up with the distribution work done after the 0.10.0 tag: per-channel status in `docs/distribution.md`, the AUR package renamed to `vigil-security-bin` (`vigil-bin` is occupied), and refreshed install, CI, PyPI, container, pre-commit and release pages. Release assets are unchanged from 0.10.0, and the action default moves to `0.10.1`.
 - **0.10.0 adds baseline v2, hardening platform presets, config commands and JUnit (2026-11-16).** No rule changes (**263** rules, ten families, 14 MCP tools): the baseline file moves to version 2 with `ticket`, `expires`, `path` and `prune` (an expired entry stops suppressing), and SARIF is active-only so accepted risks do not open code-scanning alerts; `vigil hardening --platform` and the `platform` MCP argument narrow the VGL-ARE review to android, ios, electron, node, flutter, web or other; `vigil config validate|show` checks and explains the effective configuration without opening the store or a model; and `vigil report --format junit` adds a report-only JUnit document. Release assets are unchanged from 0.9.3, and the action default moves to `0.10.0`.
 - **0.9.3 adds the official MCP Registry listing and AUR packaging (2026-11-15).** No code or rule changes (**263** rules, ten families, 14 MCP tools): the same engine as 0.9.2, with distribution-only additions. Vigil is now listed in the official MCP Registry as `io.github.LevapVeeskela/vigil` (`mcpName` plus `server.json`), so registry-aware clients can resolve the stdio server; the AUR `vigil-security-bin` packaging is prepared for the published release (publication awaits AUR registration); and `docs/mcp-registry.md`, `docs/aur.md` and `docs/mcp-directories.md` document registry publishing, AUR maintenance and the directory/CII submissions. Release assets are unchanged, and the action default moves to `0.9.3`.
@@ -511,8 +512,12 @@ reasoning and the procedure if a rewrite is ever required are in
 ## Current state
 
 `0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
-path. All seven npm packages and PyPI are live at `0.10.2`, and `latest` points
-at it. `v0.10.2` is a **security patch release** (263 rules in ten families, 14
+path. All seven npm packages and PyPI are live at `0.10.3`, and `latest` points
+at it. `v0.10.3` is a **documentation release** with no code or rule changes
+(263 rules in ten families, 14 MCP tools): it publishes the refreshed npm and
+PyPI READMEs and the PyPI classifiers. Release assets are unchanged from 0.10.2.
+
+`v0.10.2` is a **security patch release** (263 rules in ten families, 14
 MCP tools): it ships the fixes from the adversarial review of 0.10.1 and is
 built with Go 1.27.4 instead of 1.27.0. **Upgrade from 0.10.1.** Release assets
 gain `provenance.intoto.jsonl` (16 files); verify them with
@@ -568,7 +573,7 @@ attempt. `v0.5.2` contains the corrected CI templates and the post-0.5.1 docs.
 The composite action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
 as **Vigil security scan** (Security + Code quality).
 
-**Do not pin `0.5.0`.** Use `0.10.2` or newer, or `@latest`. The `v0.5.0` tag is
+**Do not pin `0.5.0`.** Use `0.10.3` or newer, or `@latest`. The `v0.5.0` tag is
 immutable and still resolves, so pinning it silently keeps the stale templates;
 its GitHub release body carries the warning. The npm package version is marked
 with a deprecation notice (a metadata change, not a republish) once the npm 2FA
