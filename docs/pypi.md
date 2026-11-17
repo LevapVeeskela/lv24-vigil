@@ -70,6 +70,13 @@ In that case dispatch the workflow explicitly (see the fallback below).
 3. Watch the `pypi-publish` run in Actions, or dispatch it manually when the
    release was created by `release.yml`.
 
+The workflow installs its tools (`build`, `twine` and the `setuptools` build
+backend) from `.github/requirements/pypi-publish.txt` with
+`pip install --require-hashes` and builds with `python -m build --no-isolation`,
+so no unpinned package runs in the job that holds the PyPI OIDC permission. To
+update the tools, regenerate the lock with the command at the top of
+`.github/requirements/pypi-publish.in`.
+
 Manual fallback, for example when a release tag predates the workflow:
 
 ```bash

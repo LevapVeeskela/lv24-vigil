@@ -1,0 +1,18 @@
+# Tools installed by .github/workflows/pypi-publish.yml.
+#
+# pypi-publish.txt is the hash-pinned lock generated from this file. The
+# workflow installs it with `pip install --require-hashes`, so every wheel is
+# verified before it runs in the job that holds the PyPI OIDC permission.
+#
+# Regenerate after changing this file or to pick up new releases:
+#
+#   uv pip compile .github/requirements/pypi-publish.in \
+#     --universal --generate-hashes --python-version 3.12 \
+#     --output-file .github/requirements/pypi-publish.txt
+#
+# setuptools is the build backend of python/pyproject.toml. It is listed here
+# so the build can run with --no-isolation instead of downloading an unpinned
+# backend into a throwaway environment.
+build
+twine
+setuptools>=77

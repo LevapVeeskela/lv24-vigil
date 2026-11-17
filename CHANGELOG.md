@@ -70,6 +70,12 @@ unchanged, so existing baselines keep matching.
 - `SECURITY.md` lists `0.10.x` as the supported line; the npm README states the
   real network behaviour; the docs describe the SBOM 200-package cap and the
   project-file trust boundary.
+- The PyPI publish workflow installs `build`, `twine` and the `setuptools`
+  backend from a hash-pinned lock (`pip install --require-hashes`) and builds
+  with `--no-isolation`, so no unpinned package runs in the publishing job.
+- The dogfood scan (`.vigil.yaml`, `vigil.yml`) excludes `*_test.go`: Go tests
+  hold synthetic tokens and vulnerable snippets on purpose, and each one was
+  uploaded to code scanning as an alert.
 
 ## 0.10.1 - 2026-11-16
 

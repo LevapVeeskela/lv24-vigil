@@ -51,7 +51,9 @@ jobs:
         # --fail-on high exits 2 on a high or critical finding; the report is
         # written before the exit code, so the upload step below still runs.
         # The exclude list drops rule definitions, helper scripts, local
-        # research checkouts and prose examples, not product code.
+        # research checkouts, prose examples and Go test fixtures (synthetic
+        # tokens and vulnerable snippets the scanner is tested against), not
+        # product code. Keep it in sync with .vigil.yaml.
         run: >-
           ./vigil scan .
           --no-llm
@@ -63,6 +65,7 @@ jobs:
           --exclude 'scripts/**'
           --exclude 'docs/**'
           --exclude 'examples/**'
+          --exclude '*_test.go'
 
       - name: upload SARIF
         # Fork pull requests get a read-only token, so a rejected upload must
