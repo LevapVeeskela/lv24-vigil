@@ -4,7 +4,13 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
-## Unreleased
+## 0.10.3 - 2026-11-17
+
+Documentation release. **No code or rule changes** since 0.10.2 (263 rules,
+14 MCP tools); the binaries are rebuilt from the same sources with the same
+Go 1.27.4 toolchain. The npm and PyPI pages ship inside the packages, so a
+release is the only way to update them. If you are on 0.10.1 or older,
+upgrade for the 0.10.2 security fixes.
 
 ### Changed
 
@@ -17,7 +23,7 @@ stable.
   the same install channels and result shape.
 - The npm and PyPI READMEs are rewritten in the same style, and the PyPI
   package gets classifiers and more keywords. Both pages change on the
-  registries with the next release, not before.
+  registries with this release.
 
 ## 0.10.2 - 2026-11-17
 
