@@ -139,11 +139,12 @@ func TestBaselineAddMetadata(t *testing.T) {
 	expires := time.Now().UTC().AddDate(0, 0, 7).Format("2006-01-02")
 
 	out, stderr, err = runCLI(t, "baseline", "add", findingID,
-		"--reason=tracked acceptance", "--ticket=SEC-42", "--expires", expires, "--path", findingPath)
+		"--reason=tracked acceptance", "--ticket=SEC-42", "--expires", expires, "--path", findingPath,
+		"--disposition", "wont_fix")
 	if err != nil {
 		t.Fatalf("baseline add: %v\nstderr:\n%s", err, stderr)
 	}
-	for _, want := range []string{findingID, "SEC-42", expires} {
+	for _, want := range []string{findingID, "SEC-42", expires, "disposition: wont_fix"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("baseline add output missing %q:\n%s", want, out)
 		}
@@ -163,6 +164,7 @@ func TestBaselineAddMetadata(t *testing.T) {
 			Path        string `json:"path"`
 			Ticket      string `json:"ticket"`
 			Expires     string `json:"expires"`
+			Disposition string `json:"disposition"`
 		} `json:"findings"`
 	}
 	if err := json.Unmarshal(data, &file); err != nil {
@@ -176,7 +178,8 @@ func TestBaselineAddMetadata(t *testing.T) {
 	}
 	entry := file.Findings[0]
 	if entry.ID != findingID || entry.Reason != "tracked acceptance" || entry.Ticket != "SEC-42" ||
-		entry.Expires != expires || entry.Path != findingPath || entry.Fingerprint == "" || entry.RuleID != "VGL-SEC-003" {
+		entry.Expires != expires || entry.Path != findingPath || entry.Fingerprint == "" ||
+		entry.RuleID != "VGL-SEC-003" || entry.Disposition != "wont_fix" {
 		t.Errorf("unexpected entry: %+v", entry)
 	}
 
@@ -184,7 +187,7 @@ func TestBaselineAddMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("baseline list: %v", err)
 	}
-	for _, want := range []string{"ticket=SEC-42", "expires=" + expires, "path=" + findingPath} {
+	for _, want := range []string{"ticket=SEC-42", "expires=" + expires, "path=" + findingPath, "disposition=wont_fix"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("baseline list missing %q:\n%s", want, out)
 		}
@@ -232,6 +235,10 @@ func TestBaselineAddFlagValidation(t *testing.T) {
 	_, _, err = runCLI(t, "baseline", "add", findingID, "--path", "not/config.go")
 	if err == nil || !strings.Contains(err.Error(), "is at") {
 		t.Errorf("mismatched --path error = %v, want a path mismatch error", err)
+	}
+	_, _, err = runCLI(t, "baseline", "add", findingID, "--disposition", "remediated")
+	if err == nil || !strings.Contains(err.Error(), "must be removed from the baseline") {
+		t.Errorf("remediated --disposition error = %v, want a removal hint", err)
 	}
 }
 

@@ -97,6 +97,9 @@ func baselineList(a *app.App, args []string, stdout io.Writer) error {
 			}
 			fields = append(fields, expiry)
 		}
+		if entry.Disposition != "" {
+			fields = append(fields, "disposition="+entry.Disposition)
+		}
 		if entry.Path != "" {
 			fields = append(fields, "path="+entry.Path)
 		}
@@ -113,6 +116,7 @@ func baselineAdd(a *app.App, args []string, stdout io.Writer) error {
 	reason := fs.String("reason", "", "why the finding is accepted")
 	ticket := fs.String("ticket", "", "ticket or issue reference for the acceptance")
 	expires := fs.String("expires", "", "expiry date in YYYY-MM-DD (UTC)")
+	disposition := fs.String("disposition", "", "why the finding is accepted: false_positive, accepted_risk or wont_fix")
 	scope := fs.String("path", "", "only suppress findings at this project-relative path")
 	positional, err := parseFlagSet(fs, args)
 	if errors.Is(err, flag.ErrHelp) {
@@ -123,10 +127,14 @@ func baselineAdd(a *app.App, args []string, stdout io.Writer) error {
 		return fmt.Errorf("baseline add: %w", err)
 	}
 	if len(positional) != 1 {
-		return errors.New("usage: vigil baseline add FINDING_ID [--reason TEXT] [--ticket TEXT] [--expires YYYY-MM-DD] [--path PATH]")
+		return errors.New("usage: vigil baseline add FINDING_ID [--reason TEXT] [--ticket TEXT] [--expires YYYY-MM-DD] [--disposition VALUE] [--path PATH]")
 	}
 
 	expiresValue, err := baselineExpiryFlag(*expires)
+	if err != nil {
+		return fmt.Errorf("baseline add: %w", err)
+	}
+	dispositionValue, err := baselineDispositionFlag(*disposition)
 	if err != nil {
 		return fmt.Errorf("baseline add: %w", err)
 	}
@@ -146,11 +154,12 @@ func baselineAdd(a *app.App, args []string, stdout io.Writer) error {
 
 	id := positional[0]
 	entry := scanner.BaselineFinding{
-		ID:      id,
-		Reason:  strings.TrimSpace(*reason),
-		Ticket:  strings.TrimSpace(*ticket),
-		Expires: expiresValue,
-		Path:    scopeValue,
+		ID:          id,
+		Reason:      strings.TrimSpace(*reason),
+		Ticket:      strings.TrimSpace(*ticket),
+		Expires:     expiresValue,
+		Path:        scopeValue,
+		Disposition: dispositionValue,
 	}
 	// Enrich with a stored finding when possible: that also records the
 	// fingerprint, so the entry survives small line moves.
@@ -182,6 +191,9 @@ func baselineAdd(a *app.App, args []string, stdout io.Writer) error {
 	}
 	if entry.Expires != "" {
 		fmt.Fprintf(stdout, "expires: %s\n", entry.Expires)
+	}
+	if entry.Disposition != "" {
+		fmt.Fprintf(stdout, "disposition: %s\n", entry.Disposition)
 	}
 	if entry.Path != "" {
 		fmt.Fprintf(stdout, "path: %s\n", entry.Path)
@@ -434,6 +446,16 @@ func baselineExpiryFlag(value string) (string, error) {
 	return date.Format(scanner.BaselineDateLayout), nil
 }
 
+// baselineDispositionFlag validates --disposition. "remediated" is refused:
+// a remediated finding belongs out of the baseline, not in it.
+func baselineDispositionFlag(value string) (string, error) {
+	disposition, err := scanner.ParseBaselineDisposition(value)
+	if err != nil {
+		return "", fmt.Errorf("--disposition: %w", err)
+	}
+	return disposition, nil
+}
+
 // baselineScopeFlag validates --path. The scope is only compared with finding
 // paths, so it must be project-relative and cannot point above the root.
 func baselineScopeFlag(value string) (string, error) {
@@ -523,7 +545,7 @@ func printBaselineUsage(w io.Writer) {
 	fmt.Fprint(w, `Usage: vigil baseline [list|add|remove|prune|clear]
 
   vigil baseline list
-  vigil baseline add FINDING_ID [--reason TEXT] [--ticket TEXT] [--expires YYYY-MM-DD] [--path PATH]
+  vigil baseline add FINDING_ID [--reason TEXT] [--ticket TEXT] [--expires YYYY-MM-DD] [--disposition false_positive|accepted_risk|wont_fix] [--path PATH]
   vigil baseline remove FINDING_ID
   vigil baseline prune [--dry-run]
   vigil baseline clear --yes
