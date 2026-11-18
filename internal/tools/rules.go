@@ -16,19 +16,32 @@ type rulesArgs struct {
 	Language string `json:"language"`
 	Severity string `json:"severity"`
 	Query    string `json:"query"`
+	Limit    int    `json:"limit"`
+	Offset   int    `json:"offset"`
 }
+
+// rulesPageSizeDefault and rulesPageSizeCap bound vigil_rules windows. The
+// catalog is small, but every list result must state its bound.
+const (
+	rulesPageSizeDefault = 50
+	rulesPageSizeCap     = 500
+)
 
 func registerRules(srv *mcp.Server, d Deps) {
 	srv.AddTool(mcp.Tool{
 		Name:  "vigil_rules",
 		Title: "List Vigil detection rules",
 		Description: "List the deterministic detection rules with their severity, category, languages and title. " +
-			"Optionally filter by category, language, severity or a free-text query.",
+			"Optionally filter by category, language, severity or a free-text query. The result is windowed: " +
+			"limit is the page size (default 50, capped at 500) and offset selects the page; the page object " +
+			"states total, hasMore and nextOffset.",
 		InputSchema: mcp.ObjectSchema(map[string]any{
 			"category": mcp.PropEnum("Only rules in this category.", categoryNames()...),
 			"language": mcp.Prop("string", "Only rules that apply to this language (for example go, python, javascript, yaml). Generic rules are included."),
 			"severity": mcp.PropEnum("Only rules with this base severity.", "critical", "high", "medium", "low", "info"),
 			"query":    mcp.Prop("string", "Case-insensitive text matched against the ID, title, description, tags, CWE and OWASP fields."),
+			"limit":    mcp.PropInt("Maximum rules in this window (default 50, capped at 500)."),
+			"offset":   mcp.PropInt("Zero-based rule offset for paging. Start with 0, then pass page.nextOffset from the previous result."),
 		}),
 		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": false},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
@@ -49,6 +62,9 @@ func handleRules(d Deps, raw json.RawMessage) (*mcp.CallToolResult, error) {
 	severity, err := parseSeverityArg(args.Severity)
 	if err != nil {
 		return mcp.TextError("invalid arguments: %v", err), nil
+	}
+	if err := checkOffset(args.Offset); err != nil {
+		return errorResult(d, "%v", err), nil
 	}
 	category := strings.ToLower(strings.TrimSpace(args.Category))
 	if category != "" && !containsFold(categoryNames(), category) {
@@ -75,8 +91,17 @@ func handleRules(d Deps, raw json.RawMessage) (*mcp.CallToolResult, error) {
 		filtered = append(filtered, m)
 	}
 
+	limit := clampInt(args.Limit, rulesPageSizeDefault, rulesPageSizeCap)
+	start, end, page := window(len(filtered), args.Offset, limit)
+	shown := filtered[start:end]
+
 	var b strings.Builder
-	fmt.Fprintf(&b, "Vigil rules: %d of %d\n", len(filtered), len(metas))
+	fmt.Fprintf(&b, "Vigil rules: %d matching", len(filtered))
+	if len(filtered) != len(metas) {
+		fmt.Fprintf(&b, " of %d registered", len(metas))
+	}
+	b.WriteString("\n")
+	fmt.Fprintf(&b, "Page: %s\n", pageNote(page))
 	filters := make([]string, 0, 4)
 	if category != "" {
 		filters = append(filters, "category="+category)
@@ -97,10 +122,12 @@ func handleRules(d Deps, raw json.RawMessage) (*mcp.CallToolResult, error) {
 
 	if len(filtered) == 0 {
 		b.WriteString("No rules match these filters.\n")
+	} else if len(shown) == 0 {
+		b.WriteString("No rules in this window. Pass offset=0 to start from the first rule.\n")
 	} else {
 		w := tabwriter.NewWriter(&b, 0, 4, 2, ' ', 0)
 		fmt.Fprintln(w, "ID\tSEVERITY\tCATEGORY\tLANGUAGES\tTITLE")
-		for _, m := range filtered {
+		for _, m := range shown {
 			langs := "all"
 			if len(m.Languages) > 0 {
 				langs = strings.Join(m.Languages, ",")
@@ -112,9 +139,10 @@ func handleRules(d Deps, raw json.RawMessage) (*mcp.CallToolResult, error) {
 	}
 
 	payload := map[string]any{
-		"count": len(filtered),
-		"total": len(metas),
-		"rules": filtered,
+		"count": len(shown),
+		"total": len(filtered),
+		"page":  page,
+		"rules": shown,
 	}
 	return result(d, b.String(), payload), nil
 }

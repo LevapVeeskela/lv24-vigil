@@ -173,7 +173,7 @@ func TestHardeningSummaryGroupsEachPlatform(t *testing.T) {
 		})
 	}
 	d := Deps{App: &app.App{Registry: registryWith(metas)}}
-	text := hardeningSummary(d, res, antiREIDs(metas), "all", hardeningPlatformCounts(res.Findings, hardeningPlatformIndex(metas)))
+	text := hardeningSummary(d, res, antiREIDs(metas), "all", hardeningPlatformCounts(res.Findings, hardeningPlatformIndex(metas)), completePage(res), nil)
 
 	for _, want := range []string{
 		"Android (1):", "iOS (1):", "Electron (1):", "Node (1):", "Flutter (1):", "Web (1):", "Other (1):",
@@ -197,7 +197,7 @@ func TestHardeningSummaryGroupsByPlatform(t *testing.T) {
 				Location: model.Location{Path: "package.json", StartLine: 3}},
 		},
 	}
-	text := hardeningSummary(Deps{}, res, []string{"VGL-ARE-003", "VGL-ARE-030"}, "all", nil)
+	text := hardeningSummary(Deps{}, res, []string{"VGL-ARE-003", "VGL-ARE-030"}, "all", nil, completePage(res), nil)
 	for _, want := range []string{
 		"Android (1):", "Electron (1):", "Other (1):",
 		"hardening gaps", "not vulnerabilities",
@@ -226,7 +226,7 @@ func TestHardeningSummaryGroupsWaveOnePlatforms(t *testing.T) {
 				Location: model.Location{Path: "ios/Config/Release.xcconfig", StartLine: 1}},
 		},
 	}
-	text := hardeningSummary(Deps{}, res, []string{"VGL-ARE-060", "VGL-ARE-061", "VGL-ARE-062", "VGL-ARE-063", "VGL-ARE-064"}, "all", nil)
+	text := hardeningSummary(Deps{}, res, []string{"VGL-ARE-060", "VGL-ARE-061", "VGL-ARE-062", "VGL-ARE-063", "VGL-ARE-064"}, "all", nil, completePage(res), nil)
 	for _, want := range []string{"Android (3):", "Electron (1):", "iOS (1):"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("summary missing %q:\n%s", want, text)
@@ -243,7 +243,7 @@ func TestHardeningSummaryNeverNamesAConfiguredModel(t *testing.T) {
 	d := Deps{App: &app.App{LLM: true, Model: &model.ModelInfo{Provider: "command", Model: "some-model"}}}
 	res := &model.ScanResult{Root: "/repo", Model: d.App.Model}
 
-	text := hardeningSummary(d, res, []string{"VGL-ARE-001"}, "all", nil)
+	text := hardeningSummary(d, res, []string{"VGL-ARE-001"}, "all", nil, completePage(res), nil)
 
 	if strings.Contains(text, "some-model") || !strings.Contains(text, "Model: not used") {
 		t.Fatalf("summary must say the model is not used:\n%s", text)
@@ -364,9 +364,12 @@ func TestHandleHardeningPlatformFilter(t *testing.T) {
 	if filtered.IsError {
 		t.Fatalf("platform=android failed: %s", textOfResult(t, filtered))
 	}
-	scan, ok := filtered.StructuredContent.(*model.ScanResult)
+	scan, ok := filtered.StructuredContent.(*scanPayload)
 	if !ok {
-		t.Fatalf("structuredContent = %T, want *model.ScanResult", filtered.StructuredContent)
+		t.Fatalf("structuredContent = %T, want *scanPayload", filtered.StructuredContent)
+	}
+	if scan.Page == nil {
+		t.Fatalf("structuredContent has no page: %+v", scan)
 	}
 	if len(scan.Findings) == 0 {
 		t.Fatalf("no Android findings in the fixture")
@@ -378,7 +381,7 @@ func TestHandleHardeningPlatformFilter(t *testing.T) {
 			t.Errorf("filtered finding %q belongs to %q, want Android", f.RuleID, got)
 		}
 	}
-	assertHardeningAggregates(t, scan, "Android", index)
+	assertHardeningAggregates(t, scan.ScanResult, "Android", index)
 	text := textOfResult(t, filtered)
 	if !strings.Contains(text, "Platform: android") {
 		t.Errorf("text does not name the selection:\n%s", text)
@@ -391,9 +394,12 @@ func TestHandleHardeningPlatformFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handleHardening: %v", err)
 	}
-	unfiltered, ok := all.StructuredContent.(*model.ScanResult)
+	unfiltered, ok := all.StructuredContent.(*scanPayload)
 	if !ok {
-		t.Fatalf("structuredContent = %T, want *model.ScanResult", all.StructuredContent)
+		t.Fatalf("structuredContent = %T, want *scanPayload", all.StructuredContent)
+	}
+	if unfiltered.Page == nil {
+		t.Fatalf("structuredContent has no page: %+v", unfiltered)
 	}
 	if len(unfiltered.Findings) <= len(scan.Findings) {
 		t.Errorf("unfiltered findings = %d, want more than the %d Android ones",
@@ -447,9 +453,12 @@ func TestHandleHardeningPlatformMaxFindings(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("platform=ios failed: %s", textOfResult(t, res))
 	}
-	scan, ok := res.StructuredContent.(*model.ScanResult)
+	scan, ok := res.StructuredContent.(*scanPayload)
 	if !ok {
-		t.Fatalf("structuredContent = %T, want *model.ScanResult", res.StructuredContent)
+		t.Fatalf("structuredContent = %T, want *scanPayload", res.StructuredContent)
+	}
+	if scan.Page == nil {
+		t.Fatalf("structuredContent has no page: %+v", scan)
 	}
 	if len(scan.Findings) != 1 {
 		t.Fatalf("findings = %d, want 1 iOS finding under maxFindings=1: %+v", len(scan.Findings), scan.Findings)
@@ -464,7 +473,7 @@ func TestHandleHardeningPlatformMaxFindings(t *testing.T) {
 	if want := len(antiREIDsForPlatform(a.Registry.Metas(), "iOS")); scan.Stats.RulesRun != want {
 		t.Errorf("rulesRun = %d, want the %d iOS rules", scan.Stats.RulesRun, want)
 	}
-	assertHardeningAggregates(t, scan, "iOS", index)
+	assertHardeningAggregates(t, scan.ScanResult, "iOS", index)
 	if text := textOfResult(t, res); strings.Contains(text, "No hardening gaps") {
 		t.Errorf("summary claims there are no gaps although the scan kept one:\n%s", text)
 	}
@@ -550,6 +559,12 @@ func assertHardeningAggregates(t *testing.T, res *model.ScanResult, platform str
 			t.Errorf("suppressed finding %q is outside platform %s", f.RuleID, platform)
 		}
 	}
+}
+
+// completePage is the page descriptor of a summarised result that fits in one
+// window; the summary-only tests do not paginate.
+func completePage(res *model.ScanResult) pageInfo {
+	return pageInfo{Offset: 0, Limit: len(res.Findings), Total: len(res.Findings)}
 }
 
 // textOfResult returns the text half of a tool result.
