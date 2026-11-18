@@ -4,6 +4,58 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
+## Unreleased
+
+### Added
+
+- MCP read-only and offline modes. `vigil mcp --read-only`
+  (`VIGIL_MCP_READ_ONLY=1`) hides `vigil_fix` and the `fix_finding` prompt and
+  rejects direct fix calls, baseline mutations and `vigil_report` with a path,
+  while scan history is still written. `--offline` (`VIGIL_MCP_OFFLINE=1`)
+  builds no model client and forces OSV off, so only deterministic rules run and
+  `vigil_dependencies` returns `VGL-OFFLINE`. `vigil_status` reports `readOnly`,
+  `offline` and `network` (`none`, `model`, `osv` or `model+osv`).
+- Diff-bound `vigil_fix`: `mode=propose` returns `fixId`, `diffSha256` and a
+  15-minute `expiresAt`; `mode=apply` applies only that stored diff, single-use,
+  after checking the root, scan, finding, hash, expiry, consumed state and the
+  pre-image hashes of every target. Model-only findings are refused with
+  `VGL-FIX-NONDETERMINISTIC` unless a deterministic rule corroborates them.
+- Finding addressing by `path` plus optional `line` in `vigil_explain`,
+  `vigil_fix` and `vigil_verify`, alongside exact IDs, fingerprints and unique
+  prefixes. An ambiguous lookup returns `VGL-AMBIGUOUS` with `candidates[]`
+  instead of guessing; failures carry stable `VGL-*` codes in
+  `structuredContent.error.code`.
+- Bounded MCP output: page envelopes (`offset`, `limit`, `total`, `hasMore`,
+  `nextOffset`) on scan, review, hardening, MCP audit, rules, history and
+  baseline list results, plus coverage blocks (`filesScanned`, `filesSkipped`,
+  `bytesScanned`, `errors`, `llmUsed`) on scans. `maxFindings` is a window
+  (default 50, cap 500), not a silent report cap.
+- Baseline MCP parity: `ticket`, `expires`, `disposition`, `dryRun`, `prune` and
+  `batch` (max 50, defaults to `dryRun=true`, per-item results). `action=list`
+  windows findings with `offset`/`limit` and returns `findingsTotal` plus
+  `expired` over all entries. The schema stays version 2, so a 0.10 build can
+  still read the file.
+
+### Changed
+
+- `vigil_baseline` supports `add`, `remove`, `prune`, `batch` and `clear`
+  alongside `list`; writes are rejected in read-only mode and batch argument
+  errors write nothing.
+- The `fix_finding` prompt now walks propose → review → apply with `fixId` and
+  `diffSha256`, and is hidden in read-only mode.
+
+### Security
+
+- Read-only mode is enforced by handlers, not only by `tools/list`: a hidden
+  tool stays registered and a direct call is refused with `VGL-READONLY`.
+- Offline mode is a construction-time guarantee: model settings and OSV are
+  cleared before the engine is built, so a configured endpoint cannot be used.
+- Fix approval binds the applied diff to the reviewed proposal with a 15-minute
+  TTL, single use and target pre-image checks. A failed apply still consumes the
+  proposal.
+- The CLI `vigil fix --apply` path is unchanged and unbound; only the MCP path
+  requires a reviewed `fixId`/`diffSha256`.
+
 ## 0.10.1 - 2026-11-16
 
 Patch release. **No code or rule changes**: 263 rules in ten families, 14 MCP

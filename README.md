@@ -316,7 +316,7 @@ The server exposes 14 tools:
 | `vigil_scan` | Deterministic scan with optional LLM triage; optional OSV | model optional; OSV optional |
 | `vigil_review` | Reviews changed lines or a supplied diff | model optional; OSV optional |
 | `vigil_explain` | Explains one finding and a fix direction | model |
-| `vigil_fix` | Proposes a minimal diff; `apply=true` writes it | model |
+| `vigil_fix` | Proposes a minimal diff; applies exactly the reviewed proposal (`fixId` + `diffSha256`) | model |
 | `vigil_threat_model` | STRIDE-style threat model | model |
 | `vigil_status` | Provider, model, engine, store, baseline, last scan | none |
 | `vigil_rules` | Rule catalog with IDs, severities and categories | none |
@@ -331,7 +331,11 @@ The server exposes 14 tools:
 The same server exposes resources `vigil://status`, `vigil://rules`,
 `vigil://scan/last`, `vigil://scan/<id>` and prompts `security_review`,
 `threat_model`, `fix_finding`, `anti_re_hardening`, `dependency_audit`.
-Only `vigil_fix` with `apply=true` changes source files.
+Only `vigil_fix` with `mode=apply` changes source files, and only the diff a
+human reviewed: propose returns `fixId` and `diffSha256`, apply uses that stored
+diff once and never commits. Start the server with `--read-only` (or
+`VIGIL_MCP_READ_ONLY=1`) to hide the fix tool, or with `--offline` (or
+`VIGIL_MCP_OFFLINE=1`) to run without model or OSV traffic.
 
 Then ask your agent:
 

@@ -191,7 +191,10 @@ client from the repository, set the client's working directory, or pass
 **A write happens without confirmation.**
 
 The client controls tool approval. Configure it to require confirmation for
-`vigil_fix` with `apply=true`, or do not expose that tool to an untrusted agent.
+`vigil_fix` with `mode=apply`, or run the server with `--read-only` so the tool
+is hidden and every write is refused. Without read-only mode, an agent can still
+call `mode=propose` (which writes no source) and must then pass the returned
+`fixId` and `diffSha256` to apply.
 
 More: [mcp.md](mcp.md).
 

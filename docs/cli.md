@@ -406,7 +406,7 @@ vigil baseline
 vigil baseline list
 vigil baseline add VGL-XXXXXXXXXX --reason "accepted risk in legacy importer"
 vigil baseline add VGL-XXXXXXXXXX --reason "tracked" --ticket SEC-42 \
-  --expires 2027-01-31 --path internal/legacy/import.go
+  --expires 2027-01-31 --disposition accepted_risk --path internal/legacy/import.go
 vigil baseline remove VGL-XXXXXXXXXX
 vigil baseline prune --dry-run
 vigil baseline prune
@@ -416,7 +416,7 @@ vigil baseline clear --yes
 | Subcommand | Meaning |
 |---|---|
 | `list` | Show every accepted entry with its ticket, expiry, path scope and rule. |
-| `add FINDING_ID` | Accept one finding. Flags: `--reason TEXT`, `--ticket TEXT`, `--expires YYYY-MM-DD`, `--path PATH`. |
+| `add FINDING_ID` | Accept one finding. Flags: `--reason TEXT`, `--ticket TEXT`, `--expires YYYY-MM-DD`, `--disposition false_positive\|accepted_risk\|wont_fix`, `--path PATH`. |
 | `remove FINDING_ID` | Remove the matching entry, its fingerprint and the legacy fingerprint mirror. |
 | `prune [--dry-run]` | Remove entries whose expiry date is before today (UTC); `--dry-run` only reports them. |
 | `clear --yes` | Write an empty baseline. |
@@ -424,6 +424,9 @@ vigil baseline clear --yes
 `add` resolves the finding in the last scan or recent history and, when found,
 records its fingerprint and rule ID too, so the entry survives small line moves.
 `--expires` is a UTC date: a malformed value or one before today is rejected.
+`--disposition` records why the finding is accepted: `false_positive`,
+`accepted_risk` or `wont_fix`; `remediated` is refused because a fixed finding
+belongs out of the baseline.
 `--path` must be project-relative and, when the finding is found, must match its
 path. `remove` fails when the entry does not exist; `clear` refuses to run
 without `--yes`.
@@ -443,7 +446,8 @@ optional per-entry metadata:
       "ruleId": "VGL-SEC-003",
       "path": "internal/legacy/import.go",
       "ticket": "SEC-42",
-      "expires": "2027-01-31"
+      "expires": "2027-01-31",
+      "disposition": "accepted_risk"
     }
   ]
 }
@@ -451,9 +455,10 @@ optional per-entry metadata:
 
 Every field is optional, but an entry must carry an `id` or a `fingerprint`.
 `path` and `ruleId` narrow the match to one file or rule; `ticket` is
-documentation. A version-1 file still loads: it is normalized to version 2 in
-memory, top-level fingerprints become entries with reason `legacy fingerprint`,
-and the next write stores the version-2 shape.
+documentation and `disposition` records the acceptance reason. A version-1 file
+still loads: it is normalized to version 2 in memory, top-level fingerprints
+become entries with reason `legacy fingerprint`, and the next write stores the
+version-2 shape.
 
 An entry whose `expires` date is before today (UTC) stops suppressing. A
 malformed date also counts as expired, so a typo cannot suppress forever. The
@@ -512,10 +517,25 @@ Markdown document. It needs a model. The output is capped at 16 KiB.
 ```bash
 vigil mcp
 vigil mcp --root ./services/api
+vigil mcp --read-only
+vigil mcp --offline
 ```
 
 Runs the MCP server over stdio. `--root` sets the project root exposed to the
 tools. stdout is the protocol stream; diagnostics go to stderr.
+
+| Flag | Environment | Effect |
+|---|---|---|
+| `--read-only` | `VIGIL_MCP_READ_ONLY=1` | Hide `vigil_fix` and `fix_finding`; refuse source, baseline and report writes |
+| `--offline` | `VIGIL_MCP_OFFLINE=1` | Disable the model and OSV; deterministic rules only |
+| `--unsafe-unbound-fix` | `VIGIL_MCP_UNSAFE_UNBOUND_FIX=1` | 0.10 compatibility: one-call apply without a reviewed proposal (unsafe) |
+
+Read-only mode still writes local scan history, so findings keep stable IDs.
+Offline mode makes `vigil_dependencies` return `VGL-OFFLINE`; `vigil_status`
+reports the effective modes and the network posture. By default `vigil_fix`
+proposes a diff with `mode=propose` and applies that exact reviewed diff with
+`mode=apply`, `fixId` and `diffSha256` within 15 minutes. The tool flow and the
+baseline actions are documented in [mcp.md](mcp.md).
 
 ## Formats
 

@@ -23,6 +23,20 @@ provenance, the official MCP Registry listing (`mcpName` plus `server.json`),
 AUR packaging, `pre-commit` hooks, OpenSSF Scorecard and the multi-arch image
 `ghcr.io/levapveeskela/lv24-vigil` (distroless, nonroot).
 
+In main / next (unreleased): MCP modes `--read-only` / `VIGIL_MCP_READ_ONLY`
+(hides `vigil_fix` and `fix_finding`, rejects direct fix, baseline and report
+writes, still writes scan history) and `--offline` / `VIGIL_MCP_OFFLINE` (no
+model, no OSV; `vigil_dependencies` returns `VGL-OFFLINE`). `vigil_fix` becomes
+propose then apply: `mode=propose` returns `fixId`, `diffSha256` and a 15-minute
+`expiresAt`; `mode=apply` applies only that stored diff, single-use and pre-image
+checked. Findings can also be addressed by `path` + `line`, with `VGL-AMBIGUOUS`
+plus candidates instead of a guess. Paged list results carry
+`page{offset,limit,total,hasMore,nextOffset}` and scans carry
+`coverage{filesScanned,filesSkipped,bytesScanned,errors,llmUsed}`. Baseline gains
+`ticket`, `expires`, `disposition`, `dryRun`, `prune` and `batch` at schema v2,
+and the baseline list pages findings with `offset`/`limit`. The CLI
+`vigil fix --apply` stays unbound.
+
 ## Canonical install
 
     npm i -g lv24-vigil

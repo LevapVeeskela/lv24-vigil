@@ -23,6 +23,14 @@ where the boundaries are.
 A deterministic scan (`--no-llm`, or no provider configured) makes no network
 calls. Git operations are local. The scan store is local.
 
+`vigil mcp --offline` (`VIGIL_MCP_OFFLINE=1`) turns both outbound channels off
+at construction time: the model client is never built and `scan.osv` is
+forced off, including a configured `scan.osv_base_url`. Only deterministic rules
+run. `vigil_dependencies` is refused with `VGL-OFFLINE`, and `vigil_status`
+reports `network: "none"`. `vigil_fix` needs a model, so it is refused too.
+Because the settings are cleared before the scan engine is constructed, an
+offline server cannot fall back to a configured endpoint.
+
 When `scan.osv: true`, the scan also queries `api.osv.dev` (or the
 `scan.osv_base_url` mirror) with dependency coordinates parsed from manifests.
 The mirror can be set only in the user config or `VIGIL_OSV_BASE_URL`: a
@@ -107,12 +115,37 @@ A scan never modifies source files. It walks files, reads them, runs rules and
 writes only to the local scan store.
 
 Scans write no source files; they write only their own history. The
-source-writing path is `vigil fix --apply` or `vigil_fix` with `apply=true`.
+source-writing paths are `vigil fix --apply` (CLI, unbound) and `vigil_fix` with
+`mode=apply` (MCP, bound to a reviewed proposal).
 Other commands write only their own artifacts:
 `vigil init` (`.vigil.yaml`), `vigil baseline` / `vigil_baseline` (the baseline
 file), `vigil report --output` / `vigil_report` with `path` (a report file), and
 `vigil hook install` (`.git/hooks/<mode>`, plus a `.pre-vigil.bak` backup when a
 foreign hook is replaced with `--force`).
+
+`vigil mcp --read-only` (`VIGIL_MCP_READ_ONLY=1`) hides `vigil_fix` from
+`tools/list`, does not register the `fix_finding` prompt, and refuses a direct
+`vigil_fix` call, baseline mutations and `vigil_report` with a path with
+`VGL-READONLY`. Scan history is still written, because later tools address
+findings by scan ID. Read-only mode never changes path confinement.
+
+A fix applied through MCP is bound to a proposal a human reviewed:
+
+- `mode=propose` returns `fixId`, `diffSha256` and `expiresAt` (15 minutes) and
+  stores the diff under `.vigil/pending`; it does not modify source files;
+- `mode=apply` requires that `fixId` and `diffSha256`, uses the stored diff,
+  checks the root, scan, finding, hash, expiry and consumed state, and re-hashes
+  every target file;
+- the proposal is marked consumed before the diff is written, so it is
+  single-use and a failed apply cannot be replayed;
+- apply never calls the model, never regenerates the diff, and never commits,
+  stages or pushes.
+
+Model-only findings are refused with `VGL-FIX-NONDETERMINISTIC` unless a
+deterministic rule corroborates the same path and overlapping lines. The
+approval flow binds what was reviewed; it does not replace deterministic
+evidence. The CLI `vigil fix --apply` path is unchanged and unbound: it validates
+and applies in one run without a `fixId`, TTL or pre-image check.
 
 Before writing a fix, Vigil checks:
 
@@ -138,11 +171,19 @@ The MCP server runs as a local subprocess of the client. It inherits:
 - the client's environment, including the model key;
 - the client's user permissions.
 
-The client decides when to call a tool. `vigil_fix` with `apply=true` writes
+The client decides when to call a tool. `vigil_fix` with `mode=apply` writes
 source files; `vigil_baseline` and `vigil_report` with `path` write their own
 files. Configure the client to require confirmation for those calls if the agent
 is not fully trusted. Do not run the server as root or against a repository you
 do not trust.
+
+Hidden tools are a discovery signal, not a boundary by themselves. In read-only
+mode `vigil_fix` is removed from `tools/list` and the `fix_finding` prompt is not
+registered, but the tool stays registered so a direct `tools/call` reaches its
+handler, which refuses it with `VGL-READONLY`. The same enforcement covers
+baseline mutations and `vigil_report` with a path. Path confinement is unchanged
+in every mode, and scan history is still written in read-only mode so findings
+keep stable IDs.
 
 The server does not expose an HTTP port. It speaks JSON-RPC over stdio.
 
