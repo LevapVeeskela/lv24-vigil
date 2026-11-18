@@ -24,18 +24,25 @@ func runMCP(args []string, stdout, stderr io.Writer) error {
 	root := fs.String("root", ".", "project root exposed to MCP tools")
 	readOnly := fs.Bool("read-only", envBool("VIGIL_MCP_READ_ONLY"), "hide vigil_fix and reject all writes")
 	offline := fs.Bool("offline", envBool("VIGIL_MCP_OFFLINE"), "disable model and OSV network access")
+	unsafeUnbound := fs.Bool("unsafe-unbound-fix", envBool("VIGIL_MCP_UNSAFE_UNBOUND_FIX"),
+		"allow vigil_fix apply=true without a reviewed fixId/diffSha256 (0.10 compatibility)")
 	positional, err := parseFlagSet(fs, args)
 	if errors.Is(err, flag.ErrHelp) {
-		fmt.Fprint(stdout, `Usage: vigil mcp [--root DIR] [--read-only] [--offline]
+		fmt.Fprint(stdout, `Usage: vigil mcp [--root DIR] [--read-only] [--offline] [--unsafe-unbound-fix]
 
 Runs Vigil as an MCP server over stdio. stdout is the protocol stream.
 
-  --read-only   Hide vigil_fix and reject baseline, source and report writes.
-  --offline     Disable every network call: no model, no OSV lookups.
+  --read-only            Hide vigil_fix and reject baseline, source and report writes.
+  --offline              Disable every network call: no model, no OSV lookups.
+  --unsafe-unbound-fix   Let vigil_fix apply=true propose and apply in one call,
+                         without the fixId/diffSha256 of a reviewed proposal.
+                         This restores 0.10 behaviour and is not recommended.
 
-The same modes can be set with VIGIL_MCP_READ_ONLY=1 and VIGIL_MCP_OFFLINE=1.
-Scan history is still written locally in read-only mode so later tools can
-address the findings.
+The same modes can be set with VIGIL_MCP_READ_ONLY=1, VIGIL_MCP_OFFLINE=1 and
+VIGIL_MCP_UNSAFE_UNBOUND_FIX=1. By default vigil_fix must propose first
+(mode=propose), return fixId and diffSha256, and apply exactly that reviewed
+diff (mode=apply). Scan history is still written locally in read-only mode so
+later tools can address the findings.
 `)
 		return nil
 	}
@@ -67,11 +74,17 @@ address the findings.
 	if *offline {
 		srv.Instructions += " Offline mode is on: no model or OSV network calls are made."
 	}
+	if *unsafeUnbound {
+		srv.Instructions += " Unsafe unbound fix mode is on: vigil_fix apply=true may propose and apply in one call without a reviewed fixId/diffSha256. This is the 0.10 behaviour and is not recommended."
+	} else {
+		srv.Instructions += " vigil_fix apply=true is bound to review: call it first with mode=propose (the default), show the returned diff to the user, then call mode=apply with the returned fixId and diffSha256."
+	}
 	tools.Register(srv, tools.Deps{
-		App:      a,
-		Version:  version.Version,
-		ReadOnly: *readOnly,
-		Offline:  *offline,
+		App:              a,
+		Version:          version.Version,
+		ReadOnly:         *readOnly,
+		Offline:          *offline,
+		UnsafeUnboundFix: *unsafeUnbound,
 	})
 	if *readOnly {
 		srv.HideTools("vigil_fix")

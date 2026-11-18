@@ -18,6 +18,17 @@ const (
 	CodeAmbiguous  = "VGL-AMBIGUOUS"
 	CodeReadOnly   = "VGL-READONLY"
 	CodeOffline    = "VGL-OFFLINE"
+
+	// Fix-approval codes bind an applied diff to a proposal a human reviewed.
+	CodeFixNotFound = "VGL-FIX-NOT-FOUND"
+	CodeFixMismatch = "VGL-FIX-MISMATCH"
+	CodeFixExpired  = "VGL-FIX-EXPIRED"
+	CodeFixConsumed = "VGL-FIX-CONSUMED"
+	CodeFileChanged = "VGL-FILE-CHANGED"
+	CodeFixUnbound  = "VGL-FIX-UNBOUND"
+	// CodeFixNondeterministic refuses an applied fix for model-only evidence
+	// that no deterministic rule corroborates.
+	CodeFixNondeterministic = "VGL-FIX-NONDETERMINISTIC"
 )
 
 // Candidate is one alternative in a missing or ambiguous lookup. It carries no
