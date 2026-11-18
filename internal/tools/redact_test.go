@@ -284,9 +284,6 @@ func TestScanResourceRedactsSnippetTokens(t *testing.T) {
 	if strings.Contains(text, redactTestJWT) {
 		t.Fatalf("scan resource leaked the raw JWT:\n%s", text)
 	}
-	if !strings.Contains(text, rules.MaskSecret(redactTestJWT)) {
-		t.Errorf("scan resource does not contain the masked JWT")
-	}
 
 	var decoded model.ScanResult
 	if err := json.Unmarshal([]byte(text), &decoded); err != nil {
@@ -294,5 +291,21 @@ func TestScanResourceRedactsSnippetTokens(t *testing.T) {
 	}
 	if decoded.ID != scan.ID || len(decoded.Findings) != len(scan.Findings) {
 		t.Errorf("resource lost scan identity or findings: id=%q findings=%d", decoded.ID, len(decoded.Findings))
+	}
+	found := false
+	for _, f := range decoded.Findings {
+		if f.RuleID != "VGL-CRY-001" {
+			continue
+		}
+		found = true
+		if strings.Contains(f.Location.Snippet, redactTestJWT) {
+			t.Errorf("resource snippet still contains the raw JWT")
+		}
+		if !strings.Contains(f.Location.Snippet, "********") {
+			t.Errorf("resource snippet was not masked: %q", f.Location.Snippet)
+		}
+	}
+	if !found {
+		t.Fatalf("resource lost the weak-hash finding: %+v", decoded.Findings)
 	}
 }
