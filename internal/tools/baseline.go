@@ -33,6 +33,8 @@ type baselineArgs struct {
 	Disposition string         `json:"disposition"`
 	DryRun      *bool          `json:"dryRun"`
 	Items       []baselineItem `json:"items"`
+	Offset      int            `json:"offset"`
+	Limit       int            `json:"limit"`
 }
 
 // baselineItem is one add or remove in a batch. It carries its own action so a
@@ -98,6 +100,8 @@ func registerBaseline(srv *mcp.Server, d Deps) {
 				"Why the finding is accepted. A remediated finding must be removed from the baseline instead.",
 				scanner.BaselineDispositionFalsePositive, scanner.BaselineDispositionAcceptedRisk, scanner.BaselineDispositionWontFix),
 			"dryRun": mcp.PropBool("Preview the change without writing. Defaults to true for batch and prune, false for add and remove."),
+			"offset": mcp.PropInt("List: number of findings to skip. Defaults to 0."),
+			"limit":  mcp.PropInt("List: findings per page (default 50, capped at 500)."),
 			"items": map[string]any{
 				"type":        "array",
 				"description": "Batch of add/remove items (max 50). Requires action=batch. A write requires dryRun=false; any invalid item leaves the baseline untouched.",
@@ -147,7 +151,7 @@ func handleBaseline(d Deps, raw json.RawMessage) (*mcp.CallToolResult, error) {
 
 	switch action {
 	case "list":
-		return baselineList(d, path)
+		return baselineList(d, path, args)
 	case "add":
 		if len(args.Items) > 0 {
 			return typedResult(d, toolErrorf(CodeArgs, "items is only valid with action=batch")), nil
@@ -185,24 +189,48 @@ func baselinePath(d Deps) (string, error) {
 	return resolved, nil
 }
 
-func baselineList(d Deps, path string) (*mcp.CallToolResult, error) {
+func baselineList(d Deps, path string, args baselineArgs) (*mcp.CallToolResult, error) {
+	if err := checkOffset(args.Offset); err != nil {
+		return toolErrorResult(d, err), nil
+	}
 	b, err := scanner.LoadBaseline(path)
 	if err != nil {
 		return errorResult(d, "baseline: %v", err), nil
 	}
 
 	today := scanner.BaselineToday()
+	limit := clampInt(args.Limit, 50, maxFindingsCap)
+	start, end, page := window(len(b.Findings), args.Offset, limit)
+	visible := b.Findings[start:end]
+
 	expired := make([]string, 0)
+	for _, f := range b.Findings {
+		if !f.Expired(today) {
+			continue
+		}
+		label := f.ID
+		if label == "" {
+			label = f.Fingerprint
+		}
+		if label != "" {
+			expired = append(expired, label)
+		}
+	}
+
 	var out strings.Builder
 	fmt.Fprintf(&out, "Baseline: %s\n", path)
 	fmt.Fprintf(&out, "Version: %d\n", b.Version)
 	fmt.Fprintf(&out, "Entries: %d fingerprint(s), %d finding(s)\n", len(b.Fingerprints), len(b.Findings))
+	fmt.Fprintf(&out, "Page: %s\n", pageNote(page))
 	if len(b.Fingerprints) == 0 && len(b.Findings) == 0 {
 		out.WriteString("\nThe baseline is empty: every finding is reported.\n")
 	} else {
-		if len(b.Findings) > 0 {
+		if len(b.Findings) > 0 && len(visible) == 0 {
+			fmt.Fprintf(&out, "\nNo findings in this window; the baseline has %d finding(s).\n", len(b.Findings))
+		}
+		if len(visible) > 0 {
 			out.WriteString("\nFindings:\n")
-			for _, f := range b.Findings {
+			for _, f := range visible {
 				label := f.ID
 				if label == "" {
 					label = f.Fingerprint
@@ -228,15 +256,6 @@ func baselineList(d Deps, path string) (*mcp.CallToolResult, error) {
 					fmt.Fprintf(&out, "  rule=%s", f.RuleID)
 				}
 				out.WriteString("\n")
-				if isExpired {
-					label := f.ID
-					if label == "" {
-						label = f.Fingerprint
-					}
-					if label != "" {
-						expired = append(expired, label)
-					}
-				}
 			}
 		}
 		if len(b.Fingerprints) > 0 {
@@ -252,12 +271,14 @@ func baselineList(d Deps, path string) (*mcp.CallToolResult, error) {
 	}
 
 	payload := map[string]any{
-		"path":         path,
-		"version":      b.Version,
-		"today":        today.Format(scanner.BaselineDateLayout),
-		"fingerprints": b.Fingerprints,
-		"findings":     b.Findings,
-		"expired":      expired,
+		"path":          path,
+		"version":       b.Version,
+		"today":         today.Format(scanner.BaselineDateLayout),
+		"fingerprints":  b.Fingerprints,
+		"findings":      visible,
+		"findingsTotal": len(b.Findings),
+		"page":          page,
+		"expired":       expired,
 	}
 	return result(d, out.String(), payload), nil
 }
