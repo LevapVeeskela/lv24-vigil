@@ -91,11 +91,11 @@ func (s *Scanner) Scan(ctx context.Context, opts Options) (*model.ScanResult, er
 
 	switch {
 	case strings.TrimSpace(opts.Diff) != "":
-		files, skipped, errs, err := buildDiffFiles(ctx, root, opts)
+		files, skipped, reasons, errs, err := buildDiffFiles(ctx, root, opts)
 		if err != nil {
 			return nil, err
 		}
-		return s.scanFiles(ctx, files, opts, skipped, errs, started)
+		return s.scanFiles(ctx, files, opts, skipped, reasons, errs, started)
 	case opts.ChangedOnly:
 		paths, err := gitutil.ChangedFiles(ctx, root, opts.BaseRef)
 		if err != nil {
@@ -107,7 +107,7 @@ func (s *Scanner) Scan(ctx context.Context, opts Options) (*model.ScanResult, er
 		if err != nil {
 			return nil, err
 		}
-		return s.scanFiles(ctx, walked.files, opts, walked.skipped, walked.errs, started)
+		return s.scanFiles(ctx, walked.files, opts, walked.skipped, walked.reasons, walked.errs, started)
 	}
 }
 
@@ -120,7 +120,7 @@ func (s *Scanner) ScanFiles(ctx context.Context, files []*rules.File, opts Optio
 			opts.Root = filepath.Clean(abs)
 		}
 	}
-	return s.scanFiles(ctx, files, opts, 0, nil, started)
+	return s.scanFiles(ctx, files, opts, 0, nil, nil, started)
 }
 
 // ScanPaths scans exactly the given paths, relative to root (absolute paths
@@ -139,6 +139,7 @@ func (s *Scanner) ScanPaths(ctx context.Context, root string, paths []string, op
 	var (
 		files   []*rules.File
 		skipped int
+		reasons map[string]int
 		errs    []string
 	)
 	seen := make(map[string]bool, len(paths))
@@ -149,16 +150,20 @@ func (s *Scanner) ScanPaths(ctx context.Context, root string, paths []string, op
 		absPath, relPath, ok := resolveInput(rootAbs, p)
 		if !ok {
 			skipped++
+			reasons = countSkip(reasons, skipReasonOutsideRoot)
 			errs = append(errs, fmt.Sprintf("skip %q: outside scan root", p))
 			continue
 		}
 		if seen[relPath] {
+			skipped++
+			reasons = countSkip(reasons, skipReasonDuplicate)
 			continue
 		}
 		seen[relPath] = true
 		f, err := loadFile(absPath, relPath, maxBytes, opts.FollowLinks)
 		if err != nil {
 			skipped++
+			reasons = countSkip(reasons, skipReasonForErr(err))
 			if !isSkipError(err) && !errors.Is(err, os.ErrNotExist) {
 				errs = append(errs, fmt.Sprintf("read %s: %v", relPath, err))
 			}
@@ -166,15 +171,16 @@ func (s *Scanner) ScanPaths(ctx context.Context, root string, paths []string, op
 		}
 		files = append(files, f)
 	}
-	return s.scanFiles(ctx, files, opts, skipped, errs, started)
+	return s.scanFiles(ctx, files, opts, skipped, reasons, errs, started)
 }
 
-func (s *Scanner) scanFiles(ctx context.Context, input []*rules.File, opts Options, skipped int, initialErrors []string, started time.Time) (*model.ScanResult, error) {
+func (s *Scanner) scanFiles(ctx context.Context, input []*rules.File, opts Options, skipped int, reasons map[string]int, initialErrors []string, started time.Time) (*model.ScanResult, error) {
 	if started.IsZero() {
 		started = time.Now().UTC()
 	}
-	files, prepSkipped := prepareInputFiles(input)
+	files, prepSkipped, prepReasons := prepareInputFiles(input)
 	skipped += prepSkipped
+	reasons = mergeReasons(reasons, prepReasons)
 
 	selected := s.selectedRules(opts)
 	res := &model.ScanResult{
@@ -188,6 +194,11 @@ func (s *Scanner) scanFiles(ctx context.Context, input []*rules.File, opts Optio
 
 	res.Stats.FilesScanned = len(files)
 	res.Stats.FilesSkipped = skipped
+	// Reasons are only present when something was skipped; FilesSkipped is
+	// their sum.
+	if len(reasons) > 0 {
+		res.Stats.SkippedReasons = reasons
+	}
 	res.Stats.RulesRun = len(selected)
 	for _, f := range files {
 		res.Stats.BytesScanned += int64(len(f.Content))
@@ -371,15 +382,26 @@ func safeCheck(rule rules.Rule, f *rules.File) (findings []model.Finding, err er
 	return rule.Check(f), nil
 }
 
-func prepareInputFiles(input []*rules.File) ([]*rules.File, int) {
+func prepareInputFiles(input []*rules.File) ([]*rules.File, int, map[string]int) {
 	out := make([]*rules.File, 0, len(input))
+	var reasons map[string]int
 	skipped := 0
+	seen := make(map[string]bool, len(input))
 	for _, f := range input {
 		if f == nil {
 			skipped++
+			reasons = countSkip(reasons, skipReasonMissing)
 			continue
 		}
 		f.Path = filepath.ToSlash(f.Path)
+		if f.Path != "" {
+			if seen[f.Path] {
+				skipped++
+				reasons = countSkip(reasons, skipReasonDuplicate)
+				continue
+			}
+			seen[f.Path] = true
+		}
 		if f.Content == nil && f.Lines != nil {
 			f.Content = []byte(strings.Join(f.Lines, "\n"))
 		}
@@ -395,7 +417,7 @@ func prepareInputFiles(input []*rules.File) ([]*rules.File, int) {
 		f.Size = len(f.Content)
 		out = append(out, f)
 	}
-	return out, skipped
+	return out, skipped, reasons
 }
 
 func dedupeFindings(in []model.Finding) []model.Finding {

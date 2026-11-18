@@ -21,11 +21,13 @@ type pageJSON struct {
 }
 
 type coverageJSON struct {
-	FilesScanned int      `json:"filesScanned"`
-	FilesSkipped int      `json:"filesSkipped"`
-	BytesScanned int64    `json:"bytesScanned"`
-	Errors       []string `json:"errors"`
-	LLMUsed      bool     `json:"llmUsed"`
+	FilesScanned int            `json:"filesScanned"`
+	FilesSkipped int            `json:"filesSkipped"`
+	BytesScanned int64          `json:"bytesScanned"`
+	Errors       []string       `json:"errors"`
+	LLMUsed      bool           `json:"llmUsed"`
+	SkipReasons  map[string]int `json:"skipReasons"`
+	NetworkUsed  bool           `json:"networkUsed"`
 }
 
 // scanWindowPayload decodes a scan result together with its pagination and
@@ -114,7 +116,7 @@ func TestScanPaginationWindow(t *testing.T) {
 		t.Errorf("coverage errors = %v, want none", first.Coverage.Errors)
 	}
 	firstText := textOf(t, h.client.mustTool("vigil_scan", map[string]any{"mode": "quick", "maxFindings": 4}))
-	for _, wantLine := range []string{"Page: Showing 1-4 of", "pass offset=4 to continue", "Coverage:", "model not used"} {
+	for _, wantLine := range []string{"Page: Showing 1-4 of", "pass offset=4 to continue", "Coverage:", "network not used"} {
 		if !strings.Contains(firstText, wantLine) {
 			t.Errorf("scan text missing %q:\n%s", wantLine, firstText)
 		}

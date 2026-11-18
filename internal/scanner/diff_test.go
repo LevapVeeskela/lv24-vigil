@@ -32,7 +32,7 @@ func TestBuildDiffFilesRejectsUnsafePaths(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			diff := "--- /dev/null\n+++ b/" + tc.path + "\n@@ -0,0 +1 @@\n+package x\n"
-			files, skipped, errs, err := buildDiffFiles(context.Background(), root, Options{Diff: diff})
+			files, skipped, _, errs, err := buildDiffFiles(context.Background(), root, Options{Diff: diff})
 			if err != nil {
 				t.Fatalf("buildDiffFiles: %v", err)
 			}
@@ -55,7 +55,7 @@ func TestBuildDiffFilesBoundsPaddedLineBudget(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		fmt.Fprintf(&diff, "--- /dev/null\n+++ b/f%d.go\n@@ -0,0 +999999,1 @@\n+package x\n", i)
 	}
-	files, skipped, errs, err := buildDiffFiles(context.Background(), root, Options{Diff: diff.String()})
+	files, skipped, _, errs, err := buildDiffFiles(context.Background(), root, Options{Diff: diff.String()})
 	if err != nil {
 		t.Fatalf("buildDiffFiles: %v", err)
 	}

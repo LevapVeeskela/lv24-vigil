@@ -254,6 +254,13 @@ type Stats struct {
 	RulesRun      int              `json:"rulesRun"`
 	LLMCalls      int              `json:"llmCalls"`
 	LLMTokens     int              `json:"llmTokens,omitempty"`
+	// SkippedReasons counts skipped files by stable reason key, so a caller
+	// can see why coverage is incomplete. The keys are low-cardinality
+	// categories, not per-file paths; FilesSkipped is their sum.
+	SkippedReasons map[string]int `json:"skippedReasons,omitempty"`
+	// OSVQueried reports that an OSV lookup was attempted, not that
+	// advisories were found. It stays true when the lookup failed.
+	OSVQueried bool `json:"osvQueried,omitempty"`
 }
 
 // ModelInfo describes the model that produced LLM judgements.

@@ -57,6 +57,9 @@ var (
 type walkResult struct {
 	files   []*rules.File
 	skipped int
+	// reasons counts skipped files by stable key; every skipped++ above has a
+	// matching entry here, so skipped == sum(reasons).
+	reasons map[string]int
 	errs    []string
 }
 
@@ -89,11 +92,14 @@ func walkFiles(ctx context.Context, root string, opts Options) (*walkResult, err
 				if p == absDir {
 					return walkErr
 				}
-				res.skipped++
 				res.errs = append(res.errs, fmt.Sprintf("walk %s: %v", p, walkErr))
 				if d != nil && d.IsDir() {
+					// Pruning a directory is not a skipped file. The error is
+					// still reported so the gap is not silent.
 					return filepath.SkipDir
 				}
+				res.skipped++
+				res.reasons = countSkip(res.reasons, skipReasonWalkError)
 				return nil
 			}
 			if err := ctx.Err(); err != nil {
@@ -103,6 +109,7 @@ func walkFiles(ctx context.Context, root string, opts Options) (*walkResult, err
 			relPart, err := filepath.Rel(absDir, p)
 			if err != nil {
 				res.skipped++
+				res.reasons = countSkip(res.reasons, skipReasonPathError)
 				res.errs = append(res.errs, fmt.Sprintf("relative path for %s: %v", p, err))
 				return nil
 			}
@@ -131,6 +138,7 @@ func walkFiles(ctx context.Context, root string, opts Options) (*walkResult, err
 				// still worth scanning.
 				if lowerName == ".git" || lowerName == ".vigil" {
 					res.skipped++
+					res.reasons = countSkip(res.reasons, skipReasonToolState)
 					return nil
 				}
 			}
@@ -155,17 +163,19 @@ func walkFiles(ctx context.Context, root string, opts Options) (*walkResult, err
 			if d.Type()&os.ModeSymlink != 0 {
 				if !opts.FollowLinks {
 					res.skipped++
+					res.reasons = countSkip(res.reasons, skipReasonSymlink)
 					return nil
 				}
 				info, err := os.Stat(p)
 				if err != nil {
 					res.skipped++
+					res.reasons = countSkip(res.reasons, skipReasonSymlinkError)
 					res.errs = append(res.errs, fmt.Sprintf("stat %s: %v", rel, err))
 					return nil
 				}
 				if info.IsDir() {
 					if hardSkipDirs[lowerName] {
-						res.skipped++
+						// Directory pruning, not a skipped file.
 						return nil
 					}
 					if matcher.ignored(rel, true) {
@@ -174,6 +184,7 @@ func walkFiles(ctx context.Context, root string, opts Options) (*walkResult, err
 					target, err := filepath.EvalSymlinks(p)
 					if err != nil {
 						res.skipped++
+						res.reasons = countSkip(res.reasons, skipReasonSymlinkError)
 						res.errs = append(res.errs, fmt.Sprintf("resolve symlink %s: %v", rel, err))
 						return nil
 					}
@@ -191,16 +202,19 @@ func walkFiles(ctx context.Context, root string, opts Options) (*walkResult, err
 
 			if matcher.ignored(rel, false) {
 				res.skipped++
+				res.reasons = countSkip(res.reasons, skipReasonIgnored)
 				return nil
 			}
 			if !matcher.included(rel) {
 				res.skipped++
+				res.reasons = countSkip(res.reasons, skipReasonNotIncluded)
 				return nil
 			}
 
 			f, err := loadFile(p, rel, maxBytes, opts.FollowLinks)
 			if err != nil {
 				res.skipped++
+				res.reasons = countSkip(res.reasons, skipReasonForErr(err))
 				if !isSkipError(err) {
 					res.errs = append(res.errs, fmt.Sprintf("read %s: %v", rel, err))
 				}
@@ -300,6 +314,13 @@ func isSkipError(err error) bool {
 // walker always prunes. Diff mode has no directory walk, so it applies the
 // same policy to changed paths explicitly.
 func hasHardSkipSegment(rel string) bool {
+	_, skip := hardSkipReason(rel)
+	return skip
+}
+
+// hardSkipReason names why a changed path is a hard skip. Diff mode has no
+// directory walk, so the path itself is the skipped file.
+func hardSkipReason(rel string) (string, bool) {
 	parts := strings.Split(rel, "/")
 	for i, part := range parts {
 		if part == "" || part == "." {
@@ -309,13 +330,16 @@ func hasHardSkipSegment(rel string) bool {
 		if i == len(parts)-1 {
 			// A file named .git (worktree pointer) or .vigil is still tool
 			// state; other hard-skip names are directory conventions.
-			return lower == ".git" || lower == ".vigil"
+			if lower == ".git" || lower == ".vigil" {
+				return skipReasonToolState, true
+			}
+			return "", false
 		}
 		if hardSkipDirs[lower] {
-			return true
+			return skipReasonIgnored, true
 		}
 	}
-	return false
+	return "", false
 }
 
 // isBinary reports whether data contains a NUL byte in the first 8 KiB, the

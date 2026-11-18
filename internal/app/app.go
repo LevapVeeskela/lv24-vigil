@@ -230,6 +230,9 @@ func (a *App) Scan(ctx context.Context, req model.ScanRequest) (*model.ScanResul
 	res.Model = a.Model
 
 	if opts.OSV {
+		// Record the attempt before the call: coverage must say that a network
+		// channel was used even when the lookup itself fails.
+		res.Stats.OSVQueried = true
 		osvOpts := osv.DefaultOptions()
 		if a.Config.Scan.OSVBaseURL != "" {
 			osvOpts.BaseURL = a.Config.Scan.OSVBaseURL

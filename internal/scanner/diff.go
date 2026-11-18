@@ -211,13 +211,13 @@ func coalesceLines(nums []int) []LineRange {
 // the added lines, padded with empty strings so line numbers still refer to the
 // real file. The added text comes from the diff itself, so a patch does not
 // have to be applied to the working tree to be scanned.
-func buildDiffFiles(ctx context.Context, root string, opts Options) ([]*rules.File, int, []string, error) {
+func buildDiffFiles(ctx context.Context, root string, opts Options) ([]*rules.File, int, map[string]int, []string, error) {
 	parsed, err := parseDiff(opts.Diff)
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, nil, nil, err
 	}
 	if len(parsed.ranges) == 0 {
-		return nil, 0, nil, nil
+		return nil, 0, nil, nil, nil
 	}
 
 	maxBytes := effectiveMaxFileBytes(opts.MaxFileBytes)
@@ -233,20 +233,33 @@ func buildDiffFiles(ctx context.Context, root string, opts Options) ([]*rules.Fi
 	var (
 		files       []*rules.File
 		skipped     int
+		reasons     map[string]int
 		errs        []string
 		totalPadded int
 	)
 	for _, rel := range paths {
 		if err := ctx.Err(); err != nil {
-			return files, skipped, errs, err
+			return files, skipped, reasons, errs, err
 		}
-		if hasHardSkipSegment(rel) || matcher.ignored(rel, false) || !matcher.included(rel) {
+		if reason, skip := hardSkipReason(rel); skip {
 			skipped++
+			reasons = countSkip(reasons, reason)
+			continue
+		}
+		if matcher.ignored(rel, false) {
+			skipped++
+			reasons = countSkip(reasons, skipReasonIgnored)
+			continue
+		}
+		if !matcher.included(rel) {
+			skipped++
+			reasons = countSkip(reasons, skipReasonNotIncluded)
 			continue
 		}
 		absPath, cleanRel, ok := resolveWithin(root, rel)
 		if !ok {
 			skipped++
+			reasons = countSkip(reasons, skipReasonUnsafePath)
 			errs = append(errs, fmt.Sprintf("diff path outside scan root: %s", rel))
 			continue
 		}
@@ -259,11 +272,14 @@ func buildDiffFiles(ctx context.Context, root string, opts Options) ([]*rules.Fi
 			}
 		}
 		if maxLine <= 0 {
+			// The diff names the file but contributes no added line to read.
 			skipped++
+			reasons = countSkip(reasons, skipReasonMissing)
 			continue
 		}
 		if maxLine > maxDiffPaddedLines || totalPadded+maxLine > maxDiffPaddedLines {
 			skipped++
+			reasons = countSkip(reasons, skipReasonTooLarge)
 			errs = append(errs, fmt.Sprintf("diff %s: padded line budget exceeded (line range ends at %d)", rel, maxLine))
 			continue
 		}
@@ -278,10 +294,12 @@ func buildDiffFiles(ctx context.Context, root string, opts Options) ([]*rules.Fi
 		joined := strings.Join(lines, "\n")
 		if int64(len(joined)) > maxBytes {
 			skipped++
+			reasons = countSkip(reasons, skipReasonTooLarge)
 			continue
 		}
 		if isBinary([]byte(joined)) {
 			skipped++
+			reasons = countSkip(reasons, skipReasonBinary)
 			continue
 		}
 
@@ -294,5 +312,5 @@ func buildDiffFiles(ctx context.Context, root string, opts Options) ([]*rules.Fi
 			Size:     len(joined),
 		})
 	}
-	return files, skipped, errs, nil
+	return files, skipped, reasons, errs, nil
 }
