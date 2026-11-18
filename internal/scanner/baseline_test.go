@@ -143,8 +143,8 @@ func TestLoadBaselineVersion1Upgrades(t *testing.T) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatal(err)
 	}
-	if raw.Version != 2 {
-		t.Fatalf("on-disk version = %d, want 2", raw.Version)
+	if raw.Version != BaselineVersion {
+		t.Fatalf("on-disk version = %d, want %d", raw.Version, BaselineVersion)
 	}
 }
 

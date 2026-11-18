@@ -18,13 +18,38 @@ import (
 // is configured.
 const DefaultBaselineFile = ".vigil-baseline.json"
 
-// BaselineVersion is the on-disk schema version. Version-1 files are still
-// readable: LoadBaseline accepts them and normalizes the result to version 2.
-const BaselineVersion = 2
+// BaselineVersion is the on-disk schema version. Version-1 and version-2 files
+// are still readable: LoadBaseline accepts them and normalizes the result to
+// version 3. Version 3 adds an optional per-entry disposition.
+const BaselineVersion = 3
 
 // baselineVersionLegacy is the pre-expiry schema. It has no per-entry
 // fingerprint, rule, path, ticket or expiry fields.
 const baselineVersionLegacy = 1
+
+// baselineVersionExpiring is the version-2 schema: per-entry fingerprint, rule,
+// path, ticket and expiry, but no disposition.
+const baselineVersionExpiring = 2
+
+// Baseline disposition values. A remediated finding must be removed, not
+// recorded as an accepted risk, so "remediated" is deliberately not a valid
+// disposition.
+const (
+	BaselineDispositionFalsePositive = "false_positive"
+	BaselineDispositionAcceptedRisk  = "accepted_risk"
+	BaselineDispositionWontFix       = "wont_fix"
+
+	// BaselineDispositionRemediated is recognized only to produce a clear
+	// error: it is an outcome, not an acceptance.
+	BaselineDispositionRemediated = "remediated"
+)
+
+// BaselineDispositions lists every disposition that can be recorded.
+var BaselineDispositions = []string{
+	BaselineDispositionFalsePositive,
+	BaselineDispositionAcceptedRisk,
+	BaselineDispositionWontFix,
+}
 
 // legacyFingerprintReason labels an entry materialized from the version-1
 // top-level fingerprint list. Those fingerprints never expire, so they become
@@ -47,7 +72,7 @@ type Baseline struct {
 }
 
 // BaselineFinding is one accepted finding entry. Fingerprint, RuleID, Path,
-// Ticket and Expires are optional version-2 additions; older files simply
+// Ticket, Expires and Disposition are optional additions; older files simply
 // leave them empty.
 type BaselineFinding struct {
 	ID          string `json:"id"`
@@ -59,6 +84,9 @@ type BaselineFinding struct {
 	// Expires is a YYYY-MM-DD UTC date. The entry stops suppressing findings
 	// when the date is before today; an empty value never expires.
 	Expires string `json:"expires,omitempty"`
+	// Disposition records why the finding was accepted: false_positive,
+	// accepted_risk or wont_fix. Empty means unspecified (version-1/2 files).
+	Disposition string `json:"disposition,omitempty"`
 }
 
 // MatchResult describes how a finding relates to the baseline.
@@ -80,7 +108,7 @@ type MatchResult struct {
 	EntryID string
 }
 
-// NewBaseline returns an empty version-2 baseline.
+// NewBaseline returns an empty version-3 baseline.
 func NewBaseline() *Baseline {
 	return &Baseline{
 		Version:      BaselineVersion,
@@ -108,6 +136,23 @@ func ParseBaselineDate(value string) (time.Time, error) {
 	return t, nil
 }
 
+// ParseBaselineDisposition validates and canonicalizes an acceptance
+// disposition. An empty value is valid and means "unspecified". "remediated"
+// is refused with a distinct error because it is not an acceptance.
+func ParseBaselineDisposition(value string) (string, error) {
+	v := strings.ToLower(strings.TrimSpace(value))
+	switch v {
+	case "":
+		return "", nil
+	case BaselineDispositionFalsePositive, BaselineDispositionAcceptedRisk, BaselineDispositionWontFix:
+		return v, nil
+	case BaselineDispositionRemediated:
+		return "", errors.New("a remediated finding must be removed from the baseline, not recorded as accepted")
+	default:
+		return "", fmt.Errorf("%q is not a baseline disposition (use false_positive, accepted_risk or wont_fix; a remediated finding must be removed from the baseline)", value)
+	}
+}
+
 // ExpiryDate returns the entry's parsed expiry. ok is false when the entry does
 // not expire.
 func (e BaselineFinding) ExpiryDate() (time.Time, bool, error) {
@@ -133,7 +178,7 @@ func (e BaselineFinding) Expired(today time.Time) bool {
 
 // LoadBaseline reads a baseline file. A missing or empty file is an empty
 // baseline, not an error, so first runs do not need special cases. Version 1
-// files are accepted and upgraded in memory to version 2.
+// and 2 files are accepted and upgraded in memory to version 3.
 func LoadBaseline(path string) (*Baseline, error) {
 	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -161,10 +206,10 @@ func LoadBaseline(path string) (*Baseline, error) {
 		return nil, fmt.Errorf("parse baseline %s: %w", path, err)
 	}
 	switch b.Version {
-	case 0, baselineVersionLegacy, BaselineVersion:
+	case 0, baselineVersionLegacy, baselineVersionExpiring, BaselineVersion:
 		b.Version = BaselineVersion
 	default:
-		return nil, fmt.Errorf("baseline %s: unsupported version %d (this build understands versions 1 and %d)", path, b.Version, BaselineVersion)
+		return nil, fmt.Errorf("baseline %s: unsupported version %d (this build understands versions 1, 2 and %d)", path, b.Version, BaselineVersion)
 	}
 	b.normalize()
 	if err := b.validate(); err != nil {
@@ -173,7 +218,7 @@ func LoadBaseline(path string) (*Baseline, error) {
 	return &b, nil
 }
 
-// SaveBaseline writes b atomically as indented version-2 JSON with mode 0644.
+// SaveBaseline writes b atomically as indented version-3 JSON with mode 0644.
 func SaveBaseline(path string, b *Baseline) error {
 	if b == nil {
 		b = NewBaseline()
@@ -355,15 +400,20 @@ func (b *Baseline) PruneExpired(today time.Time) []BaselineFinding {
 }
 
 func (b *Baseline) validate() error {
+	if b.Version != 0 && b.Version != baselineVersionLegacy && b.Version != baselineVersionExpiring && b.Version != BaselineVersion {
+		return fmt.Errorf("unsupported baseline version %d (this build understands versions 1, 2 and %d)", b.Version, BaselineVersion)
+	}
 	for _, entry := range b.Findings {
-		if strings.TrimSpace(entry.Expires) == "" {
-			continue
+		label := entry.ID
+		if label == "" {
+			label = entry.Fingerprint
 		}
-		if _, err := ParseBaselineDate(entry.Expires); err != nil {
-			label := entry.ID
-			if label == "" {
-				label = entry.Fingerprint
+		if strings.TrimSpace(entry.Expires) != "" {
+			if _, err := ParseBaselineDate(entry.Expires); err != nil {
+				return fmt.Errorf("finding %s: %w", label, err)
 			}
+		}
+		if _, err := ParseBaselineDisposition(entry.Disposition); err != nil {
 			return fmt.Errorf("finding %s: %w", label, err)
 		}
 	}
@@ -518,6 +568,9 @@ func mergeBaselineEntry(dst *BaselineFinding, src BaselineFinding) {
 	if src.Expires != "" {
 		dst.Expires = src.Expires
 	}
+	if src.Disposition != "" {
+		dst.Disposition = src.Disposition
+	}
 }
 
 func normalizeBaselineFinding(entry BaselineFinding) BaselineFinding {
@@ -528,6 +581,12 @@ func normalizeBaselineFinding(entry BaselineFinding) BaselineFinding {
 	entry.Path = normalizeBaselinePath(entry.Path)
 	entry.Ticket = strings.TrimSpace(entry.Ticket)
 	entry.Expires = strings.TrimSpace(entry.Expires)
+	entry.Disposition = strings.TrimSpace(entry.Disposition)
+	// Canonicalize a valid disposition so "WONT_FIX" round-trips as
+	// "wont_fix"; an invalid value is left untouched for validate to refuse.
+	if disposition, err := ParseBaselineDisposition(entry.Disposition); err == nil {
+		entry.Disposition = disposition
+	}
 	return entry
 }
 
