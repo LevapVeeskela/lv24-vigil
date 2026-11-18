@@ -132,7 +132,8 @@ findings by scan ID. Read-only mode never changes path confinement.
 A fix applied through MCP is bound to a proposal a human reviewed:
 
 - `mode=propose` returns `fixId`, `diffSha256` and `expiresAt` (15 minutes) and
-  stores the diff under `.vigil/pending`; it does not modify source files;
+  stores an authenticated diff under `.vigil/pending` (or the user cache when
+  that path is unsafe); it does not modify source files;
 - `mode=apply` requires that `fixId` and `diffSha256`, uses the stored diff,
   checks the root, scan, finding, hash, expiry and consumed state, and re-hashes
   every target file;

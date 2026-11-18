@@ -89,7 +89,7 @@ func handleHardening(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.Cal
 	if err != nil {
 		return mcp.TextError("invalid arguments: %v", err), nil
 	}
-	if err := checkOffset(args.Offset); err != nil {
+	if err := checkScanOffset(args.Offset); err != nil {
 		return errorResult(d, "%v", err), nil
 	}
 	minSeverity, err := parseSeverityArg(args.MinSeverity)

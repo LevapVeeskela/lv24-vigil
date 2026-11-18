@@ -76,18 +76,18 @@ func handleScan(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.CallTool
 
 	mode := strings.ToLower(strings.TrimSpace(args.Mode))
 	if mode != "" && !validMode(mode) {
-		return mcp.TextError("invalid arguments: mode must be quick, standard or deep (got %q)", args.Mode), nil
+		return typedResult(d, toolErrorf(CodeArgs, "mode must be quick, standard or deep (got %q)", args.Mode)), nil
 	}
-	if err := checkOffset(args.Offset); err != nil {
+	if err := checkScanOffset(args.Offset); err != nil {
 		return errorResult(d, "%v", err), nil
 	}
 	minSeverity, err := parseSeverityArg(args.MinSeverity)
 	if err != nil {
-		return mcp.TextError("invalid arguments: %v", err), nil
+		return typedResult(d, toolErrorf(CodeArgs, "%v", err)), nil
 	}
 	root, err := resolvePath(d, args.Path)
 	if err != nil {
-		return mcp.TextError("invalid arguments: %v", err), nil
+		return typedResult(d, toolErrorf(CodeBadPath, "%v", err)), nil
 	}
 
 	// maxFindings is the window size. The scan has to produce the window plus
@@ -120,7 +120,7 @@ func handleScan(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.CallTool
 	if err != nil {
 		return errorResult(d, "scan failed: %v", err), nil
 	}
-	llmUsed := d.App.LLM && (args.UseLLM == nil || *args.UseLLM)
+	llmUsed := llmContributed(res)
 	view, page, cov, reported := scanPage(res, args.Offset, limit, llmUsed)
 	text := scanSummary(d, view, page, cov, args.UseLLM) + pageCapNote(reported, page.Total)
 	return result(d, text, &scanPayload{ScanResult: view, Page: &page, Coverage: cov}), nil

@@ -63,7 +63,7 @@ func handleReview(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.CallTo
 	if baseRef == "" {
 		baseRef = "HEAD"
 	}
-	if err := checkOffset(args.Offset); err != nil {
+	if err := checkScanOffset(args.Offset); err != nil {
 		return errorResult(d, "%v", err), nil
 	}
 	root, err := resolvePath(d, args.Path)
@@ -88,7 +88,7 @@ func handleReview(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.CallTo
 	if err != nil {
 		return errorResult(d, "review failed: %v. A changedOnly review needs a git repository; pass diff=... to review a patch instead.", err), nil
 	}
-	llmUsed := d.App.LLM && (args.UseLLM == nil || *args.UseLLM)
+	llmUsed := llmContributed(res)
 	view, page, cov, reported := scanPage(res, args.Offset, limit, llmUsed)
 	text := reviewSummary(d, view, page, cov, args, baseRef) + pageCapNote(reported, page.Total)
 	return result(d, text, &scanPayload{ScanResult: view, Page: &page, Coverage: cov}), nil

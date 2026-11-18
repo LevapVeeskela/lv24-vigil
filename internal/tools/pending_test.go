@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -54,6 +55,15 @@ const targetDiff = `diff --git a/a.txt b/a.txt
 +two
 `
 
+func mustPendingDir(t *testing.T, root string) string {
+	t.Helper()
+	dir, err := pendingDir(root)
+	if err != nil {
+		t.Fatalf("pendingDir: %v", err)
+	}
+	return dir
+}
+
 func TestPendingProposalRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("one\n"), 0o644); err != nil {
@@ -72,7 +82,7 @@ func TestPendingProposalRoundTrip(t *testing.T) {
 	if err := savePending(root, p); err != nil {
 		t.Fatalf("savePending: %v", err)
 	}
-	path := filepath.Join(pendingDir(root), p.FixID+".json")
+	path := filepath.Join(mustPendingDir(t, root), p.FixID+".json")
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatalf("proposal file: %v", err)
@@ -80,7 +90,7 @@ func TestPendingProposalRoundTrip(t *testing.T) {
 	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Errorf("proposal mode = %o, want 600", info.Mode().Perm())
 	}
-	entries, err := os.ReadDir(pendingDir(root))
+	entries, err := os.ReadDir(mustPendingDir(t, root))
 	if err != nil {
 		t.Fatalf("read pending dir: %v", err)
 	}
@@ -296,10 +306,10 @@ func TestPendingCleanupRemovesOldProposals(t *testing.T) {
 
 	cleanupPending(root, now)
 
-	if _, err := os.Stat(filepath.Join(pendingDir(root), old.FixID+".json")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(mustPendingDir(t, root), old.FixID+".json")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("cleanup kept a 25-hour-old proposal")
 	}
-	if _, err := os.Stat(filepath.Join(pendingDir(root), fresh.FixID+".json")); err != nil {
+	if _, err := os.Stat(filepath.Join(mustPendingDir(t, root), fresh.FixID+".json")); err != nil {
 		t.Errorf("cleanup removed the fresh proposal: %v", err)
 	}
 }
@@ -385,5 +395,128 @@ func TestFindingDeterministicallyCorroborated(t *testing.T) {
 				t.Errorf("corroborated = %v, want %v", got, tc.expected)
 			}
 		})
+	}
+}
+
+func TestPendingProposalRejectsForgedFile(t *testing.T) {
+	root := t.TempDir()
+	dir := mustPendingDir(t, root)
+	id := "fx_0123456789abcdef"
+	payload := `{"version":1,"fixId":"` + id + `","findingId":"VGL-TEST","scanId":"scan-test","root":"` +
+		strings.ReplaceAll(root, `\`, `\\`) + `","diff":"diff --git a/a.txt b/a.txt\n","diffSha256":"00","targets":{},"createdAt":"2026-01-01T00:00:00Z","expiresAt":"2099-01-01T00:00:00Z"}`
+	if err := os.WriteFile(filepath.Join(dir, id+".json"), []byte(payload), 0o600); err != nil {
+		t.Fatalf("write forged proposal: %v", err)
+	}
+	_, err := loadPending(root, id)
+	requireCode(t, err, CodeFixNotFound)
+}
+
+func TestPendingProposalRejectsTamperedDiff(t *testing.T) {
+	root := t.TempDir()
+	p := testProposal(t, root, targetDiff, map[string]string{"a.txt": sha256Hex("one\n")})
+	if err := savePending(root, p); err != nil {
+		t.Fatalf("savePending: %v", err)
+	}
+	path := filepath.Join(mustPendingDir(t, root), p.FixID+".json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read proposal: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("decode proposal: %v", err)
+	}
+	decoded["diff"] = targetDiff + "\n# tampered\n"
+	updated, err := json.MarshalIndent(decoded, "", "  ")
+	if err != nil {
+		t.Fatalf("encode tampered proposal: %v", err)
+	}
+	if err := os.WriteFile(path, updated, 0o600); err != nil {
+		t.Fatalf("write tampered proposal: %v", err)
+	}
+	_, err = loadPending(root, p.FixID)
+	requireCode(t, err, CodeFixNotFound)
+}
+
+func TestPendingProposalRejectsOversizeDiff(t *testing.T) {
+	root := t.TempDir()
+	p := testProposal(t, root, strings.Repeat("x", maxPendingProposalBytes+1), map[string]string{})
+	if err := savePending(root, p); err == nil {
+		t.Fatal("oversize proposal was saved")
+	}
+}
+
+func TestPendingTargetsMustCoverTheStoredDiff(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatalf("write a.txt: %v", err)
+	}
+	p := testProposal(t, root, targetDiff, map[string]string{})
+	err := verifyPendingTargets(root, p)
+	requireCode(t, err, CodeFixMismatch)
+}
+
+func TestPendingDirFallsBackWhenVigilIsSymlink(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	cache := t.TempDir()
+	t.Setenv("LOCALAPPDATA", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	if err := os.Symlink(outside, filepath.Join(root, ".vigil")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	dir, err := pendingDir(root)
+	if err != nil {
+		t.Fatalf("pendingDir: %v", err)
+	}
+	if strings.HasPrefix(strings.ToLower(dir), strings.ToLower(outside)) {
+		t.Fatalf("pendingDir used a symlinked .vigil outside the root: %s", dir)
+	}
+	if !strings.HasPrefix(strings.ToLower(dir), strings.ToLower(cache)) {
+		t.Errorf("pendingDir did not fall back to the cache: %s", dir)
+	}
+}
+
+func TestDiffTargetPathsIncludesBareFileHeaders(t *testing.T) {
+	// A crafted diff can mix a git header with a bare ---/+++ pair for another
+	// file. Both must be in the pre-image map.
+	diff := `diff --git a/a.txt b/a.txt
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-one
++two
+--- a/b.txt
++++ b/b.txt
+@@ -1 +1 @@
+-one
++two
+`
+	paths, err := diffTargetPaths(diff)
+	if err != nil {
+		t.Fatalf("diffTargetPaths: %v", err)
+	}
+	got := strings.Join(paths, ",")
+	if got != "a.txt,b.txt" {
+		t.Fatalf("paths = %q, want a.txt,b.txt", got)
+	}
+}
+
+func TestDiffTargetPathsIgnoresHeaderLikeHunkLines(t *testing.T) {
+	// Removing "-- old" produces "--- old", and adding "++ new" produces
+	// "+++ new". They are hunk content, not file headers.
+	diff := `diff --git a/a.txt b/a.txt
+--- a/a.txt
++++ b/a.txt
+@@ -1,2 +1,2 @@
+--- old markdown
++++ new markdown
+`
+	paths, err := diffTargetPaths(diff)
+	if err != nil {
+		t.Fatalf("diffTargetPaths: %v", err)
+	}
+	if got := strings.Join(paths, ","); got != "a.txt" {
+		t.Fatalf("paths = %q, want only a.txt", got)
 	}
 }

@@ -40,21 +40,32 @@ stable.
 
 - `vigil_baseline` supports `add`, `remove`, `prune`, `batch` and `clear`
   alongside `list`; writes are rejected in read-only mode and batch argument
-  errors write nothing.
+  errors write nothing. `clear` requires `confirm=true`, reasons are sanitized
+  and capped, and the legacy fingerprint/expired lists are capped at 500 with
+  totals.
 - The `fix_finding` prompt now walks propose → review → apply with `fixId` and
   `diffSha256`, and is hidden in read-only mode.
 
 ### Security
 
+- Proposal files are authenticated with a per-process key, so a proposal
+  committed to the repository or written by another process cannot be applied;
+  a restarted server requires a fresh proposal. When `.vigil` is a symlink or
+  otherwise unsafe, proposals fall back to the user cache instead of writing
+  outside the tree.
 - Read-only mode is enforced by handlers, not only by `tools/list`: a hidden
   tool stays registered and a direct call is refused with `VGL-READONLY`.
 - Offline mode is a construction-time guarantee: model settings and OSV are
   cleared before the engine is built, so a configured endpoint cannot be used.
 - Fix approval binds the applied diff to the reviewed proposal with a 15-minute
-  TTL, single use and target pre-image checks. A failed apply still consumes the
-  proposal.
+  TTL, single use and target pre-image checks; the apply path re-derives the
+  target set from the stored diff. A failed apply still consumes the proposal.
 - The CLI `vigil fix --apply` path is unchanged and unbound; only the MCP path
   requires a reviewed `fixId`/`diffSha256`.
+- Offset values above the 500-finding paging cap are rejected instead of
+  overflowing into an uncapped scan. A non-empty unparsable
+  `VIGIL_MCP_READ_ONLY`/`VIGIL_MCP_OFFLINE` value stops the server instead of
+  silently disabling the mode.
 
 ## 0.10.1 - 2026-11-16
 

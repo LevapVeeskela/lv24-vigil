@@ -128,7 +128,7 @@ The server exposes 14 tools (13 in read-only mode, which hides `vigil_fix`):
 | `vigil_scan` | Scan the repository or a directory. Runs deterministic rules first, then optional LLM analysis. | local scan history (`readOnlyHint: false`); network to the configured model, and to OSV when `scan.osv` is on |
 | `vigil_review` | Review only changed lines, or a supplied unified diff. | local scan history (`readOnlyHint: false`); network to the configured model, and to OSV when `scan.osv` is on |
 | `vigil_explain` | Explain one finding: what the code does, why it matters, how an attacker could use it, and a fix direction. | network to the configured model |
-| `vigil_fix` | Propose a validated unified diff, then apply exactly the proposal a human reviewed. | network to the configured model on propose; stores the proposal under `.vigil/pending`; writes source files only on a bound `mode=apply`; never commits |
+| `vigil_fix` | Propose a validated unified diff, then apply exactly the proposal a human reviewed. | network to the configured model on propose; stores an authenticated proposal under `.vigil/pending` (or the user cache when that path is unsafe); writes source files only on a bound `mode=apply`; never commits |
 | `vigil_threat_model` | Generate a STRIDE-style threat model from a bounded repository map. | network to the configured model |
 | `vigil_status` | Report provider, model, rule count, store, effective modes and network posture. | none |
 | `vigil_rules` | List the rule catalog with IDs, severities and categories. | none |
@@ -195,6 +195,10 @@ and how to resume. Offsets are zero-based; a negative offset is `VGL-ARGS`.
 | `vigil_history` | `limit` | 10 | 100 |
 | `vigil_baseline` (`action=list`, findings) | `limit` | 50 | 500 |
 
+`vigil_rules` reports `count` for the returned page, `matched` for the filtered
+catalog and `total` for all registered rules. `vigil_history` reports `count` for
+the page and `total` for stored scans.
+
 Start with `offset=0` and pass `page.nextOffset` from the previous response.
 `offset` is accepted by `vigil_scan`, `vigil_review`, `vigil_hardening`,
 `vigil_mcp_audit`, `vigil_rules`, `vigil_history` and `vigil_baseline` with
@@ -205,7 +209,9 @@ Start with `offset=0` and pass `page.nextOffset` from the previous response.
 the scan reports more, the text names the honest count and says so. For
 `vigil_scan`, `vigil_review` and `vigil_hardening`, `stats.findingsTotal` is the
 count before that cap. Narrow the path or raise `minSeverity` to keep the pool
-inside the cap.
+inside the cap. The scan stored in local history contains the fetched prefix
+(never more than 500), so `vigil_report` on that scan renders that prefix rather
+than findings beyond it.
 
 `vigil_scan`, `vigil_review`, `vigil_hardening` and `vigil_mcp_audit` also
 return `coverage`:
@@ -222,10 +228,12 @@ returns `findings` (the window), `findingsTotal` (all entries), `page` and
 
 ### Typed errors
 
-Failures carry a stable code in the text and in
-`structuredContent.error.code`; `structuredContent.error.message` explains the
-failure and `candidates` is present only for a lookup miss or ambiguity.
-`isError` stays `true`. Error paths carry no code snippets or evidence text.
+Lookup, mode, path, fix-approval and baseline failures carry a stable code in the
+text and in `structuredContent.error.code`; `structuredContent.error.message`
+explains the failure and `candidates` is present only for a lookup miss or
+ambiguity. `isError` stays `true`. Error paths carry no code snippets or evidence
+text. A malformed JSON argument object is still reported as plain text by the
+protocol layer, without a `VGL-*` code.
 
 | Code | Meaning |
 |---|---|
@@ -272,10 +280,13 @@ The proposed unified diff is validated before it is shown:
   patches are rejected;
 - hunk line counts must match the body.
 
-A successful proposal stores the diff under `.vigil/pending` and returns
-`fixId`, `diffSha256`, `expiresAt` and `targets`. The proposal expires after 15
-minutes; the stored pre-image hash of every target is what makes a stale diff
-detectable.
+A successful proposal stores the diff under `.vigil/pending` (or in the user
+cache when that path is a symlink or otherwise unsafe) and returns `fixId`,
+`diffSha256`, `expiresAt` and `targets`. Each proposal is authenticated with a
+per-process key, so a proposal file committed to the repository, or one written
+by another process, is rejected; after a server restart, propose again. The
+proposal expires after 15 minutes; the stored pre-image hash of every target is
+what makes a stale diff detectable.
 
 `mode=apply` requires the `fixId` and `diffSha256` from the proposal. It loads
 the stored diff, checks the server root, scan and finding, the diff hash, the
@@ -309,7 +320,10 @@ fingerprints and unique prefixes against a scan. A write is refused with
 `list` accepts `offset` and `limit` (default 50, cap 500) and returns `findings`
 as the visible window, `findingsTotal` for every entry, `page` and `expired`
 computed over all entries rather than the window. The text prints a
-`Page: ...` line. `fingerprints` are returned in full.
+`Page: ...` line. `fingerprints` are capped at 500 (the total is reported) and
+`expired` lists up to 500 entries with its own total; `expired` is computed over
+every entry, not only the visible window. Hand-edited reasons, tickets and paths
+are stripped of control characters before they are printed.
 
 - `ticket` stores a reference. Control characters are stripped and the value is
   capped at 128 characters.
@@ -326,7 +340,7 @@ computed over all entries rather than the window. The text prints a
   defaults to `dryRun=true`, validates every argument before writing, reports
   per-item `added`, `already_present`, `removed`, `not_found` or `error`, and
   writes nothing when an argument error rejects the request.
-- `clear` writes an empty baseline.
+- `clear` writes an empty baseline and requires `confirm=true`.
 
 The file stays schema version 2, so a 0.10 build can still read a baseline
 written by this server.
@@ -402,8 +416,10 @@ Agent: [calls vigil_fix with mode=apply, fixId and diffSha256, then vigil_verify
   stored diff a human reviewed), `vigil_baseline` (the baseline file),
   `vigil_report` with `path` (a report inside the project root) and the local
   scan history written by `vigil_scan`/`vigil_review`/`vigil_hardening`.
-  Proposals are stored under `.vigil/pending`; they are single-use and expire
-  after 15 minutes. A fix never commits or stages. Write paths are confined to
+  Proposals are stored under `.vigil/pending` (or the user cache when safe
+  in-repo storage is unavailable) and authenticated for the server process;
+  they are single-use and expire after 15 minutes. A restart requires
+  re-proposing. A fix never commits or stages. Write paths are confined to
   the server root, including through symlinks and junctions.
 - Read-only mode is enforcement, not just catalog filtering: `vigil_fix` is
   hidden from `tools/list` and refused on a direct call, and baseline, source and

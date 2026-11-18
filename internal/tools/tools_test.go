@@ -526,7 +526,7 @@ func TestBaselineLifecycle(t *testing.T) {
 	}
 
 	h.client.mustTool("vigil_baseline", map[string]any{"action": "add", "findingId": id, "reason": "second pass"})
-	cleared := h.client.mustTool("vigil_baseline", map[string]any{"action": "clear"})
+	cleared := h.client.mustTool("vigil_baseline", map[string]any{"action": "clear", "confirm": true})
 	if !strings.Contains(textOf(t, cleared), "Cleared") {
 		t.Errorf("baseline clear text = %s", textOf(t, cleared))
 	}

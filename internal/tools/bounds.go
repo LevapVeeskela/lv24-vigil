@@ -105,6 +105,19 @@ func checkOffset(offset int) error {
 	return nil
 }
 
+// checkScanOffset also rejects an offset a scan result cannot reach. Without
+// this, offset+limit can overflow into a negative maxFindings, which the model
+// filter treats as "no cap".
+func checkScanOffset(offset int) error {
+	if err := checkOffset(offset); err != nil {
+		return err
+	}
+	if offset > maxFindingsCap {
+		return toolErrorf(CodeArgs, "offset %d is above the %d-finding paging cap; narrow the scan instead", offset, maxFindingsCap)
+	}
+	return nil
+}
+
 // scanTotal is the finding pool a scan reported before the page cap. Older
 // results carry no FindingsTotal, so the visible findings are the floor.
 func scanTotal(res *model.ScanResult) int {
@@ -149,6 +162,23 @@ func scanPage(res *model.ScanResult, offset, limit int, llmUsed bool) (view *mod
 	view, page = scanWindow(res, total, offset, limit)
 	cov = coverageFor(res, llmUsed)
 	return view, page, cov, reported
+}
+
+// llmContributed reports whether model output is present in the result. A
+// configured model that was never consulted must not claim egress.
+func llmContributed(res *model.ScanResult) bool {
+	if res == nil {
+		return false
+	}
+	if res.Stats.LLMCalls > 0 || strings.TrimSpace(res.ThreatModel) != "" {
+		return true
+	}
+	for _, f := range res.Findings {
+		if f.Source != "" && f.Source != model.SourceRule {
+			return true
+		}
+	}
+	return false
 }
 
 // coverageFor describes the scan behind a result. llmUsed is passed by the

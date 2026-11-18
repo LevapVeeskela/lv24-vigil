@@ -20,11 +20,23 @@ import (
 // runMCP serves the Model Context Protocol over stdio. stdout carries JSON-RPC
 // only; every diagnostic goes to stderr.
 func runMCP(args []string, stdout, stderr io.Writer) error {
+	readOnlyDefault, err := envBool("VIGIL_MCP_READ_ONLY")
+	if err != nil {
+		return err
+	}
+	offlineDefault, err := envBool("VIGIL_MCP_OFFLINE")
+	if err != nil {
+		return err
+	}
+	unsafeDefault, err := envBool("VIGIL_MCP_UNSAFE_UNBOUND_FIX")
+	if err != nil {
+		return err
+	}
 	fs := newFlagSet("mcp")
 	root := fs.String("root", ".", "project root exposed to MCP tools")
-	readOnly := fs.Bool("read-only", envBool("VIGIL_MCP_READ_ONLY"), "hide vigil_fix and reject all writes")
-	offline := fs.Bool("offline", envBool("VIGIL_MCP_OFFLINE"), "disable model and OSV network access")
-	unsafeUnbound := fs.Bool("unsafe-unbound-fix", envBool("VIGIL_MCP_UNSAFE_UNBOUND_FIX"),
+	readOnly := fs.Bool("read-only", readOnlyDefault, "hide vigil_fix and reject all writes")
+	offline := fs.Bool("offline", offlineDefault, "disable model and OSV network access")
+	unsafeUnbound := fs.Bool("unsafe-unbound-fix", unsafeDefault,
 		"allow vigil_fix apply=true without a reviewed fixId/diffSha256 (0.10 compatibility)")
 	positional, err := parseFlagSet(fs, args)
 	if errors.Is(err, flag.ErrHelp) {
@@ -111,10 +123,17 @@ later tools can address the findings.
 	}
 }
 
-// envBool reads a boolean switch from the environment. Unset or unparsable
-// values leave the flag at its default: a typo must not silently disable a
-// safety mode, and it must not silently enable one either.
-func envBool(name string) bool {
-	v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(name)))
-	return err == nil && v
+// envBool reads a boolean switch from the environment. Unset means the flag
+// default. A non-empty unparsable value is an error, not a silent false: a typo
+// in a safety mode must stop the server, not disable the mode.
+func envBool(name string) (bool, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return false, nil
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("%s=%q is not a boolean (use 1/true or 0/false)", name, raw)
+	}
+	return v, nil
 }

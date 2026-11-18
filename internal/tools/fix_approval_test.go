@@ -369,9 +369,10 @@ func TestFixApplyRejectsUnknownOrMismatchedProposal(t *testing.T) {
 func TestFixApplyRejectsExpiredProposal(t *testing.T) {
 	h := newFixHarness(t, false)
 	p, _ := h.propose(t)
-	rewriteProposal(t, h.h.repo, p.FixID, func(m map[string]any) {
-		m["expiresAt"] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)
-	})
+	// Move the server clock past the 15-minute TTL instead of editing the
+	// signed proposal: tampering must be rejected as unauthentic, not expired.
+	restore := tools.SetPendingClockForTest(func() time.Time { return time.Now().Add(16 * time.Minute) })
+	defer restore()
 
 	res := callTool(t, h.client, "vigil_fix", map[string]any{
 		"mode":       "apply",

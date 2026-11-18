@@ -37,10 +37,11 @@ type scanWindowPayload struct {
 }
 
 type rulesWindowPayload struct {
-	Count int              `json:"count"`
-	Total int              `json:"total"`
-	Page  pageJSON         `json:"page"`
-	Rules []model.RuleMeta `json:"rules"`
+	Count   int              `json:"count"`
+	Total   int              `json:"total"`
+	Matched int              `json:"matched"`
+	Page    pageJSON         `json:"page"`
+	Rules   []model.RuleMeta `json:"rules"`
 }
 
 type historyWindowPayload struct {
@@ -248,8 +249,9 @@ func TestHardeningPaginationEnvelope(t *testing.T) {
 	}
 }
 
-// TestRulesPagination: the catalog is windowed after filtering, and total is
-// the filtered count.
+// TestRulesPagination: the catalog is windowed after filtering. total is the
+// full catalog, matched is the filtered count and page.total is the windowed
+// one.
 func TestRulesPagination(t *testing.T) {
 	h := newHarness(t)
 
@@ -260,8 +262,24 @@ func TestRulesPagination(t *testing.T) {
 	if first.Count != 5 || len(first.Rules) != 5 {
 		t.Errorf("first page has count %d and %d rules, want 5", first.Count, len(first.Rules))
 	}
+	if first.Matched != first.Total {
+		t.Errorf("unfiltered matched = %d, total = %d", first.Matched, first.Total)
+	}
 	if first.Page.Total != first.Total || !first.Page.HasMore || first.Page.NextOffset == nil || *first.Page.NextOffset != 5 {
 		t.Errorf("first rules page = %+v, total %d", first.Page, first.Total)
+	}
+
+	filtered := structuredInto[rulesWindowPayload](t, h.client.mustTool("vigil_rules", map[string]any{
+		"category": "secrets", "limit": 5,
+	}))
+	if filtered.Total != first.Total {
+		t.Errorf("filtered total = %d, want the catalog total %d", filtered.Total, first.Total)
+	}
+	if filtered.Matched == 0 || filtered.Matched >= filtered.Total {
+		t.Errorf("filtered matched = %d, catalog total = %d, want a strict subset", filtered.Matched, filtered.Total)
+	}
+	if filtered.Page.Total != filtered.Matched {
+		t.Errorf("filtered page.total = %d, want %d", filtered.Page.Total, filtered.Matched)
 	}
 
 	last := structuredInto[rulesWindowPayload](t, h.client.mustTool("vigil_rules", map[string]any{

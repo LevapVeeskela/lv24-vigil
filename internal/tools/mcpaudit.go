@@ -68,17 +68,17 @@ func handleMCPAudit(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.Call
 
 	minSeverity, err := parseSeverityArg(args.MinSeverity)
 	if err != nil {
-		return mcp.TextError("invalid arguments: %v", err), nil
+		return typedResult(d, toolErrorf(CodeArgs, "%v", err)), nil
 	}
 	if minSeverity == "" {
 		minSeverity = model.SeverityInfo
 	}
-	if err := checkOffset(args.Offset); err != nil {
+	if err := checkScanOffset(args.Offset); err != nil {
 		return errorResult(d, "%v", err), nil
 	}
 	root, err := resolveMCPAuditPath(d, args.Path)
 	if err != nil {
-		return mcp.TextError("invalid arguments: %v", err), nil
+		return typedResult(d, toolErrorf(CodeBadPath, "%v", err)), nil
 	}
 
 	ruleCount := 0

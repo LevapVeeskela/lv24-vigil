@@ -213,7 +213,7 @@ func applyStoredProposal(ctx context.Context, d Deps, args fixArgs) *mcp.CallToo
 		return toolErrorResult(d, err)
 	}
 
-	now := time.Now().UTC()
+	now := pendingNow().UTC()
 	if err := pendingUsable(proposal, now); err != nil {
 		return toolErrorResult(d, err)
 	}

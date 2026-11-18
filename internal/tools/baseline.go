@@ -21,6 +21,11 @@ const (
 	// maxBaselineTicketRunes bounds the ticket reference stored with an
 	// acceptance, after control characters are stripped.
 	maxBaselineTicketRunes = 128
+	// maxBaselineReasonRunes bounds a free-text acceptance reason.
+	maxBaselineReasonRunes = 2000
+	// maxBaselineAux bounds the legacy fingerprint and expired-entry lists
+	// returned by list; their totals are reported separately.
+	maxBaselineAux = 500
 )
 
 type baselineArgs struct {
@@ -32,6 +37,7 @@ type baselineArgs struct {
 	Expires     string         `json:"expires"`
 	Disposition string         `json:"disposition"`
 	DryRun      *bool          `json:"dryRun"`
+	Confirm     bool           `json:"confirm"`
 	Items       []baselineItem `json:"items"`
 	Offset      int            `json:"offset"`
 	Limit       int            `json:"limit"`
@@ -99,9 +105,10 @@ func registerBaseline(srv *mcp.Server, d Deps) {
 			"disposition": mcp.PropEnum(
 				"Why the finding is accepted. A remediated finding must be removed from the baseline instead.",
 				scanner.BaselineDispositionFalsePositive, scanner.BaselineDispositionAcceptedRisk, scanner.BaselineDispositionWontFix),
-			"dryRun": mcp.PropBool("Preview the change without writing. Defaults to true for batch and prune, false for add and remove."),
-			"offset": mcp.PropInt("List: number of findings to skip. Defaults to 0."),
-			"limit":  mcp.PropInt("List: findings per page (default 50, capped at 500)."),
+			"dryRun":  mcp.PropBool("Preview the change without writing. Defaults to true for batch and prune, false for add and remove."),
+			"confirm": mcp.PropBool("Required for clear: confirm that the baseline is emptied."),
+			"offset":  mcp.PropInt("List: number of findings to skip. Defaults to 0."),
+			"limit":   mcp.PropInt("List: findings per page (default 50, capped at 500)."),
 			"items": map[string]any{
 				"type":        "array",
 				"description": "Batch of add/remove items (max 50). Requires action=batch. A write requires dryRun=false; any invalid item leaves the baseline untouched.",
@@ -167,6 +174,10 @@ func handleBaseline(d Deps, raw json.RawMessage) (*mcp.CallToolResult, error) {
 	case "batch":
 		return baselineBatch(d, path, args)
 	case "clear":
+		if !args.Confirm {
+			return typedResult(d, toolErrorf(CodeArgs,
+				"clear empties the baseline; pass confirm=true after checking action=list")), nil
+		}
 		return baselineClear(d, path)
 	default:
 		return typedResult(d, toolErrorf(CodeArgs,
@@ -213,8 +224,16 @@ func baselineList(d Deps, path string, args baselineArgs) (*mcp.CallToolResult, 
 			label = f.Fingerprint
 		}
 		if label != "" {
-			expired = append(expired, label)
+			expired = append(expired, oneLine(label))
 		}
+	}
+	expiredTotal := len(expired)
+	if len(expired) > maxBaselineAux {
+		expired = expired[:maxBaselineAux]
+	}
+	fingerprints := b.Fingerprints
+	if len(fingerprints) > maxBaselineAux {
+		fingerprints = fingerprints[:maxBaselineAux]
 	}
 
 	var out strings.Builder
@@ -235,50 +254,58 @@ func baselineList(d Deps, path string, args baselineArgs) (*mcp.CallToolResult, 
 				if label == "" {
 					label = f.Fingerprint
 				}
-				fmt.Fprintf(&out, "  %s  %s", label, baselineReasonText(f))
+				fmt.Fprintf(&out, "  %s  %s", oneLine(label), baselineReasonText(f))
 				if f.Ticket != "" {
-					fmt.Fprintf(&out, "  ticket=%s", f.Ticket)
+					fmt.Fprintf(&out, "  ticket=%s", sanitizeBaselineTicket(f.Ticket))
 				}
 				isExpired := f.Expired(today)
 				if f.Expires != "" {
-					fmt.Fprintf(&out, "  expires=%s", f.Expires)
+					fmt.Fprintf(&out, "  expires=%s", oneLine(f.Expires))
 					if isExpired {
 						out.WriteString(" (expired)")
 					}
 				}
 				if f.Disposition != "" {
-					fmt.Fprintf(&out, "  disposition=%s", f.Disposition)
+					fmt.Fprintf(&out, "  disposition=%s", oneLine(f.Disposition))
 				}
 				if f.Path != "" {
-					fmt.Fprintf(&out, "  path=%s", f.Path)
+					fmt.Fprintf(&out, "  path=%s", oneLine(f.Path))
 				}
 				if f.RuleID != "" {
-					fmt.Fprintf(&out, "  rule=%s", f.RuleID)
+					fmt.Fprintf(&out, "  rule=%s", oneLine(f.RuleID))
 				}
 				out.WriteString("\n")
 			}
 		}
 		if len(b.Fingerprints) > 0 {
 			out.WriteString("\nFingerprints:\n")
-			for _, fp := range b.Fingerprints {
-				fmt.Fprintf(&out, "  %s\n", fp)
+			for _, fp := range fingerprints {
+				fmt.Fprintf(&out, "  %s\n", oneLine(fp))
+			}
+			if len(b.Fingerprints) > len(fingerprints) {
+				fmt.Fprintf(&out, "  … and %d more fingerprint(s); the payload reports the total.\n", len(b.Fingerprints)-len(fingerprints))
 			}
 		}
 	}
-	if len(expired) > 0 {
+	if expiredTotal > 0 {
 		fmt.Fprintf(&out, "\n%d expired entr%s no longer suppresses findings; action=prune removes %s.\n",
-			len(expired), pluralWord(len(expired), "y", "ies"), pluralWord(len(expired), "it", "them"))
+			expiredTotal, pluralWord(expiredTotal, "y", "ies"), pluralWord(expiredTotal, "it", "them"))
+		if expiredTotal > len(expired) {
+			fmt.Fprintf(&out, "Only the first %d expired entries are listed; the payload reports the total.\n", len(expired))
+		}
 	}
 
 	payload := map[string]any{
-		"path":          path,
-		"version":       b.Version,
-		"today":         today.Format(scanner.BaselineDateLayout),
-		"fingerprints":  b.Fingerprints,
-		"findings":      visible,
-		"findingsTotal": len(b.Findings),
-		"page":          page,
-		"expired":       expired,
+		"path":              path,
+		"version":           b.Version,
+		"today":             today.Format(scanner.BaselineDateLayout),
+		"fingerprints":      fingerprints,
+		"fingerprintsTotal": len(b.Fingerprints),
+		"findings":          visible,
+		"findingsTotal":     len(b.Findings),
+		"page":              page,
+		"expired":           expired,
+		"expiredTotal":      expiredTotal,
 	}
 	return result(d, out.String(), payload), nil
 }
@@ -288,7 +315,7 @@ func baselineAdd(d Deps, path string, args baselineArgs) (*mcp.CallToolResult, e
 	if id == "" {
 		return typedResult(d, toolErrorf(CodeArgs, "findingId is required for baseline add")), nil
 	}
-	reason := strings.TrimSpace(args.Reason)
+	reason := sanitizeBaselineReason(args.Reason)
 	if reason == "" {
 		return typedResult(d, toolErrorf(CodeArgs, "a reason is required for baseline add (why is this finding accepted?)")), nil
 	}
@@ -533,7 +560,7 @@ func baselineBatch(d Deps, path string, args baselineArgs) (*mcp.CallToolResult,
 		}
 		plan := baselinePlan{index: i, action: action, raw: raw}
 		if action == "add" {
-			reason := strings.TrimSpace(item.Reason)
+			reason := sanitizeBaselineReason(item.Reason)
 			if reason == "" {
 				return typedResult(d, toolErrorf(CodeArgs,
 					"items[%d]: a reason is required for baseline add (why is this finding accepted?)", i)), nil
@@ -911,6 +938,16 @@ func prefixedToolError(err error, field string) *ToolError {
 // sanitizeBaselineTicket strips control characters and caps the ticket at 128
 // characters so untrusted input cannot inject structure into reports.
 func sanitizeBaselineTicket(value string) string {
+	return sanitizeBaselineText(value, maxBaselineTicketRunes)
+}
+
+// sanitizeBaselineReason strips control characters and caps a free-text reason
+// so a baseline file cannot inject lines or Markdown into a tool response.
+func sanitizeBaselineReason(value string) string {
+	return sanitizeBaselineText(value, maxBaselineReasonRunes)
+}
+
+func sanitizeBaselineText(value string, max int) string {
 	stripped := strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
 			return -1
@@ -922,18 +959,18 @@ func sanitizeBaselineTicket(value string) string {
 		return ""
 	}
 	runes := []rune(stripped)
-	if len(runes) > maxBaselineTicketRunes {
-		return string(runes[:maxBaselineTicketRunes])
+	if len(runes) > max {
+		return string(runes[:max])
 	}
 	return stripped
 }
 
 func baselineReasonText(entry scanner.BaselineFinding) string {
-	reason := strings.TrimSpace(entry.Reason)
+	reason := sanitizeBaselineReason(entry.Reason)
 	if reason == "" {
 		return "(no reason recorded)"
 	}
-	return reason
+	return truncateRunes(reason, 300)
 }
 
 func removalMessage(ids, fingerprints []string) string {
