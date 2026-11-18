@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/levapveeskela/lv24-vigil/internal/model"
@@ -25,7 +26,15 @@ type coverageInfo struct {
 	FilesSkipped int      `json:"filesSkipped"`
 	BytesScanned int64    `json:"bytesScanned"`
 	Errors       []string `json:"errors"`
-	LLMUsed      bool     `json:"llmUsed"`
+	// LLMUsed is kept for compatibility. NetworkUsed is the honest egress
+	// statement: model output or an OSV lookup.
+	LLMUsed bool `json:"llmUsed"`
+	// SkipReasons counts skipped files by stable, low-cardinality reason key.
+	// It names categories, never per-file paths.
+	SkipReasons map[string]int `json:"skipReasons,omitempty"`
+	// NetworkUsed reports that this scan may have contacted a model or an OSV
+	// endpoint. An attempted lookup counts even if it failed.
+	NetworkUsed bool `json:"networkUsed"`
 }
 
 // scanPayload keeps the model.ScanResult shape at the top level of
@@ -187,35 +196,88 @@ func coverageFor(res *model.ScanResult, llmUsed bool) *coverageInfo {
 	if res == nil {
 		return nil
 	}
-	return &coverageInfo{
+	cov := &coverageInfo{
 		FilesScanned: res.Stats.FilesScanned,
 		FilesSkipped: res.Stats.FilesSkipped,
 		BytesScanned: res.Stats.BytesScanned,
 		Errors:       append([]string{}, res.Errors...),
 		LLMUsed:      llmUsed,
+		NetworkUsed:  llmUsed || res.Stats.OSVQueried,
 	}
+	if len(res.Stats.SkippedReasons) > 0 {
+		cov.SkipReasons = make(map[string]int, len(res.Stats.SkippedReasons))
+		for key, count := range res.Stats.SkippedReasons {
+			cov.SkipReasons[key] = count
+		}
+	}
+	return cov
 }
 
-// coverageNote is the human form of coverageInfo. It names what was read, what
-// was skipped and whether a model contributed.
+// coverageNote is the human form of coverageInfo. It names what was read, why
+// files were skipped and whether any network channel contributed.
 func coverageNote(c *coverageInfo) string {
 	if c == nil {
 		return ""
 	}
+	skipped := fmt.Sprintf("%d skipped", c.FilesSkipped)
+	if reasons := skipReasonNote(c.SkipReasons); reasons != "" {
+		skipped += ": " + reasons
+	}
 	parts := []string{
 		fmt.Sprintf("%d file(s) scanned", c.FilesScanned),
-		fmt.Sprintf("%d skipped", c.FilesSkipped),
+		skipped,
 	}
 	if c.BytesScanned > 0 {
 		parts = append(parts, humanBytes(c.BytesScanned)+" read")
 	}
 	parts = append(parts, fmt.Sprintf("%d error(s)", len(c.Errors)))
-	if c.LLMUsed {
-		parts = append(parts, "model used")
+	if c.NetworkUsed {
+		parts = append(parts, "network used")
 	} else {
-		parts = append(parts, "model not used")
+		parts = append(parts, "network not used")
 	}
 	return "Coverage: " + strings.Join(parts, ", ") + "."
+}
+
+// skipReasonNote renders the top skip reasons by count (then key), so a long
+// tail never turns the one-line coverage note into a log dump.
+func skipReasonNote(reasons map[string]int) string {
+	if len(reasons) == 0 {
+		return ""
+	}
+	type reasonCount struct {
+		key   string
+		count int
+	}
+	list := make([]reasonCount, 0, len(reasons))
+	for key, count := range reasons {
+		if count > 0 {
+			list = append(list, reasonCount{key: key, count: count})
+		}
+	}
+	if len(list) == 0 {
+		return ""
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].count != list[j].count {
+			return list[i].count > list[j].count
+		}
+		return list[i].key < list[j].key
+	})
+	const top = 4
+	shown := list
+	if len(shown) > top {
+		shown = shown[:top]
+	}
+	parts := make([]string, 0, len(shown))
+	for _, r := range shown {
+		parts = append(parts, fmt.Sprintf("%s %d", r.key, r.count))
+	}
+	note := strings.Join(parts, ", ")
+	if rest := len(list) - len(shown); rest > 0 {
+		note += fmt.Sprintf(" (+%d more)", rest)
+	}
+	return note
 }
 
 // pageCapNote explains an honest total that is larger than what one tool can

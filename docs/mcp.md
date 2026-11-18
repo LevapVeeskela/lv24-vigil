@@ -217,11 +217,23 @@ than findings beyond it.
 return `coverage`:
 
 ```json
-{"filesScanned": 812, "filesSkipped": 34, "bytesScanned": 7340032, "errors": [], "llmUsed": false}
+{"filesScanned": 812, "filesSkipped": 34, "bytesScanned": 7340032,
+ "errors": [], "llmUsed": false,
+ "skipReasons": {"ignored": 21, "binary": 8, "too_large": 5},
+ "networkUsed": false}
 ```
 
-`coverage.errors` repeats the warnings already on the scan result, and
-`filesSkipped` states what was not read, so incomplete coverage is visible
+`coverage.errors` repeats the warnings already on the scan result.
+`coverage.skipReasons` counts skipped files by stable, low-cardinality reason
+key (`walk_error`, `path_error`, `tool_state`, `symlink`, `symlink_error`,
+`ignored`, `not_included`, `binary`, `too_large`, `special_file`, `hardlink`,
+`read_error`, `outside_root`, `unsafe_path`, `missing`, `duplicate`).
+`filesSkipped` is the sum of those counts. The keys are best-effort categories
+for why coverage is incomplete, not per-file paths and not a claim that the
+skipped files are safe. `coverage.networkUsed` is true when the scan consulted
+a model or attempted an OSV lookup (an attempted lookup counts even if it
+failed); `coverage.llmUsed` remains for compatibility and covers only the model.
+A scan with no skips omits `skipReasons`, so incomplete coverage is visible
 instead of looking like a clean result. `vigil_baseline action=list`
 returns `findings` (the window), `findingsTotal` (all entries), `page` and
 `expired` computed over every entry, not only the visible window.
