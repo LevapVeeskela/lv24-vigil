@@ -4,12 +4,12 @@
 # vigil-security-bin installs the prebuilt upstream release binary. There is no build
 # step: package() copies the binary and the license into $pkgdir.
 #
-# Checksums below are the published v0.10.3 values. Refresh all three from
+# Checksums below are the published v0.11.0 values. Refresh all three from
 # checksums.txt and the LICENSE file for every new release:
 #
-#   curl -fsSLO https://github.com/LevapVeeskela/lv24-vigil/releases/download/v0.10.3/checksums.txt
+#   curl -fsSLO https://github.com/LevapVeeskela/lv24-vigil/releases/download/v0.11.0/checksums.txt
 #   grep -E 'vigil_0\.10\.3_linux_(amd64|arm64)$' checksums.txt
-#   sha256sum LICENSE   # https://raw.githubusercontent.com/LevapVeeskela/lv24-vigil/v0.10.3/LICENSE
+#   sha256sum LICENSE   # https://raw.githubusercontent.com/LevapVeeskela/lv24-vigil/v0.11.0/LICENSE
 #
 # Then verify the sources and build:
 #
@@ -17,7 +17,7 @@
 #
 
 pkgname=vigil-security-bin
-pkgver=0.10.3
+pkgver=0.11.0
 pkgrel=1
 pkgdesc="Local-first security auditor with 263 deterministic rules and an MCP server"
 arch=('x86_64' 'aarch64')
@@ -34,8 +34,8 @@ source_x86_64=("vigil_${pkgver}_linux_amd64::${_baseurl}/vigil_${pkgver}_linux_a
 source_aarch64=("vigil_${pkgver}_linux_arm64::${_baseurl}/vigil_${pkgver}_linux_arm64")
 
 sha256sums=('46601daebe32a15c144660cf135cfa3b610459085b7118c2d499f4f8b6f2ce61')
-sha256sums_x86_64=('814072fb0568963c82d1d5ce0d5a57904ff296bcac62948d48f7fcb6eb3aa23d')
-sha256sums_aarch64=('e022c925f4251ccdd8bf8dcf599c5368cfb8694ae0ac1c04b96689cd0a185d62')
+sha256sums_x86_64=('685d96fc88c939290d983d89469a73cff4b1db317ffd0245db52de3efaddfa1e')
+sha256sums_aarch64=('1b34200e7214dd958a728219512e10dc2497fced2251fd5525c7fced245245b6')
 
 package() {
   local asset_arch

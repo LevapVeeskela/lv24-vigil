@@ -187,8 +187,8 @@ refuses an older npm). Use the same or newer npm for the `npm trust` commands.
 
 ## Verify a release
 
-`v0.10.3` ships the same 16 assets as `v0.10.2`: six static binaries, six Linux
-packages (deb/rpm/apk × amd64/arm64), `vigil-sbom-0.10.3.cdx.json`,
+`v0.11.0` ships 16 assets: six static binaries, six Linux
+packages (deb/rpm/apk × amd64/arm64), `vigil-sbom-0.11.0.cdx.json`,
 `checksums.txt` and its cosign bundle, the provenance bundle
 (`provenance.intoto.jsonl`), and the GHCR image for both architectures. Download what you need from the release page;
 the commands below verify it without trusting the download.
@@ -232,17 +232,17 @@ signature. Compare its digest with the `container` run summary, or inspect the
 attestations directly:
 
 ```bash
-docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.10.3 \
+docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.11.0 \
   --format '{{json .Manifest}}' | jq -r .digest
 ```
 
 Installed CLI:
 
 ```bash
-npm view lv24-vigil version          # 0.10.3
-npm view lv24-vigil dist-tags        # { latest: '0.10.3' }
-npm i -g lv24-vigil@0.10.3            # or @latest
-vigil version                        # vigil 0.10.3 (<commit>, <date>, go<version>)
+npm view lv24-vigil version          # 0.11.0
+npm view lv24-vigil dist-tags        # { latest: '0.11.0' }
+npm i -g lv24-vigil@0.11.0            # or @latest
+vigil version                        # vigil 0.11.0 (<commit>, <date>, go<version>)
 ```
 
 Platform packages, one line each:
@@ -514,10 +514,10 @@ reasoning and the procedure if a rewrite is ever required are in
 ## Current state
 
 `0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
-path. All seven npm packages and PyPI are live at `0.10.3`, and `latest` points
-at it. `v0.10.3` is a **documentation release** with no code or rule changes
-(263 rules in ten families, 14 MCP tools): it publishes the refreshed npm and
-PyPI READMEs and the PyPI classifiers. Release assets are unchanged from 0.10.2.
+path. All seven npm packages and PyPI are live at `0.11.0`, and `latest` points
+at it. `v0.11.0` is a **minor MCP release** with no rule changes (263 rules in
+ten families, 14 MCP tools): read-only/offline modes, path+line addressing,
+bounded output, baseline parity and diff-bound fix approval.
 
 `v0.10.2` is a **security patch release** (263 rules in ten families, 14
 MCP tools): it ships the fixes from the adversarial review of 0.10.1 and is
@@ -575,7 +575,7 @@ attempt. `v0.5.2` contains the corrected CI templates and the post-0.5.1 docs.
 The composite action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
 as **Vigil security scan** (Security + Code quality).
 
-**Do not pin `0.5.0`.** Use `0.10.3` or newer, or `@latest`. The `v0.5.0` tag is
+**Do not pin `0.5.0`.** Use `0.11.0` or newer, or `@latest`. The `v0.5.0` tag is
 immutable and still resolves, so pinning it silently keeps the stale templates;
 its GitHub release body carries the warning. The npm package version is marked
 with a deprecation notice (a metadata change, not a republish) once the npm 2FA
