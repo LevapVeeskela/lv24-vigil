@@ -95,7 +95,8 @@ date and credit unless the reporter asks to stay anonymous.
 
 **Security design.** Deterministic scans are local and make no network calls;
 LLM context goes only to the configured endpoint; scans are read-only by default;
-only `vigil_fix` with `apply=true` writes source files and it never commits.
+only `vigil_fix` with `mode=apply` writes source files, and it applies only a
+reviewed proposal (`fixId` + `diffSha256`) and never commits.
 See [`docs/security-model.md`](security-model.md).
 
 ## Gaps to close before applying
