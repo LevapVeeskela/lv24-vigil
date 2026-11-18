@@ -17,6 +17,7 @@ import (
 	"github.com/levapveeskela/lv24-vigil/internal/app"
 	"github.com/levapveeskela/lv24-vigil/internal/mcp"
 	"github.com/levapveeskela/lv24-vigil/internal/model"
+	"github.com/levapveeskela/lv24-vigil/internal/rules"
 	"github.com/levapveeskela/lv24-vigil/internal/tools"
 )
 
@@ -253,7 +254,9 @@ func TestFixProposeThenApplyExactReviewedDiff(t *testing.T) {
 	if p.Applied {
 		t.Error("propose reports the fix as applied")
 	}
-	if p.Fix == nil || p.Fix.Diff != fixTestDiff {
+	// Tool output applies the hard redactor to every string, including a diff
+	// that quotes the credential, so the reviewed diff is the redacted form.
+	if p.Fix == nil || p.Fix.Diff != rules.RedactSecrets(fixTestDiff) {
 		t.Errorf("propose did not return the diff: %+v", p.Fix)
 	}
 	sum := sha256.Sum256([]byte(original))

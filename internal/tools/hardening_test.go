@@ -364,10 +364,7 @@ func TestHandleHardeningPlatformFilter(t *testing.T) {
 	if filtered.IsError {
 		t.Fatalf("platform=android failed: %s", textOfResult(t, filtered))
 	}
-	scan, ok := filtered.StructuredContent.(*scanPayload)
-	if !ok {
-		t.Fatalf("structuredContent = %T, want *scanPayload", filtered.StructuredContent)
-	}
+	scan := scanPayloadInto(t, filtered)
 	if scan.Page == nil {
 		t.Fatalf("structuredContent has no page: %+v", scan)
 	}
@@ -394,10 +391,7 @@ func TestHandleHardeningPlatformFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handleHardening: %v", err)
 	}
-	unfiltered, ok := all.StructuredContent.(*scanPayload)
-	if !ok {
-		t.Fatalf("structuredContent = %T, want *scanPayload", all.StructuredContent)
-	}
+	unfiltered := scanPayloadInto(t, all)
 	if unfiltered.Page == nil {
 		t.Fatalf("structuredContent has no page: %+v", unfiltered)
 	}
@@ -453,10 +447,7 @@ func TestHandleHardeningPlatformMaxFindings(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("platform=ios failed: %s", textOfResult(t, res))
 	}
-	scan, ok := res.StructuredContent.(*scanPayload)
-	if !ok {
-		t.Fatalf("structuredContent = %T, want *scanPayload", res.StructuredContent)
-	}
+	scan := scanPayloadInto(t, res)
 	if scan.Page == nil {
 		t.Fatalf("structuredContent has no page: %+v", scan)
 	}

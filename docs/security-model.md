@@ -77,13 +77,24 @@ reaches evidence, a snippet or a report. A finding never contains the raw
 credential. Generic assignment rules also avoid obvious placeholders and
 low-entropy values.
 
+Tool output applies the same hard redactor (`rules.RedactSecrets`) to the text
+content and to every string in `structuredContent`. Well-known credential shapes
+(AWS, GitHub, GitLab, Slack, Stripe, Google, OpenAI, Anthropic, JWT and similar)
+are masked in both forms, so reading the JSON payload does not recover a value
+the text hides. When a model API key is configured, that exact key is removed
+from both the text and the structured payload. Object keys and the JSON shape
+are never changed; only values are rewritten.
+
 Masking has limits:
 
-- it covers values a rule detected, not every secret-looking string in a file;
+- it covers values a rule detected and well-known credential shapes, not every
+  secret-looking string; a token in an unknown format can still appear in tool
+  output, and Vigil does not scan its own output for secrets;
 - a model can still see an undetected secret inside a code window;
 - a secret in git history remains in history after you remove the working copy.
 
-Rotate anything that was committed. Removing the file or the line is not enough.
+Treat reports and `structuredContent` as potentially sensitive. Rotate anything
+that was committed: removing the file or the line is not enough.
 
 ## Prompt injection and model output
 

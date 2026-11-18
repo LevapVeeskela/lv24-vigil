@@ -12,6 +12,7 @@ import (
 	"github.com/levapveeskela/lv24-vigil/internal/config"
 	"github.com/levapveeskela/lv24-vigil/internal/mcp"
 	"github.com/levapveeskela/lv24-vigil/internal/model"
+	"github.com/levapveeskela/lv24-vigil/internal/rules"
 	"github.com/levapveeskela/lv24-vigil/internal/safepath"
 )
 
@@ -45,12 +46,59 @@ func decodeArgs(raw json.RawMessage, dst any) *mcp.CallToolResult {
 	return nil
 }
 
-// result builds a text result with optional structured content. The text is
-// redacted and truncated; the structured payload is passed through untouched.
+// result builds a text result with optional structured content. The text and
+// every string in the structured payload go through the same redactors, so a
+// client cannot recover a credential by reading structuredContent instead of
+// the text. Redaction is best-effort: only well-known credential shapes and the
+// configured API key are masked.
 func result(d Deps, text string, structured any) *mcp.CallToolResult {
-	res := mcp.TextResult(boundText(redactKey(d, text)))
-	res.StructuredContent = structured
+	res := mcp.TextResult(boundText(redactText(d, text)))
+	if structured == nil {
+		return res
+	}
+	// The round-trip redacts without hand-maintaining a visitor for every
+	// payload type. It preserves the JSON shape clients decode, not the Go
+	// concrete types: a typed payload becomes map[string]any. A payload that
+	// cannot round-trip is returned untouched rather than failing the tool.
+	raw, err := json.Marshal(structured)
+	if err != nil {
+		res.StructuredContent = structured
+		return res
+	}
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		res.StructuredContent = structured
+		return res
+	}
+	res.StructuredContent = redactStructured(d, decoded)
 	return res
+}
+
+// redactText applies the configured-key redactor and the well-known credential
+// shapes to one string.
+func redactText(d Deps, s string) string {
+	return redactKey(d, rules.RedactSecrets(s))
+}
+
+// redactStructured walks a decoded JSON value and applies the text redactors to
+// every string. Object keys are never changed: clients decode by name.
+func redactStructured(d Deps, v any) any {
+	switch value := v.(type) {
+	case map[string]any:
+		for k, inner := range value {
+			value[k] = redactStructured(d, inner)
+		}
+		return value
+	case []any:
+		for i, inner := range value {
+			value[i] = redactStructured(d, inner)
+		}
+		return value
+	case string:
+		return redactText(d, value)
+	default:
+		return v
+	}
 }
 
 // errorResult builds an isError result, redacting the configured key. A typed
