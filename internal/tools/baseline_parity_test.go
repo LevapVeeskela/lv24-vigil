@@ -141,8 +141,8 @@ func TestBaselineAddWithMetadataOverMCP(t *testing.T) {
 	}
 
 	doc := readBaselineFile(t, baselineFilePath(h))
-	if doc.Version != 3 {
-		t.Fatalf("on-disk version = %d, want 3", doc.Version)
+	if doc.Version != 2 {
+		t.Fatalf("on-disk version = %d, want 2", doc.Version)
 	}
 	if len(doc.Findings) != 1 {
 		t.Fatalf("on-disk findings = %d, want 1: %+v", len(doc.Findings), doc.Findings)
@@ -175,7 +175,7 @@ func TestBaselineExpiredEntryStopsSuppressingAndIsListed(t *testing.T) {
 	f := scan.Findings[0]
 	past := scanner.BaselineToday().AddDate(0, 0, -1).Format(scanner.BaselineDateLayout)
 	writeBaselineFile(t, baselineFilePath(h), map[string]any{
-		"version":      3,
+		"version":      2,
 		"fingerprints": []string{},
 		"findings": []map[string]any{{
 			"id":          f.ID,
@@ -199,8 +199,8 @@ func TestBaselineExpiredEntryStopsSuppressingAndIsListed(t *testing.T) {
 
 	res := h.client.mustTool("vigil_baseline", map[string]any{"action": "list"})
 	payload := structuredInto[baselineListPayload](t, res)
-	if payload.Version != 3 {
-		t.Errorf("list version = %d, want 3", payload.Version)
+	if payload.Version != 2 {
+		t.Errorf("list version = %d, want 2", payload.Version)
 	}
 	if len(payload.Expired) != 1 || payload.Expired[0] != f.ID {
 		t.Errorf("expired = %v, want [%s]", payload.Expired, f.ID)
@@ -312,7 +312,7 @@ func TestBaselineBatchDefaultsToDryRun(t *testing.T) {
 		t.Errorf("batch write results = %+v", written.Results)
 	}
 	doc := readBaselineFile(t, baselineFilePath(h))
-	if doc.Version != 3 || len(doc.Findings) != 1 || doc.Findings[0].ID != f.ID {
+	if doc.Version != 2 || len(doc.Findings) != 1 || doc.Findings[0].ID != f.ID {
 		t.Errorf("batch write stored %+v", doc)
 	}
 }
@@ -374,7 +374,7 @@ func TestBaselinePruneDryRunAndWrite(t *testing.T) {
 	expired := today.AddDate(0, 0, -1).Format(scanner.BaselineDateLayout)
 	valid := today.AddDate(0, 0, 10).Format(scanner.BaselineDateLayout)
 	writeBaselineFile(t, path, map[string]any{
-		"version":      3,
+		"version":      2,
 		"fingerprints": []string{},
 		"findings": []map[string]any{
 			{"id": "VGL-OLD", "reason": "expired", "fingerprint": "fp_old", "expires": expired},
@@ -480,8 +480,8 @@ func TestBaselineLegacyFilesOverMCP(t *testing.T) {
 	})
 	list := h.client.mustTool("vigil_baseline", map[string]any{"action": "list"})
 	payload := structuredInto[baselineListPayload](t, list)
-	if payload.Version != 3 {
-		t.Errorf("v1 list version = %d, want 3", payload.Version)
+	if payload.Version != 2 {
+		t.Errorf("v1 list version = %d, want 2", payload.Version)
 	}
 	if !strings.Contains(textOf(t, list), "VGL-LEGACY") || !strings.Contains(textOf(t, list), "fp_legacy") {
 		t.Errorf("v1 list lost entries:\n%s", textOf(t, list))

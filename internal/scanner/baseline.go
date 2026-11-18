@@ -18,18 +18,15 @@ import (
 // is configured.
 const DefaultBaselineFile = ".vigil-baseline.json"
 
-// BaselineVersion is the on-disk schema version. Version-1 and version-2 files
-// are still readable: LoadBaseline accepts them and normalizes the result to
-// version 3. Version 3 adds an optional per-entry disposition.
-const BaselineVersion = 3
+// BaselineVersion is the on-disk schema version. Version-1 files are still
+// readable: LoadBaseline accepts them and normalizes the result to version 2.
+// The optional disposition does not change the schema version: older readers
+// ignore it instead of rejecting the file.
+const BaselineVersion = 2
 
 // baselineVersionLegacy is the pre-expiry schema. It has no per-entry
 // fingerprint, rule, path, ticket or expiry fields.
 const baselineVersionLegacy = 1
-
-// baselineVersionExpiring is the version-2 schema: per-entry fingerprint, rule,
-// path, ticket and expiry, but no disposition.
-const baselineVersionExpiring = 2
 
 // Baseline disposition values. A remediated finding must be removed, not
 // recorded as an accepted risk, so "remediated" is deliberately not a valid
@@ -85,7 +82,8 @@ type BaselineFinding struct {
 	// when the date is before today; an empty value never expires.
 	Expires string `json:"expires,omitempty"`
 	// Disposition records why the finding was accepted: false_positive,
-	// accepted_risk or wont_fix. Empty means unspecified (version-1/2 files).
+	// accepted_risk or wont_fix. Empty means unspecified (for example in files
+	// written before dispositions existed).
 	Disposition string `json:"disposition,omitempty"`
 }
 
@@ -108,7 +106,7 @@ type MatchResult struct {
 	EntryID string
 }
 
-// NewBaseline returns an empty version-3 baseline.
+// NewBaseline returns an empty version-2 baseline.
 func NewBaseline() *Baseline {
 	return &Baseline{
 		Version:      BaselineVersion,
@@ -178,7 +176,7 @@ func (e BaselineFinding) Expired(today time.Time) bool {
 
 // LoadBaseline reads a baseline file. A missing or empty file is an empty
 // baseline, not an error, so first runs do not need special cases. Version 1
-// and 2 files are accepted and upgraded in memory to version 3.
+// files are accepted and upgraded in memory to version 2.
 func LoadBaseline(path string) (*Baseline, error) {
 	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -206,10 +204,10 @@ func LoadBaseline(path string) (*Baseline, error) {
 		return nil, fmt.Errorf("parse baseline %s: %w", path, err)
 	}
 	switch b.Version {
-	case 0, baselineVersionLegacy, baselineVersionExpiring, BaselineVersion:
+	case 0, baselineVersionLegacy, BaselineVersion:
 		b.Version = BaselineVersion
 	default:
-		return nil, fmt.Errorf("baseline %s: unsupported version %d (this build understands versions 1, 2 and %d)", path, b.Version, BaselineVersion)
+		return nil, fmt.Errorf("baseline %s: unsupported version %d (this build understands versions 1 and %d)", path, b.Version, BaselineVersion)
 	}
 	b.normalize()
 	if err := b.validate(); err != nil {
@@ -218,7 +216,7 @@ func LoadBaseline(path string) (*Baseline, error) {
 	return &b, nil
 }
 
-// SaveBaseline writes b atomically as indented version-3 JSON with mode 0644.
+// SaveBaseline writes b atomically as indented version-2 JSON with mode 0644.
 func SaveBaseline(path string, b *Baseline) error {
 	if b == nil {
 		b = NewBaseline()
@@ -400,8 +398,8 @@ func (b *Baseline) PruneExpired(today time.Time) []BaselineFinding {
 }
 
 func (b *Baseline) validate() error {
-	if b.Version != 0 && b.Version != baselineVersionLegacy && b.Version != baselineVersionExpiring && b.Version != BaselineVersion {
-		return fmt.Errorf("unsupported baseline version %d (this build understands versions 1, 2 and %d)", b.Version, BaselineVersion)
+	if b.Version != 0 && b.Version != baselineVersionLegacy && b.Version != BaselineVersion {
+		return fmt.Errorf("unsupported baseline version %d (this build understands versions 1 and %d)", b.Version, BaselineVersion)
 	}
 	for _, entry := range b.Findings {
 		label := entry.ID

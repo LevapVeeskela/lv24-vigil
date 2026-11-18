@@ -170,8 +170,8 @@ func TestBaselineAddMetadata(t *testing.T) {
 	if err := json.Unmarshal(data, &file); err != nil {
 		t.Fatalf("baseline JSON invalid: %v", err)
 	}
-	if file.Version != 3 {
-		t.Errorf("baseline version = %d, want 3", file.Version)
+	if file.Version != 2 {
+		t.Errorf("baseline version = %d, want 2", file.Version)
 	}
 	if len(file.Findings) != 1 {
 		t.Fatalf("findings = %d, want 1", len(file.Findings))

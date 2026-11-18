@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestBaselineVersion3DispositionRoundTrip(t *testing.T) {
+func TestBaselineDispositionRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "baseline.json")
 	f := sampleFinding()
@@ -50,8 +50,8 @@ func TestBaselineVersion3DispositionRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatal(err)
 	}
-	if raw.Version != 3 {
-		t.Fatalf("on-disk version = %d, want 3", raw.Version)
+	if raw.Version != BaselineVersion {
+		t.Fatalf("on-disk version = %d, want %d", raw.Version, BaselineVersion)
 	}
 	if len(raw.Findings) != len(dispositions) {
 		t.Fatalf("on-disk findings = %d, want %d", len(raw.Findings), len(dispositions))
@@ -82,7 +82,7 @@ func TestBaselineVersion3DispositionRoundTrip(t *testing.T) {
 	}
 }
 
-func TestBaselineVersion3AcceptsCaseAndRejectsInvalid(t *testing.T) {
+func TestBaselineDispositionAcceptsCaseAndRejectsInvalid(t *testing.T) {
 	valid := map[string]string{
 		"":                "",
 		"false_positive":  BaselineDispositionFalsePositive,
@@ -114,7 +114,7 @@ func TestBaselineVersion3AcceptsCaseAndRejectsInvalid(t *testing.T) {
 		"remediated": BaselineDispositionRemediated,
 	} {
 		path := filepath.Join(dir, name+".json")
-		doc := fmt.Sprintf(`{"version":3,"findings":[{"id":"VGL-X","reason":"x","disposition":%q}]}`, disposition)
+		doc := fmt.Sprintf(`{"version":%d,"findings":[{"id":"VGL-X","reason":"x","disposition":%q}]}`, BaselineVersion, disposition)
 		if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -141,7 +141,7 @@ func TestBaselineVersion3AcceptsCaseAndRejectsInvalid(t *testing.T) {
 	}
 }
 
-func TestBaselineLoadsLegacyVersionsAsV3(t *testing.T) {
+func TestBaselineLoadsLegacyVersions(t *testing.T) {
 	dir := t.TempDir()
 	future := BaselineToday().AddDate(0, 0, 14).Format(BaselineDateLayout)
 
@@ -228,8 +228,8 @@ func TestBaselineLoadsLegacyVersionsAsV3(t *testing.T) {
 			if err != nil {
 				t.Fatalf("reload: %v", err)
 			}
-			if reloaded.Version != 3 {
-				t.Fatalf("saved version = %d, want 3", reloaded.Version)
+			if reloaded.Version != BaselineVersion {
+				t.Fatalf("saved version = %d, want %d", reloaded.Version, BaselineVersion)
 			}
 		})
 	}
