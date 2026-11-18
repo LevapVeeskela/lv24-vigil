@@ -23,7 +23,8 @@ func registerReview(srv *mcp.Server, d Deps) {
 		Name:  "vigil_review",
 		Title: "Review changed lines with Vigil",
 		Description: "Scan only the added lines of a diff: the working-tree changes against a git ref, " +
-			"or a unified diff supplied by the client. Returns a text summary and the full scan result.",
+			"or a unified diff supplied by the client. Returns a text summary and the full scan result. " +
+			"Writes local scan history, never source files.",
 		InputSchema: mcp.ObjectSchema(map[string]any{
 			"path":        mcp.Prop("string", "Directory or repository to review. Defaults to the server's project root."),
 			"diff":        mcp.Prop("string", "Unified diff to review. When omitted, changed files are read from git."),
@@ -31,7 +32,7 @@ func registerReview(srv *mcp.Server, d Deps) {
 			"changedOnly": mcp.PropBool("Review only changed files. Defaults to true; ignored when diff is supplied."),
 			"useLlm":      mcp.PropBool("Use the configured model for triage. Omit to use the server default."),
 		}),
-		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": true},
+		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "openWorldHint": true},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
 			return handleReview(ctx, d, raw)
 		},

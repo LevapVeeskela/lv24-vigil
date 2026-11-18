@@ -53,7 +53,8 @@ func registerHardening(srv *mcp.Server, d Deps) {
 			"debuggable builds, backup and cleartext settings, plist transport exceptions, release obfuscation, " +
 			"Electron/Node isolation, inspector flags and production source maps. Reports hardening gaps, not " +
 			"vulnerabilities. Optionally narrow the review to one platform. Returns a text summary grouped by " +
-			"platform and the full scan result as structuredContent.",
+			"platform and the full scan result as structuredContent. Writes local scan history, never source " +
+			"files.",
 		InputSchema: mcp.ObjectSchema(map[string]any{
 			"path":        mcp.Prop("string", "Mobile or desktop project to review. Defaults to the server's project root."),
 			"platform":    mcp.PropEnum("Only report findings for this platform. Defaults to all.", "all", "android", "ios", "electron", "node", "flutter", "web", "other"),
@@ -61,7 +62,7 @@ func registerHardening(srv *mcp.Server, d Deps) {
 			"maxFindings": mcp.PropInt("Maximum findings to return (default 50, capped at 500)."),
 			"noBaseline":  mcp.PropBool("Ignore the baseline and report suppressed findings as active."),
 		}),
-		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
 			return handleHardening(ctx, d, raw)
 		},

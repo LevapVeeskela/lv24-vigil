@@ -34,7 +34,8 @@ func registerScan(srv *mcp.Server, d Deps) {
 		Title: "Scan a repository with Vigil",
 		Description: "Run Vigil's deterministic security rules over a repository or directory, " +
 			"optionally with model triage, deep review and a threat model. Returns a text summary " +
-			"and the full scan result as structuredContent. Scanned code is treated as data, never executed.",
+			"and the full scan result as structuredContent. Writes local scan history, never source " +
+			"files. Scanned code is treated as data, never executed.",
 		InputSchema: mcp.ObjectSchema(map[string]any{
 			"path":         mcp.Prop("string", "Directory or repository to scan. Defaults to the server's project root."),
 			"mode":         mcp.PropEnum("Scan depth. All modes run the deterministic rules; quick is the fastest LLM budget, standard is the default, deep adds an LLM deep review when a model is configured.", "quick", "standard", "deep"),
@@ -52,7 +53,7 @@ func registerScan(srv *mcp.Server, d Deps) {
 			"maxFindings":  mcp.PropInt("Maximum findings to return (default 50, capped at 500)."),
 			"noBaseline":   mcp.PropBool("Ignore the baseline and report suppressed findings as active."),
 		}),
-		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": true},
+		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "openWorldHint": true},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
 			return handleScan(ctx, d, raw)
 		},

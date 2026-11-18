@@ -25,6 +25,7 @@ type Server struct {
 	mu        sync.RWMutex
 	tools     map[string]Tool
 	order     []string
+	hidden    map[string]bool
 	resources map[string]registeredResource
 	prompts   map[string]Prompt
 	writerMu  sync.Mutex
@@ -53,6 +54,7 @@ func NewServer(name, version, title string) *Server {
 		Title:     title,
 		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		tools:     map[string]Tool{},
+		hidden:    map[string]bool{},
 		resources: map[string]registeredResource{},
 		prompts:   map[string]Prompt{},
 		sem:       make(chan struct{}, maxConcurrentRequests),
@@ -92,6 +94,26 @@ func (s *Server) Tools() []Tool {
 		out = append(out, s.tools[name])
 	}
 	return out
+}
+
+// HideTools keeps the named tools registered but removes them from
+// tools/list. Direct tools/call requests still reach the handler, which must
+// enforce its own guard: hiding is discovery, not enforcement.
+func (s *Server) HideTools(names ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, name := range names {
+		if name != "" {
+			s.hidden[name] = true
+		}
+	}
+}
+
+// Hidden reports whether a tool is hidden from tools/list.
+func (s *Server) Hidden(name string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.hidden[name]
 }
 
 // Serve reads newline-delimited JSON-RPC from in and writes responses to out.
@@ -233,6 +255,9 @@ func (s *Server) listTools() any {
 	tools := s.Tools()
 	out := make([]Tool, 0, len(tools))
 	for _, t := range tools {
+		if s.Hidden(t.Name) {
+			continue
+		}
 		t.Handler = nil
 		out = append(out, t)
 	}

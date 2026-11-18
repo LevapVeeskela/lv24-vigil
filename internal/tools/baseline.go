@@ -51,6 +51,9 @@ func handleBaseline(d Deps, raw json.RawMessage) (*mcp.CallToolResult, error) {
 	if action == "" {
 		action = "list"
 	}
+	if action != "list" && d.ReadOnly {
+		return readOnlyResult(d, "vigil_baseline "+action), nil
+	}
 	path, err := baselinePath(d)
 	if err != nil {
 		return errorResult(d, "baseline: %v", err), nil

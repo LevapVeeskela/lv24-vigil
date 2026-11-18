@@ -50,6 +50,9 @@ func handleReport(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.CallTo
 	if err != nil {
 		return mcp.TextError("invalid arguments: %v", err), nil
 	}
+	if strings.TrimSpace(args.Path) != "" && d.ReadOnly {
+		return readOnlyResult(d, "vigil_report with a path"), nil
+	}
 	scan, err := loadScan(d, args.ScanID)
 	if err != nil {
 		return errorResult(d, "%v", err), nil

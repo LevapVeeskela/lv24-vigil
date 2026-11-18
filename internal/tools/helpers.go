@@ -53,8 +53,17 @@ func result(d Deps, text string, structured any) *mcp.CallToolResult {
 	return res
 }
 
-// errorResult builds an isError result, redacting the configured key.
+// errorResult builds an isError result, redacting the configured key. A typed
+// error passed as a single %v argument is rendered with its stable code and a
+// structured payload so clients can retry without parsing the message.
 func errorResult(d Deps, format string, args ...any) *mcp.CallToolResult {
+	if len(args) == 1 && format == "%v" {
+		if err, ok := args[0].(error); ok {
+			if te := asToolError(err); te != nil {
+				return typedResult(d, te)
+			}
+		}
+	}
 	return mcp.TextError("%s", redactKey(d, fmt.Sprintf(format, args...)))
 }
 

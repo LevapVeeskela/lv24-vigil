@@ -33,6 +33,9 @@ type statusPayload struct {
 	BaseURL     string      `json:"baseUrl,omitempty"`
 	LLM         bool        `json:"llm"`
 	APIKey      string      `json:"apiKey"`
+	ReadOnly    bool        `json:"readOnly"`
+	Offline     bool        `json:"offline"`
+	Network     string      `json:"network"`
 	Rules       int         `json:"rules"`
 	Categories  []string    `json:"categories"`
 	StoreDir    string      `json:"storeDir,omitempty"`
@@ -47,7 +50,8 @@ func registerStatus(srv *mcp.Server, d Deps) {
 		Name:  "vigil_status",
 		Title: "Show Vigil status",
 		Description: "Report the engine version, project root, model configuration (with the key redacted), " +
-			"rule count, categories, store directory, the last scan summary and startup warnings.",
+			"rule count, categories, store directory, the effective read-only and offline modes, the network " +
+			"posture, the last scan summary and startup warnings.",
 		InputSchema: mcp.ObjectSchema(map[string]any{}),
 		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": false},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
@@ -74,10 +78,13 @@ func statusPayloadFor(d Deps) statusPayload {
 		Version:    d.Version,
 		LLM:        false,
 		APIKey:     "not set",
+		ReadOnly:   d.ReadOnly,
+		Offline:    d.Offline,
 		Categories: []string{},
 		Warnings:   []string{},
 	}
 	if d.App == nil {
+		p.Network = "none"
 		p.Hint = "vigil is not initialised: no app runtime is attached to this MCP server"
 		return p
 	}
@@ -87,6 +94,7 @@ func statusPayloadFor(d Deps) statusPayload {
 	p.Model = d.App.Config.Model
 	p.BaseURL = redactURL(d.App.Config.BaseURL)
 	p.LLM = d.App.LLM
+	p.Network = networkPosture(d)
 	if d.App.Config.APIKey != "" {
 		p.APIKey = "configured"
 	}
@@ -102,11 +110,37 @@ func statusPayloadFor(d Deps) statusPayload {
 		p.Hint = "No model is configured: deterministic rules only. Set VIGIL_PROVIDER, VIGIL_MODEL and VIGIL_API_KEY " +
 			"(or OLLAMA_HOST) for triage, deep review, fixes and threat models."
 	}
+	if d.ReadOnly {
+		p.Hint = strings.TrimSpace(p.Hint + " Read-only mode is on: vigil_fix is hidden and baseline, source and report writes are rejected.")
+	}
+	if d.Offline {
+		p.Hint = strings.TrimSpace(p.Hint + " Offline mode is on: no model or OSV calls are made.")
+	}
 
 	if last, err := d.App.LastScan(); err == nil {
 		p.LastScan = summarizeScan(last)
 	}
 	return p
+}
+
+// networkPosture names every outbound channel the server can open. It is
+// computed from the effective runtime, not from the flags alone, so a model
+// that failed to initialise does not claim egress.
+func networkPosture(d Deps) string {
+	if d.Offline || d.App == nil {
+		return "none"
+	}
+	parts := make([]string, 0, 2)
+	if d.App.LLM {
+		parts = append(parts, "model")
+	}
+	if d.App.Config.Scan.OSV {
+		parts = append(parts, "osv")
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, "+")
 }
 
 func summarizeScan(res *model.ScanResult) *statusScan {

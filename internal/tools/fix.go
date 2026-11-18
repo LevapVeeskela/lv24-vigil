@@ -39,6 +39,12 @@ func handleFix(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.CallToolR
 	if errRes := appReady(d); errRes != nil {
 		return errRes, nil
 	}
+	if d.ReadOnly {
+		return readOnlyResult(d, "vigil_fix"), nil
+	}
+	if d.Offline {
+		return offlineResult(d, "vigil_fix"), nil
+	}
 	var args fixArgs
 	if errRes := decodeArgs(raw, &args); errRes != nil {
 		return errRes, nil
