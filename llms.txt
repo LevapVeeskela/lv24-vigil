@@ -32,7 +32,8 @@ propose then apply: `mode=propose` returns `fixId`, `diffSha256` and a 15-minute
 checked. Findings can also be addressed by `path` + `line`, with `VGL-AMBIGUOUS`
 plus candidates instead of a guess. Paged list results carry
 `page{offset,limit,total,hasMore,nextOffset}` and scans carry
-`coverage{filesScanned,filesSkipped,bytesScanned,errors,llmUsed}`. Baseline gains
+`coverage{filesScanned,filesSkipped,skippedReasons,bytesScanned,errors,llmUsed,networkUsed}`.
+Baseline gains
 `ticket`, `expires`, `disposition`, `dryRun`, `prune` and `batch` at schema v2,
 and the baseline list pages findings with `offset`/`limit`. The CLI
 `vigil fix --apply` stays unbound.

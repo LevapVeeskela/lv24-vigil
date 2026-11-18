@@ -233,10 +233,10 @@ for why coverage is incomplete, not per-file paths and not a claim that the
 skipped files are safe. `coverage.networkUsed` is true when the scan consulted
 a model or attempted an OSV lookup (an attempted lookup counts even if it
 failed); `coverage.llmUsed` remains for compatibility and covers only the model.
-A scan with no skips omits `skipReasons`, so incomplete coverage is visible
-instead of looking like a clean result. `vigil_baseline action=list`
-returns `findings` (the window), `findingsTotal` (all entries), `page` and
-`expired` computed over every entry, not only the visible window.
+A scan with no skips omits `skipReasons`. The block exists so incomplete
+coverage is visible instead of looking like a clean result. `vigil_baseline
+action=list` returns `findings` (the window), `findingsTotal` (all entries),
+`page` and `expired` computed over every entry, not only the visible window.
 
 ### Typed errors
 
@@ -299,7 +299,10 @@ cache when that path is a symlink or otherwise unsafe) and returns `fixId`,
 per-process key, so a proposal file committed to the repository, or one written
 by another process, is rejected; after a server restart, propose again. The
 proposal expires after 15 minutes; the stored pre-image hash of every target is
-what makes a stale diff detectable.
+what makes a stale diff detectable. If the diff quotes a credential-shaped
+value, the returned diff is masked by the same redactor as text and the payload
+sets `diffRedacted: true`; `diffSha256` still covers the stored unmasked
+proposal, and apply uses that stored diff.
 
 `mode=apply` requires the `fixId` and `diffSha256` from the proposal. It loads
 the stored diff, checks the server root, scan and finding, the diff hash, the

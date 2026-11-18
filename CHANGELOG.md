@@ -28,8 +28,9 @@ stable.
 - Bounded MCP output: page envelopes (`offset`, `limit`, `total`, `hasMore`,
   `nextOffset`) on scan, review, hardening, MCP audit, rules, history and
   baseline list results, plus coverage blocks (`filesScanned`, `filesSkipped`,
-  `bytesScanned`, `errors`, `llmUsed`) on scans. `maxFindings` is a window
-  (default 50, cap 500), not a silent report cap.
+  `skippedReasons`, `bytesScanned`, `errors`, `llmUsed`, `networkUsed`) on
+  scans. `maxFindings` is a window (default 50, cap 500), not a silent report
+  cap.
 - Baseline MCP parity: `ticket`, `expires`, `disposition`, `dryRun`, `prune` and
   `batch` (max 50, defaults to `dryRun=true`, per-item results). `action=list`
   windows findings with `offset`/`limit` and returns `findingsTotal` plus
@@ -48,6 +49,10 @@ stable.
 
 ### Security
 
+- Text and `structuredContent` are both passed through the configured-key
+  redactor and the well-known credential-shape redactor, so a client cannot
+  recover a masked token by reading the JSON payload. Redaction remains
+  best-effort; unknown formats can still leak.
 - Proposal files are authenticated with a per-process key, so a proposal
   committed to the repository or written by another process cannot be applied;
   a restarted server requires a fresh proposal. When `.vigil` is a symlink or

@@ -112,7 +112,7 @@ func errorResult(d Deps, format string, args ...any) *mcp.CallToolResult {
 			}
 		}
 	}
-	return mcp.TextError("%s", redactKey(d, fmt.Sprintf(format, args...)))
+	return mcp.TextError("%s", redactText(d, fmt.Sprintf(format, args...)))
 }
 
 // appReady guards every handler against an uninitialised runtime.

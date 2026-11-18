@@ -85,10 +85,10 @@ type errorPayload struct {
 // payload lets a client retry deterministically (for example with a candidate
 // finding ID) without parsing the message.
 func typedResult(d Deps, te *ToolError) *mcp.CallToolResult {
-	res := mcp.TextError("%s", redactKey(d, te.Error()))
+	res := mcp.TextError("%s", redactText(d, te.Error()))
 	res.StructuredContent = errorPayload{Error: errorBody{
 		Code:       te.Code,
-		Message:    redactKey(d, te.Message),
+		Message:    redactText(d, te.Message),
 		Candidates: te.Candidates,
 	}}
 	return res

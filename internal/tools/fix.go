@@ -161,17 +161,22 @@ func proposeFix(ctx context.Context, d Deps, args fixArgs) *mcp.CallToolResult {
 	cleanupPending(d.App.Root, createdAt)
 
 	payload := map[string]any{
-		"scanId":     scan.ID,
-		"findingId":  findingID(*f),
-		"mode":       fixModePropose,
-		"fixId":      proposal.FixID,
-		"diffSha256": proposal.DiffSHA256,
-		"expiresAt":  proposal.ExpiresAt,
-		"targets":    proposal.Targets,
-		"applied":    false,
-		"fix":        fix,
+		"scanId":       scan.ID,
+		"findingId":    findingID(*f),
+		"mode":         fixModePropose,
+		"fixId":        proposal.FixID,
+		"diffSha256":   proposal.DiffSHA256,
+		"diffRedacted": redactText(d, fix.Diff) != fix.Diff,
+		"expiresAt":    proposal.ExpiresAt,
+		"targets":      proposal.Targets,
+		"applied":      false,
+		"fix":          fix,
 	}
-	return result(d, proposalMarkdown(*f, fix, proposal), payload)
+	text := proposalMarkdown(*f, fix, proposal)
+	if payload["diffRedacted"] == true {
+		text += "\n> Note: credential-shaped text in the diff is masked above. `diffSha256` covers the stored unmasked proposal, and apply uses that stored diff.\n"
+	}
+	return result(d, text, payload)
 }
 
 // applyStoredProposal applies only the diff stored for a reviewed proposal.

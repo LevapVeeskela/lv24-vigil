@@ -44,15 +44,16 @@ type fixHarness struct {
 }
 
 type fixProposalPayload struct {
-	ScanID     string            `json:"scanId"`
-	FindingID  string            `json:"findingId"`
-	Mode       string            `json:"mode"`
-	FixID      string            `json:"fixId"`
-	DiffSHA256 string            `json:"diffSha256"`
-	ExpiresAt  time.Time         `json:"expiresAt"`
-	Targets    map[string]string `json:"targets"`
-	Applied    bool              `json:"applied"`
-	Fix        *model.Fix        `json:"fix"`
+	ScanID       string            `json:"scanId"`
+	FindingID    string            `json:"findingId"`
+	Mode         string            `json:"mode"`
+	FixID        string            `json:"fixId"`
+	DiffSHA256   string            `json:"diffSha256"`
+	DiffRedacted bool              `json:"diffRedacted"`
+	ExpiresAt    time.Time         `json:"expiresAt"`
+	Targets      map[string]string `json:"targets"`
+	Applied      bool              `json:"applied"`
+	Fix          *model.Fix        `json:"fix"`
 }
 
 type fixApplyPayload struct {
@@ -258,6 +259,17 @@ func TestFixProposeThenApplyExactReviewedDiff(t *testing.T) {
 	// that quotes the credential, so the reviewed diff is the redacted form.
 	if p.Fix == nil || p.Fix.Diff != rules.RedactSecrets(fixTestDiff) {
 		t.Errorf("propose did not return the diff: %+v", p.Fix)
+	}
+	if !p.DiffRedacted {
+		t.Error("propose did not flag the redacted diff")
+	}
+	if !strings.Contains(text, "credential-shaped text") {
+		t.Errorf("propose text does not explain the masked diff:\n%s", text)
+	}
+	// diffSha256 binds the stored unmasked proposal, which is what apply uses.
+	rawSum := sha256.Sum256([]byte(fixTestDiff))
+	if p.DiffSHA256 != hex.EncodeToString(rawSum[:]) {
+		t.Errorf("diffSha256 = %q, want the stored diff hash", p.DiffSHA256)
 	}
 	sum := sha256.Sum256([]byte(original))
 	if p.Targets["config.py"] != hex.EncodeToString(sum[:]) {
