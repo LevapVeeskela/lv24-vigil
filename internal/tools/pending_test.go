@@ -520,3 +520,27 @@ func TestDiffTargetPathsIgnoresHeaderLikeHunkLines(t *testing.T) {
 		t.Fatalf("paths = %q, want only a.txt", got)
 	}
 }
+
+func TestPendingDirFallsBackWhenVigilIsFile(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("LOCALAPPDATA", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	roots := []string{t.TempDir(), t.TempDir()}
+	dirs := make([]string, 0, len(roots))
+	for _, root := range roots {
+		if err := os.WriteFile(filepath.Join(root, ".vigil"), []byte("not a directory"), 0o644); err != nil {
+			t.Fatalf("write .vigil file: %v", err)
+		}
+		dir, err := pendingDir(root)
+		if err != nil {
+			t.Fatalf("pendingDir: %v", err)
+		}
+		if !strings.HasPrefix(strings.ToLower(dir), strings.ToLower(cache)) {
+			t.Errorf("pendingDir(%s) did not fall back to the cache: %s", root, dir)
+		}
+		dirs = append(dirs, dir)
+	}
+	if dirs[0] == dirs[1] {
+		t.Errorf("two roots share one pending cache directory: %s", dirs[0])
+	}
+}

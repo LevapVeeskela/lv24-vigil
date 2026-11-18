@@ -228,12 +228,13 @@ returns `findings` (the window), `findingsTotal` (all entries), `page` and
 
 ### Typed errors
 
-Lookup, mode, path, fix-approval and baseline failures carry a stable code in the
-text and in `structuredContent.error.code`; `structuredContent.error.message`
-explains the failure and `candidates` is present only for a lookup miss or
-ambiguity. `isError` stays `true`. Error paths carry no code snippets or evidence
-text. A malformed JSON argument object is still reported as plain text by the
-protocol layer, without a `VGL-*` code.
+Lookup, mode, path, fix-approval and baseline argument/lookup failures carry a
+stable code in the text and in `structuredContent.error.code`;
+`structuredContent.error.message` explains the failure and `candidates` is
+present only for a lookup miss or ambiguity. `isError` stays `true`. Error paths
+carry no code snippets or evidence text. A malformed JSON argument object, or a
+baseline file that cannot be read or written, is reported as plain text without
+a `VGL-*` code.
 
 | Code | Meaning |
 |---|---|

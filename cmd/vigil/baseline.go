@@ -153,10 +153,18 @@ func baselineAdd(a *app.App, args []string, stdout io.Writer) error {
 	}
 
 	id := positional[0]
+	reasonValue := oneLine(strings.TrimSpace(*reason))
+	if runes := []rune(reasonValue); len(runes) > 2000 {
+		reasonValue = string(runes[:2000])
+	}
+	ticketValue := oneLine(strings.TrimSpace(*ticket))
+	if runes := []rune(ticketValue); len(runes) > 128 {
+		ticketValue = string(runes[:128])
+	}
 	entry := scanner.BaselineFinding{
 		ID:          id,
-		Reason:      strings.TrimSpace(*reason),
-		Ticket:      strings.TrimSpace(*ticket),
+		Reason:      reasonValue,
+		Ticket:      ticketValue,
 		Expires:     expiresValue,
 		Path:        scopeValue,
 		Disposition: dispositionValue,

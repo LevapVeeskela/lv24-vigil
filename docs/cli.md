@@ -426,7 +426,8 @@ records its fingerprint and rule ID too, so the entry survives small line moves.
 `--expires` is a UTC date: a malformed value or one before today is rejected.
 `--disposition` records why the finding is accepted: `false_positive`,
 `accepted_risk` or `wont_fix`; `remediated` is refused because a fixed finding
-belongs out of the baseline.
+belongs out of the baseline. `--reason` is collapsed to one line and capped at
+2000 characters; `--ticket` at 128.
 `--path` must be project-relative and, when the finding is found, must match its
 path. `remove` fails when the entry does not exist; `clear` refuses to run
 without `--yes`.

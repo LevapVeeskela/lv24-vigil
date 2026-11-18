@@ -259,6 +259,7 @@ func (a *App) Scan(ctx context.Context, req model.ScanRequest) (*model.ScanResul
 
 		deep := req.DeepReview || a.Config.Scan.DeepReview || opts.Mode == "deep"
 		if deep {
+			res.Stats.LLMCalls++
 			files, ferr := a.Scanner.CollectFiles(ctx, opts)
 			if ferr != nil {
 				res.Errors = append(res.Errors, "collect files for deep review: "+ferr.Error())
@@ -272,6 +273,7 @@ func (a *App) Scan(ctx context.Context, req model.ScanRequest) (*model.ScanResul
 		}
 
 		if req.ThreatModel {
+			res.Stats.LLMCalls++
 			tm, terr := a.Analyzer.ThreatModel(ctx, opts.Root)
 			if terr != nil {
 				res.Errors = append(res.Errors, "llm threat model: "+terr.Error())
