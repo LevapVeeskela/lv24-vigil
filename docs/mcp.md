@@ -364,8 +364,9 @@ immediately, and as a resource after the server restarts.
 | `dependency_audit` | `path` (optional) | Review known public dependency advisories and their fixed versions |
 
 Prompt names are stable. The client may expose them as slash commands or as
-templates. In read-only mode `fix_finding` is not registered; the other prompts
-are unchanged.
+templates. In read-only mode `fix_finding` is not registered, and
+`security_review` tells the model to report findings and manual remediation
+without proposing fixes; the other prompts are unchanged.
 
 ## Example session
 

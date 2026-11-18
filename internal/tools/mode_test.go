@@ -163,6 +163,26 @@ func TestReadOnlyModeHidesFixPrompt(t *testing.T) {
 	if !got["security_review"] {
 		t.Error("read-only prompts/list dropped a read-only prompt")
 	}
+
+	// The review prompt must not tell the model to call a hidden tool.
+	promptResp := c.call("prompts/get", map[string]any{
+		"name":      "security_review",
+		"arguments": map[string]string{"path": h.repo},
+	})
+	if promptResp.Error != nil {
+		t.Fatalf("prompts/get security_review: %v", promptResp.Error)
+	}
+	var prompt mcp.GetPromptResult
+	if err := json.Unmarshal(promptResp.Result, &prompt); err != nil {
+		t.Fatalf("decode security_review: %v", err)
+	}
+	body := prompt.Messages[0].Content.Text
+	if strings.Contains(body, "vigil_fix") {
+		t.Errorf("read-only security_review prompt still references vigil_fix:\n%s", body)
+	}
+	if !strings.Contains(body, "read-only") {
+		t.Errorf("read-only security_review prompt does not explain the mode:\n%s", body)
+	}
 }
 
 func TestFixPromptUsesBoundApproval(t *testing.T) {
