@@ -83,8 +83,8 @@ func registerBaseline(srv *mcp.Server, d Deps) {
 		Description: "List, add, remove, prune or clear accepted findings in the project baseline. " +
 			"Adding requires a finding ID and a reason; an acceptance can carry a ticket, an expiry date, " +
 			"a disposition and a path scope. dryRun previews the suppression impact without writing. " +
-			"Batch applies up to 50 add/remove items atomically and defaults to dryRun=true. " +
-			"Removed or expired entries stop suppressing on the next scan.",
+			"Batch validates up to 50 add/remove items before writing, reports per-item misses and " +
+			"defaults to dryRun=true. Removed or expired entries stop suppressing on the next scan.",
 		InputSchema: mcp.ObjectSchema(map[string]any{
 			"action":    mcp.PropEnum("Baseline operation. Defaults to list. prune and batch default to dryRun=true.", "list", "add", "remove", "prune", "batch", "clear"),
 			"findingId": mcp.Prop("string", "Finding ID (VGL-...), fingerprint (fp_...) or a unique prefix. Required for add and remove."),
