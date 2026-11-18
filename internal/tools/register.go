@@ -27,6 +27,10 @@ type Deps struct {
 	// Offline disables every network call: the model client is not built and
 	// OSV lookups are forced off, including a configured OSV base URL.
 	Offline bool
+	// UnsafeUnboundFix restores the 0.10 behaviour where vigil_fix apply=true
+	// proposes and applies in one call without a reviewed fixId/diffSha256.
+	// It is a deliberate compatibility escape hatch and defaults to false.
+	UnsafeUnboundFix bool
 }
 
 // ToolNames lists the tools Register installs, in registration order.
