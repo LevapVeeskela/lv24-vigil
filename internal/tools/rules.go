@@ -139,10 +139,11 @@ func handleRules(d Deps, raw json.RawMessage) (*mcp.CallToolResult, error) {
 	}
 
 	payload := map[string]any{
-		"count": len(shown),
-		"total": len(filtered),
-		"page":  page,
-		"rules": shown,
+		"count":   len(shown),
+		"total":   len(metas),
+		"matched": len(filtered),
+		"page":    page,
+		"rules":   shown,
 	}
 	return result(d, b.String(), payload), nil
 }
