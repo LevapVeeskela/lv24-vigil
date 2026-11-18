@@ -326,7 +326,8 @@ every entry, not only the visible window. Hand-edited reasons, tickets and paths
 are stripped of control characters before they are printed.
 
 - `ticket` stores a reference. Control characters are stripped and the value is
-  capped at 128 characters.
+  capped at 128 characters. A reason is stripped the same way and capped at 2000
+  characters.
 - `expires` is `YYYY-MM-DD` in UTC. A past date is rejected on add; an expired
   entry stops suppressing the next day.
 - `disposition` is `false_positive`, `accepted_risk` or `wont_fix`.
