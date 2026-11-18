@@ -43,7 +43,8 @@ func registerDependencies(srv *mcp.Server, d Deps) {
 		Description: "Read dependency manifests and lockfiles, query the public OSV.dev database for the exact " +
 			"versions found and report known public advisories. Returns a text summary and the inventory, " +
 			"findings, coverage errors and limitations as structuredContent. Read-only: no package manager " +
-			"runs, no writes and no telemetry.",
+			"runs, no writes and no telemetry. Unavailable on a server started in offline mode: the call " +
+			"is refused with VGL-OFFLINE instead of returning an empty audit.",
 		InputSchema: mcp.ObjectSchema(map[string]any{
 			"path":        mcp.Prop("string", "Directory or repository to audit. Defaults to the server's project root."),
 			"includeDev":  mcp.PropBool("Also query dev dependencies. Defaults to true."),
@@ -60,6 +61,13 @@ func registerDependencies(srv *mcp.Server, d Deps) {
 func handleDependencies(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.CallToolResult, error) {
 	if errRes := appReady(d); errRes != nil {
 		return errRes, nil
+	}
+	// Offline is a construction-time promise for the model and the scan-level
+	// OSV lookup, but this tool builds its own OSV options and accepts a
+	// per-request base URL. Refuse before resolving a path or reading a
+	// manifest, so neither the argument nor the default endpoint is contacted.
+	if d.Offline {
+		return offlineResult(d, "vigil_dependencies"), nil
 	}
 	var args dependenciesArgs
 	if errRes := decodeArgs(raw, &args); errRes != nil {
