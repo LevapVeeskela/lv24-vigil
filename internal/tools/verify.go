@@ -12,6 +12,8 @@ import (
 
 type verifyArgs struct {
 	FindingID string   `json:"findingId"`
+	Path      string   `json:"path"`
+	Line      int      `json:"line"`
 	ScanID    string   `json:"scanId"`
 	Paths     []string `json:"paths"`
 }
@@ -22,6 +24,7 @@ type verifyPayload struct {
 	OriginalScanID string          `json:"originalScanId"`
 	Root           string          `json:"root"`
 	Paths          []string        `json:"paths"`
+	Resolution     resolution      `json:"resolution"`
 	Resolved       bool            `json:"resolved"`
 	StillPresent   bool            `json:"stillPresent"`
 	Inconclusive   bool            `json:"inconclusive,omitempty"`
@@ -41,9 +44,11 @@ func registerVerify(srv *mcp.Server, d Deps) {
 			"whether the same fingerprint is still present. Useful after a fix.",
 		InputSchema: mcp.ObjectSchema(map[string]any{
 			"findingId": mcp.Prop("string", "Finding ID (VGL-...), fingerprint (fp_...) or a unique prefix."),
+			"path":      mcp.Prop("string", "Repository-relative path of the finding; use with line instead of findingId."),
+			"line":      mcp.PropInt("Line number within path. Omit to match the only finding on that path."),
 			"scanId":    mcp.Prop("string", "Scan the finding belongs to. Defaults to the most recent scan."),
 			"paths":     mcp.PropArray("Files to re-scan, relative to the scan root. Defaults to the finding's file."),
-		}, "findingId"),
+		}),
 		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": false},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
 			return handleVerify(ctx, d, raw)
@@ -59,13 +64,14 @@ func handleVerify(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.CallTo
 	if errRes := decodeArgs(raw, &args); errRes != nil {
 		return errRes, nil
 	}
-	if strings.TrimSpace(args.FindingID) == "" {
-		return mcp.TextError("invalid arguments: findingId is required"), nil
-	}
 
-	scan, f, err := lookupFinding(d, args.ScanID, args.FindingID)
+	scan, f, res, err := resolveFinding(d, args.ScanID, findingRef{
+		FindingID: args.FindingID,
+		Path:      args.Path,
+		Line:      args.Line,
+	})
 	if err != nil {
-		return errorResult(d, "%v", err), nil
+		return toolErrorResult(d, err), nil
 	}
 
 	root := strings.TrimSpace(scan.Root)
@@ -138,6 +144,7 @@ func handleVerify(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.CallTo
 		OriginalScanID: scan.ID,
 		Root:           root,
 		Paths:          paths,
+		Resolution:     res,
 		Resolved:       !stillPresent,
 		StillPresent:   stillPresent,
 		MatchKind:      matchKind,

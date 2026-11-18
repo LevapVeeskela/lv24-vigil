@@ -449,14 +449,20 @@ func TestFindingLookupExplainAndFix(t *testing.T) {
 	if !miss.IsError {
 		t.Fatalf("explain with an unknown finding should fail")
 	}
+	if got := toolErrorCode(t, miss); got != "VGL-NOT-FOUND" {
+		t.Errorf("finding lookup miss code = %q, want VGL-NOT-FOUND", got)
+	}
 	missText := textOf(t, miss)
-	if !strings.Contains(missText, "not found") || !strings.Contains(missText, "Available findings") {
+	if !strings.Contains(strings.ToLower(missText), "not found") || !strings.Contains(missText, "path+line") {
 		t.Errorf("finding lookup miss is not helpful: %s", missText)
 	}
 
 	missingArg := h.client.tool("vigil_explain", map[string]any{})
-	if !missingArg.IsError || !strings.Contains(textOf(t, missingArg), "invalid arguments") {
-		t.Errorf("missing findingId should be an invalid-arguments error: %s", textOf(t, missingArg))
+	if got := toolErrorCode(t, missingArg); got != "VGL-ARGS" {
+		t.Errorf("missing findingId code = %q, want VGL-ARGS", got)
+	}
+	if !strings.Contains(textOf(t, missingArg), "findingId or path is required") {
+		t.Errorf("missing findingId error is not helpful: %s", textOf(t, missingArg))
 	}
 
 	badType := h.client.tool("vigil_scan", map[string]any{"mode": 5})

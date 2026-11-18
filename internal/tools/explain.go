@@ -12,6 +12,8 @@ import (
 
 type explainArgs struct {
 	FindingID string `json:"findingId"`
+	Path      string `json:"path"`
+	Line      int    `json:"line"`
 	ScanID    string `json:"scanId"`
 }
 
@@ -24,8 +26,10 @@ func registerExplain(srv *mcp.Server, d Deps) {
 			"deterministic rule description and remediation.",
 		InputSchema: mcp.ObjectSchema(map[string]any{
 			"findingId": mcp.Prop("string", "Finding ID (VGL-...), fingerprint (fp_...) or a unique prefix."),
+			"path":      mcp.Prop("string", "Repository-relative path of the finding; use with line instead of findingId."),
+			"line":      mcp.PropInt("Line number within path. Omit to match the only finding on that path."),
 			"scanId":    mcp.Prop("string", "Scan to look in. Defaults to the most recent scan."),
-		}, "findingId"),
+		}),
 		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": true},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
 			return handleExplain(ctx, d, raw)
@@ -41,16 +45,21 @@ func handleExplain(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.CallT
 	if errRes := decodeArgs(raw, &args); errRes != nil {
 		return errRes, nil
 	}
-	if strings.TrimSpace(args.FindingID) == "" {
-		return mcp.TextError("invalid arguments: findingId is required"), nil
-	}
 
-	scan, f, err := lookupFinding(d, args.ScanID, args.FindingID)
+	scan, f, res, err := resolveFinding(d, args.ScanID, findingRef{
+		FindingID: args.FindingID,
+		Path:      args.Path,
+		Line:      args.Line,
+	})
 	if err != nil {
-		return errorResult(d, "%v", err), nil
+		return toolErrorResult(d, err), nil
 	}
 
 	var b strings.Builder
+	if res.MatchedBy == "location" || res.MatchedBy == "location-nearest" {
+		fmt.Fprintf(&b, "Resolved finding %s at %s (matched by %s).\n\n",
+			findingID(*f), locationString(f.Location), res.MatchedBy)
+	}
 	b.WriteString("# Finding explanation\n\n")
 	b.WriteString(deterministicFindingMarkdown(*f))
 
@@ -79,6 +88,7 @@ func handleExplain(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.CallT
 	payload := map[string]any{
 		"scanId":      scan.ID,
 		"finding":     f,
+		"resolution":  res,
 		"llm":         llmUsed,
 		"explanation": strings.TrimSpace(b.String()),
 	}
