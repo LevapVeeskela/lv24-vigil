@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -120,9 +121,23 @@ var (
 	secHardRedactor = regexp.MustCompile(`(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|glpat-[A-Za-z0-9_\-]{20,}|(?:glrtr?|gldt|glptt|gloas|glcbt|glft|glimt|glsoat|glagent|glwt)-[A-Za-z0-9_\-]{20,}|x(?:ox[abposr]|app)-[A-Za-z0-9\-]{10,}|sk_live_[0-9A-Za-z]{20,}|AIza[0-9A-Za-z_\-]{35}|sk-ant-[A-Za-z0-9_\-]{20,}|sk-[A-Za-z0-9_\-]{20,}|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}|eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}|dop_v1_[a-f0-9]{64}|HRKU-[A-Za-z0-9_\-]{20,}|hvs\.[A-Za-z0-9_-]{90,120}|hvb\.[A-Za-z0-9_-]{138,300}|npm_[A-Za-z0-9]{36}|\d{8,10}:[A-Za-z0-9_-]{35}|ops_eyJ[A-Za-z0-9+/]{250,}={0,3}|A3-[A-Z0-9]{6}-(?:[A-Z0-9]{11}|[A-Z0-9]{6}-[A-Z0-9]{5})-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}|AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}|dckr_pat_[A-Za-z0-9_-]{27,}|[MNO][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}|https://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/\d{17,20}/[\w-]{60,}|whsec_[A-Za-z0-9]{24,}|pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,1000}|rubygems_[a-f0-9]{48}|[A-Za-z0-9]{14}\.atlasv1\.[A-Za-z0-9_\-=]{60,70})`)
 )
 
-// RedactSecrets masks well-known credential shapes in arbitrary text.
-func RedactSecrets(s string) string {
-	return secHardRedactor.ReplaceAllStringFunc(s, MaskSecret)
+// RedactSecrets masks well-known credential shapes in arbitrary text. The
+// scanner layer passes values detected by any rule so snippets that quote a
+// neighbouring line are masked too; callers with no extra values pass nil.
+func RedactSecrets(text string, values []string) string {
+	if text == "" {
+		return text
+	}
+	ordered := append([]string(nil), values...)
+	sort.SliceStable(ordered, func(i, j int) bool { return len(ordered[i]) > len(ordered[j]) })
+	for _, value := range ordered {
+		value = strings.TrimSpace(value)
+		if len(value) < minRedactableSecret {
+			continue
+		}
+		text = strings.ReplaceAll(text, value, MaskSecret(value))
+	}
+	return secHardRedactor.ReplaceAllStringFunc(text, MaskSecret)
 }
 
 const (
@@ -917,13 +932,19 @@ func secFindings(f *File, matches []secMatch, o secFindingOpts) []model.Finding 
 				// expose a different credential on a neighbouring line.
 				Snippet: secRedactSnippet(f, m.line, m.value),
 			},
-			Evidence:    evidence,
-			Remediation: o.remediation,
-			References:  append([]string(nil), o.references...),
+			Evidence:     evidence,
+			Remediation:  o.remediation,
+			References:   append([]string(nil), o.references...),
+			SecretValues: []string{m.value},
 		})
 	}
 	return out
 }
+
+// minRedactableSecret is the shortest detected value RedactSecrets replaces
+// verbatim. A shorter literal is too likely to be an ordinary substring of
+// unrelated text.
+const minRedactableSecret = 6
 
 func secRedactSnippet(f *File, line int, secret string) string {
 	snippet := Snippet(f, line, 0)

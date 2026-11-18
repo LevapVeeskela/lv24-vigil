@@ -35,7 +35,7 @@ func registerScan(srv *mcp.Server, d Deps) {
 		Title: "Scan a repository with Vigil",
 		Description: "Run Vigil's deterministic security rules over a repository or directory, " +
 			"optionally with model triage, deep review and a threat model. Returns a text summary " +
-			"and the full scan result as structuredContent. Results are windowed: maxFindings is the " +
+			"and the windowed scan result (page and coverage blocks) as structuredContent. Results are windowed: maxFindings is the " +
 			"page size (default 50, capped at 500) and offset selects the page; the page object states " +
 			"offset, limit, total, hasMore and nextOffset, and a coverage object states what was " +
 			"scanned, skipped and whether a model was used. Writes local scan history, never source " +
@@ -155,7 +155,14 @@ func scanSummary(d Deps, res *model.ScanResult, page pageInfo, cov *coverageInfo
 	fmt.Fprintf(&b, "Warnings: %s\n", warningLine(res.Errors, extra...))
 
 	if page.Total == 0 {
-		b.WriteString("\nNo findings at or above the selected severity. The scanned scope is clean for the selected rules.\n")
+		switch {
+		case res.Stats.FilesScanned == 0:
+			b.WriteString("\nNo files were scanned, so this is not a clean result. Check the path, include/exclude patterns and the coverage block.\n")
+		case len(res.Errors) > 0:
+			fmt.Fprintf(&b, "\nNo findings at or above the selected severity, but the scan reported %d warning(s). Review the coverage and warnings before treating the scope as clean.\n", len(res.Errors))
+		default:
+			b.WriteString("\nNo findings at or above the selected severity. The scanned scope is clean for the selected rules.\n")
+		}
 		return b.String()
 	}
 	if len(res.Findings) == 0 {

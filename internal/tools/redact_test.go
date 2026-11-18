@@ -309,3 +309,18 @@ func TestScanResourceRedactsSnippetTokens(t *testing.T) {
 		t.Fatalf("resource lost the weak-hash finding: %+v", decoded.Findings)
 	}
 }
+
+// TestRedactedAddedLines: a removed secret may be masked for display (apply
+// still removes the raw stored line), but an added secret would be written
+// unmasked after a masked review, so the proposal must be refused.
+func TestRedactedAddedLines(t *testing.T) {
+	d := redactTestDeps()
+	removed := "diff --git a/config.py b/config.py\n--- a/config.py\n+++ b/config.py\n@@ -1 +1 @@\n-aws = \"" + redactTestAWSKey + "\"\n+aws = os.environ[\"AWS_KEY\"]\n"
+	if redactedAddedLines(d, removed) {
+		t.Error("a masked removed line must not block the proposal")
+	}
+	added := "diff --git a/config.py b/config.py\n--- a/config.py\n+++ b/config.py\n@@ -1 +1 @@\n-aws = None\n+aws = \"" + redactTestAWSKey + "\"\n"
+	if !redactedAddedLines(d, added) {
+		t.Error("a masked added line was not refused")
+	}
+}

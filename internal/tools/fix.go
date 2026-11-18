@@ -33,7 +33,7 @@ func registerFix(srv *mcp.Server, d Deps) {
 		Name:  "vigil_fix",
 		Title: "Propose or apply a fix for a Vigil finding",
 		Description: "Propose a validated unified diff for one finding, then apply exactly that diff after a " +
-			"human reviewed it. mode=propose (the default) writes nothing and returns fixId, diffSha256 and " +
+			"human reviewed it. mode=propose (the default) writes no source files; it stores a local proposal and returns fixId, diffSha256 and " +
 			"expiresAt. mode=apply requires those values, verifies every target file is unchanged and applies " +
 			"the stored diff to the working tree; it never commits. apply=true is a deprecated alias for " +
 			"mode=apply and is unbound only when the server enables the unsafe escape hatch.",
@@ -135,6 +135,12 @@ func proposeFix(ctx context.Context, d Deps, args fixArgs) *mcp.CallToolResult {
 	if fix == nil || strings.TrimSpace(fix.Diff) == "" {
 		return errorResult(d, "the model did not return an applicable diff for %s; fix it manually or ask again with more context.", findingID(*f))
 	}
+	if redactedAddedLines(d, fix.Diff) {
+		return toolErrorResult(d, toolErrorf(CodeFixRedacted,
+			"the proposed diff adds credential-shaped text that would be masked in the review but written unmasked. "+
+				"Ask the model for a diff that does not add the secret, or apply the change manually."))
+	}
+	diffRedacted := redactText(d, fix.Diff) != fix.Diff
 	targets, err := targetsFromDiff(d.App.Root, fix.Diff)
 	if err != nil {
 		return toolErrorResult(d, err)
@@ -166,15 +172,15 @@ func proposeFix(ctx context.Context, d Deps, args fixArgs) *mcp.CallToolResult {
 		"mode":         fixModePropose,
 		"fixId":        proposal.FixID,
 		"diffSha256":   proposal.DiffSHA256,
-		"diffRedacted": redactText(d, fix.Diff) != fix.Diff,
+		"diffRedacted": diffRedacted,
 		"expiresAt":    proposal.ExpiresAt,
 		"targets":      proposal.Targets,
 		"applied":      false,
 		"fix":          fix,
 	}
 	text := proposalMarkdown(*f, fix, proposal)
-	if payload["diffRedacted"] == true {
-		text += "\n> Note: credential-shaped text in the diff is masked above. `diffSha256` covers the stored unmasked proposal, and apply uses that stored diff.\n"
+	if diffRedacted {
+		text += "\n> Note: credential-shaped text in the diff is masked above. `diffSha256` covers the stored unmasked proposal, and apply uses that stored diff. Added lines are never masked; a diff that would add a credential is refused.\n"
 	}
 	return result(d, text, payload)
 }

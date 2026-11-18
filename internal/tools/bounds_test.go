@@ -112,8 +112,8 @@ func TestScanPaginationWindow(t *testing.T) {
 	if first.Coverage.LLMUsed {
 		t.Errorf("coverage claims a model was used without one configured")
 	}
-	if len(first.Coverage.Errors) != 0 {
-		t.Errorf("coverage errors = %v, want none", first.Coverage.Errors)
+	if len(first.Coverage.Errors) != 1 || !strings.Contains(first.Coverage.Errors[0], "findings truncated") {
+		t.Errorf("coverage errors = %v, want the truncation warning", first.Coverage.Errors)
 	}
 	firstText := textOf(t, h.client.mustTool("vigil_scan", map[string]any{"mode": "quick", "maxFindings": 4}))
 	for _, wantLine := range []string{"Page: Showing 1-4 of", "pass offset=4 to continue", "Coverage:", "network not used"} {

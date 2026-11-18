@@ -53,6 +53,13 @@ jobs:
           sbom="release-assets/vigil-sbom-${TAG#v}.cdx.json"
           go run ./cmd/vigil sbom . --format cyclonedx --output "$sbom"
           test -s "$sbom"
+          # The SBOM stamps version.Version from the source fallback. A tag
+          # without a matching bump would publish a document that names the
+          # previous release, so fail before creating the release.
+          grep -A2 '"name": "Vigil"' "$sbom" | grep -q "\"version\": \"${TAG#v}\"" || {
+            echo "SBOM tool version does not match ${TAG#v}" >&2
+            exit 1
+          }
 
       - name: Assemble release assets
         run: |

@@ -168,10 +168,11 @@ value := 1 // vigil:ignore VGL-SEC-001,VGL-WEB-002
 | `reason=TEXT` | Optional note, bare or quoted. Stored as `suppressedReason: "inline: TEXT"`. |
 | `until=YYYY-MM-DD` | Optional expiry date, UTC. An expired directive emits a warning and suppresses nothing. |
 
-Rules and options may appear in any order. An unrecognized `key=value` token is
-not a rule ID; a directive left without any rule IDs by a mistyped option is
-inert instead of covering every rule. An `until` value that is not a valid
-`YYYY-MM-DD` date also fails closed and emits a warning.
+Rules and options may appear in any order. A directive that cannot be read as
+written fails closed: an unrecognized `key=value` token (for example a mistyped
+`untill=` or the baseline's `expires=`), an unterminated quote, or an `until`
+value that is not a valid `YYYY-MM-DD` date suppresses nothing and emits a
+warning. A mistyped expiry therefore never turns into a permanent suppression.
 
 Inline suppressions apply after deduplication and before the baseline. An
 inline directive wins over a baseline entry, and the finding stays in the

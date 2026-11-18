@@ -205,10 +205,23 @@ func coverageFor(res *model.ScanResult, llmUsed bool) *coverageInfo {
 		NetworkUsed:  llmUsed || res.Stats.OSVQueried,
 	}
 	if len(res.Stats.SkippedReasons) > 0 {
-		cov.SkipReasons = make(map[string]int, len(res.Stats.SkippedReasons))
+		cov.SkipReasons = make(map[string]int, len(res.Stats.SkippedReasons)+1)
 		for key, count := range res.Stats.SkippedReasons {
 			cov.SkipReasons[key] = count
 		}
+	}
+	// Keep the documented invariant for callers that only carry a skipped
+	// count (the MCP audit). Unclassified is honest: the reason was not
+	// recorded, not unknown to the scanner.
+	sum := 0
+	for _, count := range cov.SkipReasons {
+		sum += count
+	}
+	if cov.FilesSkipped > sum {
+		if cov.SkipReasons == nil {
+			cov.SkipReasons = map[string]int{}
+		}
+		cov.SkipReasons["unclassified"] += cov.FilesSkipped - sum
 	}
 	return cov
 }

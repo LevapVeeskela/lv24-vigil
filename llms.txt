@@ -8,35 +8,38 @@ binary is a CLI and a stdio MCP server. No account, no telemetry, no Vigil cloud
 Repository: https://github.com/LevapVeeskela/lv24-vigil
 License: Apache-2.0
 Binary: vigil
-Current release line: 0.10.1: 263 rules in ten families, 14 MCP tools,
-offline `mcp-audit` and `sbom`, inline suppression, baseline v2
-(`ticket`, `expires`, `path`, `prune`, active-only SARIF), hardening platform
-presets (`--platform` / MCP `platform`), `vigil config validate|show`,
-report-only JUnit, plus the `vigil_hardening` and `vigil_dependencies` tools.
-0.10.1 is a patch release: it validates the cosign-installer v4 signing path
-against the existing cosign 2.4.1 bundle and ships the post-0.10.0
-distribution docs. No code or rule changes.
+Current release line: 0.11.0: 263 rules in ten families, 14 MCP tools, MCP
+read-only/offline modes, path+line finding addressing with typed `VGL-*` errors,
+paged output with coverage, baseline parity (`ticket`, `expires`, `disposition`,
+`prune`, `batch`, schema v2), diff-bound fix approval (`fixId` + `diffSha256`,
+15-minute TTL, single-use, pre-image checked), offline `mcp-audit` and `sbom`,
+inline suppression, active-only SARIF, hardening platform presets
+(`--platform` / MCP `platform`), `vigil config validate|show`, report-only JUnit,
+plus the `vigil_hardening` and `vigil_dependencies` tools.
+0.11.0 is a minor MCP release: no rule changes. `--read-only` /
+`VIGIL_MCP_READ_ONLY` hides `vigil_fix` and `fix_finding` and rejects fix,
+baseline and report writes while still writing scan history; `--offline` /
+`VIGIL_MCP_OFFLINE` disables the model and OSV. Findings can be addressed by
+`path`+`line`; paged list results carry
+`page{offset,limit,total,hasMore,nextOffset}` and scans carry
+`coverage{filesScanned,filesSkipped,skipReasons,bytesScanned,errors,llmUsed,networkUsed}`.
+The CLI `vigil fix --apply` stays unbound; the MCP path requires a reviewed
+proposal.
+0.10.2 is a security patch release: upgrade from 0.10.1. It fixes the defects
+an adversarial review reproduced (a report written into `.git` through a
+Windows 8.3 alias, raw secrets quoted by other findings, a `--max-findings` cap
+that could drop a critical advisory, understated OSV severities, lockfile git
+URLs sent to OSV) and builds with Go 1.27.4; the 0.10.1 binaries were built
+with Go 1.27.0, which has known standard-library vulnerabilities. Finding IDs
+and fingerprints are unchanged.
+0.10.1 validated the cosign-installer v4 signing path and shipped the
+post-0.10.0 distribution docs, with no code or rule changes.
 0.10.0 adds no rules: it ships baseline v2, platform presets, config inspection
 and JUnit reporting on top of the 0.9.x packaging work: deb/rpm/apk
 packages, a CycloneDX SBOM asset, keyless cosign signing over checksums, build
 provenance, the official MCP Registry listing (`mcpName` plus `server.json`),
 AUR packaging, `pre-commit` hooks, OpenSSF Scorecard and the multi-arch image
 `ghcr.io/levapveeskela/lv24-vigil` (distroless, nonroot).
-
-In main / next (unreleased): MCP modes `--read-only` / `VIGIL_MCP_READ_ONLY`
-(hides `vigil_fix` and `fix_finding`, rejects direct fix, baseline and report
-writes, still writes scan history) and `--offline` / `VIGIL_MCP_OFFLINE` (no
-model, no OSV; `vigil_dependencies` returns `VGL-OFFLINE`). `vigil_fix` becomes
-propose then apply: `mode=propose` returns `fixId`, `diffSha256` and a 15-minute
-`expiresAt`; `mode=apply` applies only that stored diff, single-use and pre-image
-checked. Findings can also be addressed by `path` + `line`, with `VGL-AMBIGUOUS`
-plus candidates instead of a guess. Paged list results carry
-`page{offset,limit,total,hasMore,nextOffset}` and scans carry
-`coverage{filesScanned,filesSkipped,skippedReasons,bytesScanned,errors,llmUsed,networkUsed}`.
-Baseline gains
-`ticket`, `expires`, `disposition`, `dryRun`, `prune` and `batch` at schema v2,
-and the baseline list pages findings with `offset`/`limit`. The CLI
-`vigil fix --apply` stays unbound.
 
 ## Canonical install
 
@@ -52,12 +55,20 @@ Go 1.27+:
 
     go install github.com/levapveeskela/lv24-vigil/cmd/vigil@latest
 
+Homebrew (macOS, Linux), Scoop (Windows) and the Python launcher (needs
+Node.js 18+; it runs the npm CLI through npx):
+
+    brew install LevapVeeskela/tap/vigil
+    scoop bucket add lv24 https://github.com/LevapVeeskela/scoop-bucket
+    scoop install lv24/vigil
+    pipx install lv24-vigil          # or: uvx lv24-vigil scan --no-llm
+
 Native Linux packages (release assets), AUR packaging and the container image:
 
-    sudo apt install ./vigil-0.10.1-linux-amd64.deb      # also .rpm (dnf), .apk (apk)
+    sudo apt install ./vigil-0.11.0-linux-amd64.deb      # also .rpm (dnf), .apk (apk)
     # Arch Linux: vigil-security-bin PKGBUILD ready; AUR registration temporarily paused
     docker run --rm -v "$PWD:/workspace" \
-      ghcr.io/levapveeskela/lv24-vigil:0.10.1 scan --no-llm --path /workspace
+      ghcr.io/levapveeskela/lv24-vigil:0.11.0 scan --no-llm --path /workspace
 
 The npm package carries MCP Registry metadata (`mcpName`) and the repository
 ships `server.json`, so registry-aware clients add the same stdio server:
@@ -129,7 +140,8 @@ Agent rules:
 
 - Run `vigil scan . --no-llm --fail-on high` before committing or deploying.
 - Use `vigil hook install` for a local pre-commit or pre-push gate.
-- Never auto-apply a fix (`vigil fix --apply` / `vigil_fix apply=true`), never
+- Never auto-apply a fix (`vigil fix --apply` / `vigil_fix mode=apply` without a
+  reviewed proposal), never
   commit, stage or push on the user's behalf, and never suppress a finding
   without an explicit baseline decision.
 - A `--fail-on` exit code 2 is a policy failure; report it, do not retry it
@@ -150,6 +162,16 @@ the same precedence as a scan, exits 1 on errors and never opens the store or a
 model. `vigil config show [--json]` prints effective values with their sources
 (`defaults`, a file or `env:NAME`); credential values are `***`, and URL
 credentials are `REDACTED`.
+
+`vigil scan --format json` returns `schemaVersion`, `id`, `root`, `mode`,
+`findings`, `suppressed`, `stats`, `errors`, `engine` and `version`. A finding
+carries `id`, `ruleId`, `title`, `severity` (`info` to `critical`),
+`confidence`, `category`, `cwe`, `owasp`, `location` (`path`, `startLine`,
+`endLine`, `snippet`), `evidence`, `remediation`, `fingerprint` and `source`
+(`rule`, `llm` or `hybrid`). The `id` changes when the line moves; the
+`fingerprint` does not. Accepted findings are in `suppressed`, warnings are in
+`errors`, and a non-zero `stats.findingsTruncated` means `max_findings` capped
+the list (the most severe findings are kept).
 
 JUnit is report-only: `vigil report --format junit`. `scan --format junit` is
 rejected with a hint. The document has `testsuites`/`testsuite` named `vigil`;
@@ -203,7 +225,7 @@ Read-only unless noted.
 - vigil_scan(path?, mode?, useLlm?, ...) — scan a repository; writes scan history.
 - vigil_review(baseRef?, diff?, ...) — review changed lines; writes scan history.
 - vigil_explain(findingId) — explain one finding.
-- vigil_fix(findingId, apply?) — propose a diff; apply=true writes source files.
+- vigil_fix(findingId|path+line, mode?, fixId?, diffSha256?) — propose a diff; mode=apply writes only the reviewed stored proposal.
 - vigil_threat_model(path?) — STRIDE-style threat model.
 - vigil_status() — provider, model, engine and store status.
 - vigil_rules(category?, language?, severity?, query?) — rule catalog.

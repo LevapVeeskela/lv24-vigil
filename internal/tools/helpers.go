@@ -77,7 +77,7 @@ func result(d Deps, text string, structured any) *mcp.CallToolResult {
 // redactText applies the configured-key redactor and the well-known credential
 // shapes to one string.
 func redactText(d Deps, s string) string {
-	return redactKey(d, rules.RedactSecrets(s))
+	return redactKey(d, rules.RedactSecrets(s, nil))
 }
 
 // redactStructured walks a decoded JSON value and applies the text redactors to
@@ -99,6 +99,28 @@ func redactStructured(d Deps, v any) any {
 	default:
 		return v
 	}
+}
+
+// redactedAddedLines reports whether the hard redactor would change an added
+// line of a diff. A masked added line means the human cannot review the bytes
+// that will be written, so the proposal is refused. Removed lines may be
+// masked: apply still removes the raw stored bytes.
+func redactedAddedLines(d Deps, diff string) bool {
+	redacted := redactText(d, diff)
+	if redacted == diff {
+		return false
+	}
+	raw := strings.Split(diff, "\n")
+	masked := strings.Split(redacted, "\n")
+	if len(raw) != len(masked) {
+		return true
+	}
+	for i := range raw {
+		if strings.HasPrefix(raw[i], "+") && !strings.HasPrefix(raw[i], "+++") && raw[i] != masked[i] {
+			return true
+		}
+	}
+	return false
 }
 
 // errorResult builds an isError result, redacting the configured key. A typed
@@ -247,7 +269,7 @@ func loadScan(d Deps, scanID string) (*model.ScanResult, error) {
 	}
 	res, err := d.App.LastScan()
 	if err != nil {
-		return nil, fmt.Errorf("no stored scans yet: %v (run vigil_scan first)", err)
+		return nil, fmt.Errorf("no stored scans yet: %v (run vigil_scan first, or vigil_history to list scans)", err)
 	}
 	return res, nil
 }

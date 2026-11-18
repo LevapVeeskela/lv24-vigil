@@ -534,6 +534,10 @@ func diffTargetPaths(diff string) ([]string, error) {
 			}
 		}
 		switch {
+		case strings.HasPrefix(line, "rename "), strings.HasPrefix(line, "copy "):
+			// git apply honours these headers and can create a path that is
+			// not in the pre-image map. A fix diff must not rename or copy.
+			return nil, toolErrorf(CodeBadPath, "rename and copy patches are not accepted")
 		case strings.HasPrefix(line, "diff --git "):
 			oldPath, newPath, ok := parseGitDiffHeader(line)
 			if !ok {

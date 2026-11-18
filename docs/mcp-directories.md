@@ -89,8 +89,10 @@ A global install (`npm i -g lv24-vigil`) can use `["vigil", "mcp"]` instead.
   telemetry. A model is optional, and LLM calls go only to the endpoint the
   user configures. `vigil_dependencies` makes an explicit OSV request;
   `vigil precheck` is the only explicit upload and needs a staff JWT.
-- **Read-only by default:** only `vigil_fix` with `apply=true` writes source
-  files, and it never commits, stages or pushes.
+- **Writes are opt-in:** only `vigil_fix` with `mode=apply` writes source
+  files, and it applies only the reviewed proposal (`fixId` + `diffSha256`);
+  it never commits, stages or pushes. `--read-only` hides the tool and rejects
+  baseline and report writes.
 - **Packaging:** npm, PyPI launcher, GitHub release binaries, deb/rpm/apk,
   Homebrew, Scoop, GHCR container and (pending) AUR.
 

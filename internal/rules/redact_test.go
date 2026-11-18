@@ -27,7 +27,7 @@ func TestRedactSecretsMasksWellKnownShapes(t *testing.T) {
 		"note=plain text",
 	}, " ")
 
-	got := RedactSecrets(input)
+	got := RedactSecrets(input, nil)
 
 	for _, raw := range []string{redactTestAWSKey, redactTestGitHub, redactTestJWT} {
 		if strings.Contains(got, raw) {
@@ -56,7 +56,7 @@ func TestRedactSecretsLeavesOrdinaryText(t *testing.T) {
 		"https://example.com/path?query=1",
 		"AKIA is a prefix, not a key",
 	} {
-		if got := RedactSecrets(input); got != input {
+		if got := RedactSecrets(input, nil); got != input {
 			t.Errorf("RedactSecrets(%q) = %q, want it unchanged", input, got)
 		}
 	}

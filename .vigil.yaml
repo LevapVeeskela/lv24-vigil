@@ -65,3 +65,10 @@ scan:
     - scripts/**
     - docs/**
     - examples/**
+
+    # Go tests feed the scanner hostile input on purpose: synthetic tokens,
+    # vulnerable snippets, and secret comparisons inside assertions. They are
+    # fixtures, not product code, and each one would otherwise become a code
+    # scanning alert. A real provider token committed to a test is still caught
+    # by GitHub secret scanning and push protection, which are enabled here.
+    - "*_test.go"

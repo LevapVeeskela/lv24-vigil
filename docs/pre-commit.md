@@ -11,7 +11,7 @@ at or above `high`.
 does not build or download Vigil.
 
 ```bash
-npm i -g lv24-vigil            # or pin: npm i -g lv24-vigil@0.10.1
+npm i -g lv24-vigil            # or pin: npm i -g lv24-vigil@0.11.0
 vigil version
 ```
 
@@ -31,7 +31,7 @@ Add the repository and the hook to `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/LevapVeeskela/lv24-vigil
-    rev: v0.10.1
+    rev: v0.11.0
     hooks:
       - id: vigil-scan
 ```
@@ -61,7 +61,7 @@ enabling a second full-tree pass on every commit buys nothing there:
 ```yaml
 repos:
   - repo: https://github.com/LevapVeeskela/lv24-vigil
-    rev: v0.10.1
+    rev: v0.11.0
     hooks:
       - id: vigil-scan
       - id: vigil-mcp-audit   # add only if the repo contains MCP config

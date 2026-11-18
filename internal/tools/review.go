@@ -25,7 +25,7 @@ func registerReview(srv *mcp.Server, d Deps) {
 		Name:  "vigil_review",
 		Title: "Review changed lines with Vigil",
 		Description: "Scan only the added lines of a diff: the working-tree changes against a git ref, " +
-			"or a unified diff supplied by the client. Returns a text summary and the full scan result. " +
+			"or a unified diff supplied by the client. Returns a text summary and the windowed scan result. " +
 			"Results are windowed: maxFindings is the page size (default 50, capped at 500) and offset " +
 			"selects the page; the page object states total, hasMore and nextOffset, and a coverage " +
 			"object states what was scanned and whether a model was used. Writes local scan history, " +

@@ -28,15 +28,11 @@ func runMCP(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	unsafeDefault, err := envBool("VIGIL_MCP_UNSAFE_UNBOUND_FIX")
-	if err != nil {
-		return err
-	}
 	fs := newFlagSet("mcp")
 	root := fs.String("root", ".", "project root exposed to MCP tools")
 	readOnly := fs.Bool("read-only", readOnlyDefault, "hide vigil_fix and reject all writes")
 	offline := fs.Bool("offline", offlineDefault, "disable model and OSV network access")
-	unsafeUnbound := fs.Bool("unsafe-unbound-fix", unsafeDefault,
+	unsafeUnbound := fs.Bool("unsafe-unbound-fix", false,
 		"allow vigil_fix apply=true without a reviewed fixId/diffSha256 (0.10 compatibility)")
 	positional, err := parseFlagSet(fs, args)
 	if errors.Is(err, flag.ErrHelp) {
@@ -50,8 +46,9 @@ Runs Vigil as an MCP server over stdio. stdout is the protocol stream.
                          without the fixId/diffSha256 of a reviewed proposal.
                          This restores 0.10 behaviour and is not recommended.
 
-The same modes can be set with VIGIL_MCP_READ_ONLY=1, VIGIL_MCP_OFFLINE=1 and
-VIGIL_MCP_UNSAFE_UNBOUND_FIX=1. By default vigil_fix must propose first
+The same modes can be set with VIGIL_MCP_READ_ONLY=1 and VIGIL_MCP_OFFLINE=1.
+The unsafe unbound fix escape hatch is CLI-only: a repository-controlled
+environment cannot enable it. By default vigil_fix must propose first
 (mode=propose), return fixId and diffSha256, and apply exactly that reviewed
 diff (mode=apply). Scan history is still written locally in read-only mode so
 later tools can address the findings.

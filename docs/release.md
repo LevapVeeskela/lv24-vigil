@@ -38,7 +38,7 @@ generated from the tag.
    gh release create     ->  GitHub release (notes generated, prerelease if the tag has "-")
       |
       v
- npm-publish.yml (reusable workflow, needs: release)
+ npm-publish.yml (workflow_run after release)
    gh release download   ->  release-assets/
    node npm/build.mjs    ->  verify every SHA-256, write 7 packages
    bash npm/publish.sh   ->  OIDC publish: 6 platform packages, then lv24-vigil
@@ -57,10 +57,11 @@ generated from the tag.
 | Package build | `npm-publish.yml` | `npm/build.mjs` verifies each binary against `checksums.txt` and writes nothing unless all six match |
 | npm publish | `npm-publish.yml` | Platform packages first, then the launcher; versions already on npm are skipped |
 
-npm is a separate job on purpose. It `needs` the GitHub release, so the binaries
-exist before packaging starts, and the publish step is `continue-on-error`, so a
-failed npm publish leaves the release published and green. The job ends with a
-warning that names the missing setup; re-run it after fixing the cause.
+npm is a separate workflow on purpose. It triggers on the completed release
+workflow (`workflow_run`), waits for a successful release, downloads the
+published assets, and its publish step is `continue-on-error`, so a failed npm
+publish leaves the release published and green. The job ends with a warning that
+names the missing setup; re-run the workflow after fixing the cause.
 
 Two more workflows run around a tag. [`container.yml`](../.github/workflows/container.yml)
 builds the multi-arch image (`linux/amd64`, `linux/arm64`) from the repository
@@ -70,9 +71,9 @@ dispatched for an existing tag. [`scorecard.yml`](../.github/workflows/scorecard
 re-runs OpenSSF Scorecard on `main`, weekly and on branch-protection changes, and
 uploads the SARIF result to code scanning.
 
-`npm-publish.yml` is both a reusable workflow (called by `release.yml`) and a
-`workflow_dispatch` workflow, so it can publish an existing tag on demand.
-`release.yml` triggers on any `v*` tag; `npm-publish.yml` accepts only
+`npm-publish.yml` runs as a separate `workflow_run` workflow after a successful
+release (and on `workflow_dispatch`), so it can publish an existing tag on
+demand. `release.yml` triggers on any `v*` tag; `npm-publish.yml` accepts only
 `v<major>.<minor>.<patch>` with an optional `-prerelease` suffix. `ci.yml` runs a
 GoReleaser snapshot and an npm package dry run on pull requests, so asset naming
 and package layout mistakes fail before a tag is cut.
@@ -90,7 +91,7 @@ Every release carries these files:
 | `vigil-sbom-<version>.cdx.json` | CycloneDX 1.6 self-SBOM of the tagged source; its digest is in the provenance attestation |
 | `checksums.txt` | SHA-256 of the six binaries and the six Linux packages |
 | `checksums.txt.sigstore.json` | Keyless cosign bundle over `checksums.txt` |
-| `provenance.intoto.jsonl` | SLSA provenance bundle attached from the next release onward (0.10.1 has 15 assets) |
+| `provenance.intoto.jsonl` | SLSA provenance bundle, attached since 0.10.2 (0.10.1 and earlier have 15 assets) |
 
 The same tag also publishes `ghcr.io/levapveeskela/lv24-vigil` for
 `linux/amd64` and `linux/arm64` (tags `X.Y.Z`, `X.Y`, `latest`, `sha-<commit>`),
@@ -172,8 +173,8 @@ npm trust github @lv24/vigil-linux-arm64 --file npm-publish.yml --repo LevapVees
 ```
 
 - `--file` is the workflow file that contains the publishing job, not the tag
-  workflow. That is `npm-publish.yml`: `release.yml` calls it as a reusable
-  workflow, and the OIDC claim is issued for the called workflow.
+  workflow. That is `npm-publish.yml`: it runs separately after `release.yml`
+  completes, and the OIDC claim is issued for that workflow.
 - `--allow-publish` permits `npm publish` from that workflow; `-y` skips the
   confirmation prompt.
 - A `409` response means the trusted publisher is already configured. Nothing to
@@ -186,10 +187,10 @@ refuses an older npm). Use the same or newer npm for the `npm trust` commands.
 
 ## Verify a release
 
-`v0.10.1` ships the same asset list as `v0.10.0` and `v0.9.3`: six static
-binaries, six Linux packages (deb/rpm/apk × amd64/arm64),
-`vigil-sbom-0.10.1.cdx.json`, `checksums.txt` and its cosign bundle, and the
-GHCR image for both architectures. Download what you need from the release page;
+`v0.10.3` ships the same 16 assets as `v0.10.2`: six static binaries, six Linux
+packages (deb/rpm/apk × amd64/arm64), `vigil-sbom-0.10.3.cdx.json`,
+`checksums.txt` and its cosign bundle, the provenance bundle
+(`provenance.intoto.jsonl`), and the GHCR image for both architectures. Download what you need from the release page;
 the commands below verify it without trusting the download.
 
 Signatures are keyless: there is no long-lived signing key in the repository or
@@ -231,17 +232,17 @@ signature. Compare its digest with the `container` run summary, or inspect the
 attestations directly:
 
 ```bash
-docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.10.1 \
+docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.10.3 \
   --format '{{json .Manifest}}' | jq -r .digest
 ```
 
 Installed CLI:
 
 ```bash
-npm view lv24-vigil version          # 0.10.1
-npm view lv24-vigil dist-tags        # { latest: '0.10.1' }
-npm i -g lv24-vigil@0.10.1            # or @latest
-vigil version                        # vigil 0.10.1 (<commit>, <date>, go<version>)
+npm view lv24-vigil version          # 0.10.3
+npm view lv24-vigil dist-tags        # { latest: '0.10.3' }
+npm i -g lv24-vigil@0.10.3            # or @latest
+vigil version                        # vigil 0.10.3 (<commit>, <date>, go<version>)
 ```
 
 Platform packages, one line each:
@@ -271,7 +272,7 @@ Provenance:
 npm view lv24-vigil dist.attestations
 ```
 
-For `0.10.1` this returns a `https://slsa.dev/provenance/v1` attestation built
+For `0.10.3` this returns a `https://slsa.dev/provenance/v1` attestation built
 from `.github/workflows/npm-publish.yml` on a GitHub-hosted runner. The npm page
 shows the matching provenance badge.
 
@@ -279,8 +280,10 @@ shows the matching provenance badge.
 
 A published tag never moves and is never deleted: `v0.2.0` and later are Go
 module versions, and `0.5.0`+ also name the binaries, npm packages and PyPI
-artifacts that users install. A fix that lands after a tag lives on `main`;
-`main` is the canonical documentation copy, and GitHub serves it by default.
+artifacts that users install. This is a release policy, not a GitHub-enforced
+tag ruleset: verify a tag with `git rev-parse vX.Y.Z` before trusting it. A fix
+that lands after a tag lives on `main`; `main` is the canonical documentation
+copy, and GitHub serves it by default.
 
 Cut a patch release when a **shipped artifact** changes, or when a **shipped
 example that users copy** is wrong:
@@ -317,6 +320,8 @@ vigil version                                                 # reports the tag 
 
 ### Decision log
 
+- **0.10.3 publishes the refreshed package pages (2026-11-17).** No code or rule changes since 0.10.2 (**263** rules, ten families, 14 MCP tools). The npm and PyPI READMEs ship inside the packages, so the table above applies: `npm/README.md` and `python/README.md` changed, and a release is the only way to put the new text on the registries. The release also carries the new PyPI classifiers and keywords. The binaries are rebuilt from the same sources with Go 1.27.4; users of 0.10.2 gain nothing in behavior, and users of 0.10.1 or older should upgrade for the 0.10.2 fixes.
+- **0.10.2 is a security patch release; upgrade from 0.10.1 (2026-11-17).** No rule or tool changes (**263** rules, ten families, 14 MCP tools). Two things made the patch release necessary. First, an adversarial review of 0.10.1 reproduced defects in shipped code: a project `output.path` reaching `.git` through a Windows 8.3 alias, raw secrets quoted in the snippets of other findings, a `--max-findings` cap applied before the sort that could drop a critical OSV advisory, understated OSV severities, and lockfile git URLs sent to the OSV API and the SBOM; the full list is in the CHANGELOG. Second, the 0.10.1 binaries were built with Go 1.27.0, for which `govulncheck` reports reachable standard-library vulnerabilities; `go.mod` now carries `toolchain go1.27.4` and CI runs `govulncheck` in the required `test` job. The toolchain line was chosen over a higher `go` directive so that building from source with an older Go 1.27 keeps working. 0.10.3 is also the first release with 16 assets (`provenance.intoto.jsonl`) and the first PyPI publish through the hash-pinned build tools. Finding IDs and fingerprints are unchanged.
 - **0.10.1 validates the cosign-installer v4 path and ships the post-0.10.0 docs (2026-11-16).** No code or rule changes (**263** rules, ten families, 14 MCP tools): the release workflow installs cosign through `sigstore/cosign-installer` v4 with `cosign-release: v2.4.1`, and 0.10.1 confirms that the keyless `checksums.txt.sigstore.json` bundle still verifies with `cosign verify-blob --bundle`. The documentation catches up with the distribution work done after the 0.10.0 tag: per-channel status in `docs/distribution.md`, the AUR package renamed to `vigil-security-bin` (`vigil-bin` is occupied), and refreshed install, CI, PyPI, container, pre-commit and release pages. Release assets are unchanged from 0.10.0, and the action default moves to `0.10.1`.
 - **0.10.0 adds baseline v2, hardening platform presets, config commands and JUnit (2026-11-16).** No rule changes (**263** rules, ten families, 14 MCP tools): the baseline file moves to version 2 with `ticket`, `expires`, `path` and `prune` (an expired entry stops suppressing), and SARIF is active-only so accepted risks do not open code-scanning alerts; `vigil hardening --platform` and the `platform` MCP argument narrow the VGL-ARE review to android, ios, electron, node, flutter, web or other; `vigil config validate|show` checks and explains the effective configuration without opening the store or a model; and `vigil report --format junit` adds a report-only JUnit document. Release assets are unchanged from 0.9.3, and the action default moves to `0.10.0`.
 - **0.9.3 adds the official MCP Registry listing and AUR packaging (2026-11-15).** No code or rule changes (**263** rules, ten families, 14 MCP tools): the same engine as 0.9.2, with distribution-only additions. Vigil is now listed in the official MCP Registry as `io.github.LevapVeeskela/vigil` (`mcpName` plus `server.json`), so registry-aware clients can resolve the stdio server; the AUR `vigil-security-bin` packaging is prepared for the published release (publication awaits AUR registration); and `docs/mcp-registry.md`, `docs/aur.md` and `docs/mcp-directories.md` document registry publishing, AUR maintenance and the directory/CII submissions. Release assets are unchanged, and the action default moves to `0.9.3`.
@@ -477,7 +482,7 @@ reasoning and the procedure if a rewrite is ever required are in
 
 - **No long-lived npm token in CI.** No `NPM_TOKEN` secret is configured in the
   repository (`gh secret list` returns nothing); the publish job exchanges its
-  OIDC token for a short-lived credential. `release.yml` still accepts an
+  OIDC token for a short-lived credential. `npm-publish.yml` still accepts an
   `NPM_TOKEN` secret as a manual fallback, and `npm/publish.sh` prefers it when
   set — leave it unset.
 - **Trust is bound to the repository and the workflow file.** A trusted
@@ -494,10 +499,9 @@ reasoning and the procedure if a rewrite is ever required are in
   verify <file> --repo LevapVeeskela/lv24-vigil` checks the digest against that
   run.
 - **Minimal token scope.** `id-token: write` is granted to the publish job and
-  to the release job that signs and attests; `release.yml` also passes it to the
-  reusable npm workflow. `npm-publish.yml` runs with `contents: read` and
-  `id-token: write` and nothing else; the release job adds `contents: write`
-  (release upload) and `attestations: write` (provenance).
+  to the release job that signs and attests. `npm-publish.yml` runs with
+  `contents: read` and `id-token: write` and nothing else; the release job adds
+  `contents: write` (release upload) and `attestations: write` (provenance).
 - **GitHub-hosted runners only.** The publish job runs on `ubuntu-latest`; the
   provenance attestation records a `github-hosted` builder. Do not move
   publishing to a self-hosted runner.
@@ -510,8 +514,18 @@ reasoning and the procedure if a rewrite is ever required are in
 ## Current state
 
 `0.1.4` (2026-11-10) was the first release published end-to-end through the OIDC
-path. All seven npm packages and PyPI are live at `0.10.1`, and `latest` points
-at it. `v0.10.1` is a patch release with **no code or rule changes** (263 rules
+path. All seven npm packages and PyPI are live at `0.10.3`, and `latest` points
+at it. `v0.10.3` is a **documentation release** with no code or rule changes
+(263 rules in ten families, 14 MCP tools): it publishes the refreshed npm and
+PyPI READMEs and the PyPI classifiers. Release assets are unchanged from 0.10.2.
+
+`v0.10.2` is a **security patch release** (263 rules in ten families, 14
+MCP tools): it ships the fixes from the adversarial review of 0.10.1 and is
+built with Go 1.27.4 instead of 1.27.0. **Upgrade from 0.10.1.** Release assets
+gain `provenance.intoto.jsonl` (16 files); verify them with
+`cosign verify-blob` and `gh attestation verify`, images by digest.
+
+`v0.10.1` is a patch release with **no code or rule changes** (263 rules
 in ten families, 14 MCP tools): it validates cosign signing through
 `sigstore/cosign-installer` v4 with cosign v2.4.1, and ships the post-0.10.0
 distribution docs (per-channel status, AUR `vigil-security-bin`). Release assets
@@ -561,7 +575,7 @@ attempt. `v0.5.2` contains the corrected CI templates and the post-0.5.1 docs.
 The composite action is listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vigil-security-scan)
 as **Vigil security scan** (Security + Code quality).
 
-**Do not pin `0.5.0`.** Use `0.10.1` or newer, or `@latest`. The `v0.5.0` tag is
+**Do not pin `0.5.0`.** Use `0.10.3` or newer, or `@latest`. The `v0.5.0` tag is
 immutable and still resolves, so pinning it silently keeps the stale templates;
 its GitHub release body carries the warning. The npm package version is marked
 with a deprecation notice (a metadata change, not a republish) once the npm 2FA

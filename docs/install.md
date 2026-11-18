@@ -7,7 +7,7 @@ for a normal scan.
 ## npm
 
 ```bash
-npm i -g lv24-vigil@latest     # or pin a release: lv24-vigil@0.10.1
+npm i -g lv24-vigil@latest     # or pin a release: lv24-vigil@0.11.0
 vigil version
 ```
 
@@ -19,7 +19,7 @@ platform package, and `vigil` then exits with `platform package ... is not
 installed`.
 
 Releases are published from GitHub Actions with npm Trusted Publishing (OIDC).
-`0.10.1` is the current version on the `latest` tag. Pipeline, verification and
+`0.11.0` is the current version on the `latest` tag. Pipeline, verification and
 re-run steps: [release.md](release.md).
 
 For a one-off run without a global install:
@@ -101,12 +101,12 @@ vigil-<version>-linux-amd64.apk   vigil-<version>-linux-arm64.apk
 ```
 
 Download the file for your distribution from the release page and install it
-with the local path (`0.10.1`, `amd64` shown):
+with the local path (`0.11.0`, `amd64` shown):
 
 ```bash
-sudo apt install ./vigil-0.10.1-linux-amd64.deb                # Debian, Ubuntu
-sudo dnf install --nogpgcheck ./vigil-0.10.1-linux-amd64.rpm   # Fedora, RHEL, openSUSE
-sudo apk add --allow-untrusted ./vigil-0.10.1-linux-amd64.apk  # Alpine
+sudo apt install ./vigil-0.11.0-linux-amd64.deb                # Debian, Ubuntu
+sudo dnf install --nogpgcheck ./vigil-0.11.0-linux-amd64.rpm   # Fedora, RHEL, openSUSE
+sudo apk add --allow-untrusted ./vigil-0.11.0-linux-amd64.apk  # Alpine
 vigil version
 ```
 
@@ -179,19 +179,19 @@ Prebuilt multi-arch images (`linux/amd64`, `linux/arm64`) are published to
 GitHub Container Registry with every release:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-vigil:0.10.1
+docker pull ghcr.io/levapveeskela/lv24-vigil:0.11.0
 docker run --rm -v "$PWD:/workspace" \
-  ghcr.io/levapveeskela/lv24-vigil:0.10.1 scan --no-llm --path /workspace
+  ghcr.io/levapveeskela/lv24-vigil:0.11.0 scan --no-llm --path /workspace
 ```
 
 The image is distroless (`gcr.io/distroless/static-debian12:nonroot`): no shell,
 no package manager, entrypoint `vigil`, user `nonroot:nonroot`, working directory
-`/workspace`. Tags are `<version>` (`0.10.1`), `<major>.<minor>` (`0.10`), `latest`
+`/workspace`. Tags are `<version>` (`0.11.0`), `<major>.<minor>` (`0.10`), `latest`
 (non-prerelease only) and `sha-<commit>`. A tag can move; pin the manifest-list
 digest in CI:
 
 ```bash
-docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.10.1 \
+docker buildx imagetools inspect ghcr.io/levapveeskela/lv24-vigil:0.11.0 \
   --format '{{json .Manifest}}' | jq -r .digest
 
 docker run --rm -v "$PWD:/workspace" \

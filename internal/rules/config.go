@@ -709,6 +709,7 @@ func pbDockerSecretRule(f *File) []model.Finding {
 		}
 		evidence := fmt.Sprintf("%s %s=%s", strings.Fields(t)[0], key, MaskSecret(val))
 		fd := pbFinding(f, i+1, evidence)
+		fd.SecretValues = []string{val}
 		fd.Severity = pbSev(f, model.SeverityHigh)
 		fd.Confidence = model.ConfidenceHigh
 		out = append(out, fd)
@@ -2562,6 +2563,7 @@ func pbW1IacComposeSecretRule(f *File) []model.Finding {
 		// environment entry into reports verbatim. Keep a single redacted line so
 		// neither this value nor a neighbouring credential reaches JSON/SARIF.
 		fd.Location.Snippet = secRedactSnippet(f, i+1, value)
+		fd.SecretValues = []string{value}
 		fd.Severity = pbSev(f, model.SeverityHigh)
 		fd.Confidence = model.ConfidenceMedium
 		fd.Remediation = "Remove the literal value, interpolate it from the shell (${VAR}) or an env_file that is not committed, and rotate the exposed credential."

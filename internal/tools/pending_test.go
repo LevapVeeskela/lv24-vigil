@@ -544,3 +544,16 @@ func TestPendingDirFallsBackWhenVigilIsFile(t *testing.T) {
 		t.Errorf("two roots share one pending cache directory: %s", dirs[0])
 	}
 }
+
+func TestDiffTargetPathsRejectsExtendedHeaders(t *testing.T) {
+	for name, diff := range map[string]string{
+		"rename": "diff --git a/a.txt b/b.txt\nrename from a.txt\nrename to b.txt\n--- a/a.txt\n+++ b/b.txt\n@@ -1 +1 @@\n-old\n+new\n",
+		"copy":   "diff --git a/a.txt b/b.txt\ncopy from a.txt\ncopy to b.txt\n--- a/a.txt\n+++ b/b.txt\n@@ -1 +1 @@\n-old\n+new\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := diffTargetPaths(diff); err == nil {
+				t.Fatalf("diffTargetPaths accepted a %s header", name)
+			}
+		})
+	}
+}

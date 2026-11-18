@@ -10,14 +10,15 @@ import (
 // Stable tool error codes. Clients may branch on
 // structuredContent.error.code, so existing codes must not be renamed.
 const (
-	CodeArgs       = "VGL-ARGS"
-	CodeBadPath    = "VGL-BAD-PATH"
-	CodeNoScan     = "VGL-NO-SCAN"
-	CodeNoFindings = "VGL-NO-FINDINGS"
-	CodeNotFound   = "VGL-NOT-FOUND"
-	CodeAmbiguous  = "VGL-AMBIGUOUS"
-	CodeReadOnly   = "VGL-READONLY"
-	CodeOffline    = "VGL-OFFLINE"
+	CodeArgs        = "VGL-ARGS"
+	CodeBadPath     = "VGL-BAD-PATH"
+	CodeNoScan      = "VGL-NO-SCAN"
+	CodeNoFindings  = "VGL-NO-FINDINGS"
+	CodeNotFound    = "VGL-NOT-FOUND"
+	CodeAmbiguous   = "VGL-AMBIGUOUS"
+	CodeReadOnly    = "VGL-READONLY"
+	CodeOffline     = "VGL-OFFLINE"
+	CodeFixRedacted = "VGL-FIX-REDACTED"
 
 	// Fix-approval codes bind an applied diff to a proposal a human reviewed.
 	CodeFixNotFound = "VGL-FIX-NOT-FOUND"

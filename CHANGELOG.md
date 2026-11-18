@@ -4,7 +4,12 @@ All notable changes to Vigil are documented here. The format is loosely based on
 Keep a Changelog; versions follow semantic versioning once the public API is
 stable.
 
-## Unreleased
+## 0.11.0 - 2026-11-19
+
+Minor release. **No rule changes**: 263 rules in ten families, 14 MCP tools. The
+MCP surface becomes bounded and enforceable: read-only/offline modes, path+line
+addressing with stable `VGL-*` errors, paginated output with coverage, baseline
+parity, and fix approval bound to a reviewed proposal.
 
 ### Added
 
@@ -28,14 +33,15 @@ stable.
 - Bounded MCP output: page envelopes (`offset`, `limit`, `total`, `hasMore`,
   `nextOffset`) on scan, review, hardening, MCP audit, rules, history and
   baseline list results, plus coverage blocks (`filesScanned`, `filesSkipped`,
-  `skippedReasons`, `bytesScanned`, `errors`, `llmUsed`, `networkUsed`) on
+  `skipReasons`, `bytesScanned`, `errors`, `llmUsed`, `networkUsed`) on
   scans. `maxFindings` is a window (default 50, cap 500), not a silent report
   cap.
-- Baseline MCP parity: `ticket`, `expires`, `disposition`, `dryRun`, `prune` and
-  `batch` (max 50, defaults to `dryRun=true`, per-item results). `action=list`
-  windows findings with `offset`/`limit` and returns `findingsTotal` plus
-  `expired` over all entries. The schema stays version 2, so a 0.10 build can
-  still read the file.
+- Baseline MCP parity: MCP add/remove now expose the existing `ticket`,
+  `expires` and finding path/rule metadata, and add `disposition`, `dryRun`,
+  `batch` (max 50, defaults to `dryRun=true`, per-item results) and `prune`.
+  `action=list` windows findings with `offset`/`limit` and returns
+  `findingsTotal` plus `expired` over all entries. The schema stays version 2,
+  so a 0.10 build can still read the file.
 
 ### Changed
 
@@ -44,6 +50,14 @@ stable.
   errors write nothing. `clear` requires `confirm=true`, reasons are sanitized
   and capped, and the legacy fingerprint/expired lists are capped at 500 with
   totals.
+- **Breaking for MCP clients:** `vigil_rules` now returns the first 50 rules by
+  default (`limit`, cap 500); `count` is the page size, `matched` the filtered
+  count and `total` the full catalog. `vigil_baseline action=list` returns
+  `findings` as a window (default 50). Pass `offset`/`limit` to page.
+- **Breaking for MCP clients:** `vigil_fix apply=true` requires the `fixId` and
+  `diffSha256` returned by `mode=propose`; the CLI `vigil fix --apply` path is
+  unchanged. `--unsafe-unbound-fix` is a CLI flag only and cannot be enabled by
+  an environment variable or a repository-supplied MCP config.
 - The `fix_finding` prompt now walks propose → review → apply with `fixId` and
   `diffSha256`, and is hidden in read-only mode.
 
@@ -71,6 +85,119 @@ stable.
   overflowing into an uncapped scan. A non-empty unparsable
   `VIGIL_MCP_READ_ONLY`/`VIGIL_MCP_OFFLINE` value stops the server instead of
   silently disabling the mode.
+- A fix diff that contains `rename`/`copy` headers or a non-regular file mode
+  (including octal symlink modes) is refused before it can create a path that
+  the reviewed pre-image set does not cover.
+- A proposed diff whose added lines would be masked by output redaction is
+  refused with `VGL-FIX-REDACTED`: the human must review the bytes that will be
+  written. Masked removed lines are still allowed.
+- A scan with zero files, or one with warnings, no longer reports the scope as
+  clean; the text points at coverage instead.
+- Coverage reports `skipReasons`/`networkUsed`; `filesSkipped` equals the sum of
+  the reported reasons, with `unclassified` for callers that only carry a count.
+## 0.10.3 - 2026-11-17
+
+Documentation release. **No code or rule changes** since 0.10.2 (263 rules,
+14 MCP tools); the binaries are rebuilt from the same sources with the same
+Go 1.27.4 toolchain. The npm and PyPI pages ship inside the packages, so a
+release is the only way to update them. If you are on 0.10.1 or older,
+upgrade for the 0.10.2 security fixes.
+
+### Changed
+
+- README refresh for people and for agents. The GitHub README (English and
+  Russian) gains a per-platform install table, Python (`pipx`, `uvx`), Linux
+  packages, update and uninstall commands, release verification, a
+  configuration section, a short "how it works" diagram and a troubleshooting
+  table. The agent section adds a task-to-tool table, the arguments of all 14
+  MCP tools and the JSON shape of a finding. `llms.txt` and `AGENTS.md` carry
+  the same install channels and result shape.
+- The npm and PyPI READMEs are rewritten in the same style, and the PyPI
+  package gets classifiers and more keywords. Both pages change on the
+  registries with this release.
+
+## 0.10.2 - 2026-11-17
+
+Security patch release: **upgrade from 0.10.1**. It carries the fixes from an
+independent adversarial review of 0.10.1 and is built with a patched Go
+toolchain. Rule count and MCP tool count are unchanged (263 rules, 14 tools).
+Finding IDs and fingerprints are unchanged, so existing baselines keep matching.
+
+### Security
+
+- **Go toolchain 1.27.4.** The 0.10.1 binaries, npm packages and Linux packages
+  were built with Go 1.27.0, for which `govulncheck` reports reachable
+  standard-library vulnerabilities in `net/http`, HTTP/2, `crypto/tls`,
+  `crypto/x509` and `net/textproto` (fixed in 1.27.2 to 1.27.4). `go.mod` now
+  pins the build with `toolchain go1.27.4`, the version the container image
+  already used; the language minimum stays `go 1.27.0`, so building from
+  source with an older Go 1.27 still works and is switched to 1.27.4 by the
+  `go` command. CI runs `govulncheck` in the required `test` job so a
+  vulnerable toolchain or dependency fails before a tag is cut.
+- **Writes into `.git` through a Windows 8.3 alias.** Path validation compared
+  text only, so `GIT~1/hooks/pre-commit` (and `.git::$INDEX_ALLOCATION`) passed
+  as an `output.path`, a baseline path or an MCP report path. A cloned
+  repository's `.vigil.yaml` could make `vigil scan` write a report into
+  `.git/hooks`. Paths are now checked against the name the filesystem reports,
+  and NTFS alternate data streams are refused on Windows.
+- **Raw secrets in other findings.** A secret rule masked the value it
+  reported, but another rule firing on the same or a neighbouring line quoted
+  it in its evidence and snippet (JSON, SARIF, MCP results, stored scans).
+  Detected values and known token shapes are now masked in every finding.
+- **`--max-findings` could drop the most severe finding.** The cap ran before
+  the sort and before OSV advisories were merged, so a critical advisory could
+  fall behind the cap and `--fail-on` passed. The most severe findings are now
+  kept, and a capped result reports `findings truncated` and
+  `stats.findingsTruncated`.
+- **OSV severity was understated.** A CVSS vector was reduced to a band with an
+  additive estimate that rated common 7.5 advisories medium. Vigil now uses the
+  CVSS v3 and v2 base-score formulas and never rates an advisory below its
+  database's own severity.
+- **Lockfile git URLs reached the OSV API and the SBOM.** `package-lock.json`
+  v1 stores git, file and alias specs in `version`; they were sent verbatim,
+  credentials included. Only registry versions are used now, and aliases
+  resolve to the real package.
+- **`-r` includes followed links out of the scan root**, the default OSV client
+  followed cross-origin redirects (replaying the inventory), and include
+  warnings carried absolute local paths into the SBOM.
+- **Planted scan history.** A repository shipping `.vigil/scans` files dated in
+  the future made Vigil prune the scan it had just saved and report the planted
+  one as the last scan.
+- **A project file could redirect the user's key.** `provider` in `.vigil.yaml`
+  switched the endpoint while the `api_key` of the user config was kept. A key
+  set next to a provider is now used for that provider only.
+- **A project `output.path` could overwrite source files.** It now refuses to
+  replace a file that is not a Vigil report.
+- **Terminal escape sequences** from scanned content are replaced in Markdown
+  output and the scan summary.
+- **Redaction gaps**: more credential query keys, scheme-less `user:pass@host`
+  URLs, more secret-looking flag names, URL arguments, and command arguments
+  echoed in a failing `command` provider's stderr.
+
+### Fixed
+
+- `vigil:ignore` with an unrecognized option (a mistyped `untill=`) or an
+  unterminated quote, and a baseline entry with an unknown key (`expiry`), no
+  longer produce a permanent suppression: they fail closed with a warning.
+- `VGL-MCP-001` treats ranges, wildcards and dist-tags (`@^1.0.0`, `@*`,
+  `@next`) as unpinned. `VGL-MCP-002` no longer flags OpenCode `{env:VAR}`
+  references and now covers `*_PASS`/`*_PWD` keys, bearer headers and values
+  longer than 200 characters; MCP evidence masks URL userinfo.
+- `VGL-INJ-065` matches `raw params[:q]` without parentheses.
+- `requirements*.txt` with a UTF-8 BOM or in UTF-16 is read instead of being
+  dropped; `package.json` ranges without an inclusive lower bound are skipped.
+
+### Changed
+
+- `SECURITY.md` lists `0.10.x` as the supported line; the npm README states the
+  real network behaviour; the docs describe the SBOM 200-package cap and the
+  project-file trust boundary.
+- The PyPI publish workflow installs `build`, `twine` and the `setuptools`
+  backend from a hash-pinned lock (`pip install --require-hashes`) and builds
+  with `--no-isolation`, so no unpinned package runs in the publishing job.
+- The dogfood scan (`.vigil.yaml`, `vigil.yml`) excludes `*_test.go`: Go tests
+  hold synthetic tokens and vulnerable snippets on purpose, and each one was
+  uploaded to code scanning as an alert.
 
 ## 0.10.1 - 2026-11-16
 

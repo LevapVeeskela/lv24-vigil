@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -85,6 +86,21 @@ type BaselineFinding struct {
 	// accepted_risk or wont_fix. Empty means unspecified (for example in files
 	// written before dispositions existed).
 	Disposition string `json:"disposition,omitempty"`
+}
+
+// UnmarshalJSON rejects keys this build does not know. A silently ignored key
+// is dangerous here: an expiry written as "expiry" or "until" instead of
+// "expires" would otherwise yield an entry that never expires.
+func (f *BaselineFinding) UnmarshalJSON(data []byte) error {
+	type plain BaselineFinding
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	var entry plain
+	if err := dec.Decode(&entry); err != nil {
+		return fmt.Errorf("baseline entry: %w", err)
+	}
+	*f = BaselineFinding(entry)
+	return nil
 }
 
 // MatchResult describes how a finding relates to the baseline.

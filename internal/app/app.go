@@ -286,15 +286,26 @@ func (a *App) Scan(ctx context.Context, req model.ScanRequest) (*model.ScanResul
 		}
 	}
 
-	// The LLM pass can add findings, so re-apply the severity filter, sort and
-	// cap once more before the result is stored. The pool is counted before
-	// that cap so paginated callers can state an honest total; the scanner
-	// records the count before its own (pagination-bound) cap.
-	if pool := countAtLeast(res.Findings, opts.MinSeverity); pool > res.Stats.FindingsTotal {
+	// OSV and the LLM pass can add findings, so re-apply the severity filter,
+	// sort and cap once more before the result is stored. The sort comes first:
+	// the cap must drop the least severe findings, not whatever was appended
+	// last, or a critical advisory could fall behind the cap and a --fail-on
+	// gate would pass. The pool is counted before that cap so paginated
+	// callers can state an honest total.
+	res.Findings = model.Filter(res.Findings, opts.MinSeverity, 0)
+	model.SortFindings(res.Findings)
+	if pool := len(res.Findings); pool > res.Stats.FindingsTotal {
 		res.Stats.FindingsTotal = pool
 	}
-	res.Findings = model.Filter(res.Findings, opts.MinSeverity, opts.MaxFindings)
-	model.SortFindings(res.Findings)
+	if opts.MaxFindings > 0 && len(res.Findings) > opts.MaxFindings {
+		res.Stats.Truncated += len(res.Findings) - opts.MaxFindings
+		res.Findings = res.Findings[:opts.MaxFindings]
+	}
+	if res.Stats.Truncated > 0 {
+		res.Errors = append(res.Errors, fmt.Sprintf(
+			"findings truncated: kept the %d most severe of %d (max_findings cap); raise --max-findings to see the rest",
+			len(res.Findings), len(res.Findings)+res.Stats.Truncated))
+	}
 	res.FinishedAt = time.Now().UTC()
 	res.Stats.DurationMS = res.FinishedAt.Sub(res.StartedAt).Milliseconds()
 	fillStats(&res.Stats, res.Findings)
@@ -312,17 +323,6 @@ func fillStats(stats *model.Stats, findings []model.Finding) {
 		stats.BySeverity[f.Severity]++
 		stats.ByCategory[f.Category]++
 	}
-}
-
-// countAtLeast counts the findings at or above min without allocating a slice.
-func countAtLeast(findings []model.Finding, min model.Severity) int {
-	n := 0
-	for _, f := range findings {
-		if f.Severity.AtLeast(min) {
-			n++
-		}
-	}
-	return n
 }
 
 // Review scans only the added lines of a diff.

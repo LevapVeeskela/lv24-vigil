@@ -70,10 +70,17 @@ In that case dispatch the workflow explicitly (see the fallback below).
 3. Watch the `pypi-publish` run in Actions, or dispatch it manually when the
    release was created by `release.yml`.
 
+The workflow installs its tools (`build`, `twine` and the `setuptools` build
+backend) from `.github/requirements/pypi-publish.txt` with
+`pip install --require-hashes` and builds with `python -m build --no-isolation`,
+so no unpinned package runs in the job that holds the PyPI OIDC permission. To
+update the tools, regenerate the lock with the command at the top of
+`.github/requirements/pypi-publish.in`.
+
 Manual fallback, for example when a release tag predates the workflow:
 
 ```bash
-gh workflow run pypi-publish.yml -f version=0.10.1
+gh workflow run pypi-publish.yml -f version=0.11.0
 ```
 
 The input may include or omit the leading `v`. Existing versions are detected
@@ -97,7 +104,7 @@ Set `VIGIL_NPM_VERSION` to pin the npm CLI version or tag the wrapper invokes
 
 ```bash
 VIGIL_NPM_VERSION=latest vigil scan --no-llm
-VIGIL_NPM_VERSION=0.10.1 vigil scan --no-llm
+VIGIL_NPM_VERSION=0.11.0 vigil scan --no-llm
 ```
 
 On PowerShell: `$env:VIGIL_NPM_VERSION = "latest"`.
@@ -131,7 +138,7 @@ python -m twine upload --repository-url https://test.pypi.org/legacy/ python/dis
 The committed workflow publishes to PyPI only and never handles tokens. For a CI
 dry run, add a separate job that passes
 `repository-url: https://test.pypi.org/legacy/` to the publish action. Use a
-throwaway version such as `0.10.1rc1` and never reuse it for a real release.
+throwaway version such as `0.11.0rc1` and never reuse it for a real release.
 
 ## Cost
 

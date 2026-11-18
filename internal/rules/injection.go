@@ -223,7 +223,10 @@ var (
 	injPHPNoXXERe           = regexp.MustCompile(`\bLIBXML_NO_XXE\b`)
 	injPHPXMLParseCallRe    = regexp.MustCompile(`(?i)\b(?:DOMDocument|loadXML|simplexml_load_string|simplexml_load_file|XMLReader|xml_parse)\b|->\s*open\s*\(|\bload\s*\(`)
 
-	injRubyRawRequestRe = regexp.MustCompile(`\braw\s*\(\s*(?:params|request|cookies|session|@)`)
+	// raw is usually called without parentheses ("raw params[:q]"). That form
+	// requires an indexed or dotted source so prose such as "the raw request
+	// body" in a template does not match.
+	injRubyRawRequestRe = regexp.MustCompile(`\braw\s*\(\s*(?:params|request|cookies|session|@)|\braw\s+(?:(?:params|cookies|session)\s*[\[.]|request\s*\.|@[A-Za-z_])`)
 	injRubyHTMLSafeRe   = regexp.MustCompile(`\.html_safe\b`)
 	injRubySanitizeRe   = regexp.MustCompile(`\bsanitize\s*[\(\s]`)
 	// injRubyRequestishRe names the Rails sources that make raw/html_safe a

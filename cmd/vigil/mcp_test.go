@@ -142,3 +142,16 @@ func TestRunMCPReadOnlyHidesFix(t *testing.T) {
 		t.Fatal("runMCP did not stop after stdin closed")
 	}
 }
+
+func TestUnsafeUnboundFixEnvIsIgnored(t *testing.T) {
+	t.Setenv("VIGIL_MCP_UNSAFE_UNBOUND_FIX", "1")
+	// The flag is CLI-only. A repository-controlled environment must not turn
+	// the unreviewed apply path on, and an invalid value must not stop help.
+	out, _, err := runCLI(t, "mcp", "--help")
+	if err != nil {
+		t.Fatalf("mcp --help with the unsafe env set: %v", err)
+	}
+	if strings.Contains(out, "VIGIL_MCP_UNSAFE_UNBOUND_FIX=1") {
+		t.Errorf("mcp help still advertises an unsafe env switch:\n%s", out)
+	}
+}

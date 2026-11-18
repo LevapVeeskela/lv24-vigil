@@ -127,6 +127,15 @@ func newCommandClient(cfg config.Config, model string, logger *slog.Logger) (Cli
 		}
 	}
 
+	// A failing tool often echoes its own command line. Mask the argument
+	// values the status output already hides, so they cannot reach the scan
+	// errors, the stored result or a report through the stderr tail.
+	for _, value := range config.ArgvSecretValues(cfg.Command) {
+		if len(value) >= 8 {
+			secrets = append(secrets, value)
+		}
+	}
+
 	model = strings.TrimSpace(model)
 	if model == "" {
 		model = config.DefaultCommandModel

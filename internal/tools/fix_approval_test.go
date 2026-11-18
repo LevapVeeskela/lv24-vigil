@@ -257,7 +257,7 @@ func TestFixProposeThenApplyExactReviewedDiff(t *testing.T) {
 	}
 	// Tool output applies the hard redactor to every string, including a diff
 	// that quotes the credential, so the reviewed diff is the redacted form.
-	if p.Fix == nil || p.Fix.Diff != rules.RedactSecrets(fixTestDiff) {
+	if p.Fix == nil || p.Fix.Diff != rules.RedactSecrets(fixTestDiff, nil) {
 		t.Errorf("propose did not return the diff: %+v", p.Fix)
 	}
 	if !p.DiffRedacted {

@@ -79,8 +79,19 @@ func ValidateDiff(root, diff string) error {
 		if strings.HasPrefix(line, "GIT binary patch") || strings.HasPrefix(line, "Binary files ") {
 			return errors.New("binary diffs are not accepted")
 		}
-		if strings.HasPrefix(line, "new file mode 120000") {
-			return errors.New("symlink patches are not accepted")
+		for _, prefix := range []string{"rename from ", "rename to ", "copy from ", "copy to "} {
+			if strings.HasPrefix(line, prefix) {
+				return errors.New("rename and copy patches are not accepted")
+			}
+		}
+		for _, prefix := range []string{"new file mode ", "deleted file mode ", "old mode ", "new mode "} {
+			if !strings.HasPrefix(line, prefix) {
+				continue
+			}
+			mode := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+			if !validDiffFileMode(mode) {
+				return fmt.Errorf("unsupported file mode %q (only regular 100644/100755 files are accepted)", mode)
+			}
 		}
 	}
 
@@ -324,6 +335,19 @@ func diffFiles(diff string) []string {
 	return out
 }
 
+// validDiffFileMode accepts only regular-file modes. Git also supports 120000
+// (symlink), 160000 (submodule) and 040000 (tree) modes; none belong in a fix
+// diff and a symlink would let the patch create a file outside the reviewed
+// target set.
+func validDiffFileMode(mode string) bool {
+	switch mode {
+	case "100644", "100755":
+		return true
+	default:
+		return false
+	}
+}
+
 // isDiffMetadataLine reports whether line is a standard git diff header that
 // carries no hunk content.
 func isDiffMetadataLine(line string) bool {
@@ -336,6 +360,8 @@ func isDiffMetadataLine(line string) bool {
 		"similarity index ",
 		"rename from ",
 		"rename to ",
+		"copy from ",
+		"copy to ",
 	} {
 		if strings.HasPrefix(line, prefix) {
 			return true

@@ -90,7 +90,7 @@ func registerBaseline(srv *mcp.Server, d Deps) {
 		Title: "Manage the Vigil suppression baseline",
 		Description: "List, add, remove, prune or clear accepted findings in the project baseline. " +
 			"Adding requires a finding ID and a reason; an acceptance can carry a ticket, an expiry date, " +
-			"a disposition and a path scope. dryRun previews the suppression impact without writing. " +
+			"a disposition, and the resolved finding's path and rule scope. dryRun previews the suppression impact without writing. " +
 			"Batch validates up to 50 add/remove items before writing, reports per-item misses and " +
 			"defaults to dryRun=true. Removed or expired entries stop suppressing on the next scan.",
 		InputSchema: mcp.ObjectSchema(map[string]any{
@@ -215,14 +215,14 @@ func baselineList(d Deps, path string, args baselineArgs) (*mcp.CallToolResult, 
 	visible := b.Findings[start:end]
 	safeFindings := make([]scanner.BaselineFinding, len(visible))
 	for i, f := range visible {
-		f.ID = oneLine(f.ID)
-		f.Fingerprint = oneLine(f.Fingerprint)
+		f.ID = sanitizeBaselineText(f.ID, 200)
+		f.Fingerprint = sanitizeBaselineText(f.Fingerprint, 200)
 		f.Reason = sanitizeBaselineReason(f.Reason)
 		f.Ticket = sanitizeBaselineTicket(f.Ticket)
-		f.Path = oneLine(f.Path)
-		f.RuleID = oneLine(f.RuleID)
-		f.Expires = oneLine(f.Expires)
-		f.Disposition = oneLine(f.Disposition)
+		f.Path = sanitizeBaselineText(f.Path, 512)
+		f.RuleID = sanitizeBaselineText(f.RuleID, 200)
+		f.Expires = sanitizeBaselineText(f.Expires, 32)
+		f.Disposition = sanitizeBaselineText(f.Disposition, 32)
 		safeFindings[i] = f
 	}
 
@@ -236,7 +236,7 @@ func baselineList(d Deps, path string, args baselineArgs) (*mcp.CallToolResult, 
 			label = f.Fingerprint
 		}
 		if label != "" {
-			expired = append(expired, oneLine(label))
+			expired = append(expired, sanitizeBaselineText(label, 200))
 		}
 	}
 	expiredTotal := len(expired)
@@ -249,7 +249,7 @@ func baselineList(d Deps, path string, args baselineArgs) (*mcp.CallToolResult, 
 	}
 	safeFingerprints := make([]string, len(fingerprints))
 	for i, fp := range fingerprints {
-		safeFingerprints[i] = oneLine(fp)
+		safeFingerprints[i] = sanitizeBaselineText(fp, 200)
 	}
 
 	var out strings.Builder
@@ -370,10 +370,10 @@ func baselineAdd(d Deps, path string, args baselineArgs) (*mcp.CallToolResult, e
 	}
 
 	counts, warnings := baselineSuppressionPreview(d, b, args.ScanID)
-	until := latestBaselineExpiry([]scanner.BaselineFinding{stored})
+	until := latestBaselineExpiry(b.Findings)
 
 	var out strings.Builder
-	displayID := oneLine(entry.ID)
+	displayID := sanitizeBaselineText(entry.ID, 200)
 	if dryRun {
 		fmt.Fprintf(&out, "Would add %s to the baseline (dry run: nothing was written).\n", displayID)
 	} else {
@@ -386,7 +386,7 @@ func baselineAdd(d Deps, path string, args baselineArgs) (*mcp.CallToolResult, e
 			fmt.Fprintf(&out, "Added %s to the baseline.\n", displayID)
 		}
 	}
-	fmt.Fprintf(&out, "Fingerprint: %s\n", oneLine(entry.Fingerprint))
+	fmt.Fprintf(&out, "Fingerprint: %s\n", sanitizeBaselineText(entry.Fingerprint, 200))
 	fmt.Fprintf(&out, "Reason: %s\n", sanitizeBaselineReason(stored.Reason))
 	if stored.Ticket != "" {
 		fmt.Fprintf(&out, "Ticket: %s\n", sanitizeBaselineTicket(stored.Ticket))
@@ -409,7 +409,7 @@ func baselineAdd(d Deps, path string, args baselineArgs) (*mcp.CallToolResult, e
 		"saved":         !dryRun,
 		"added":         !hadEntry,
 		"findingId":     displayID,
-		"fingerprint":   oneLine(entry.Fingerprint),
+		"fingerprint":   sanitizeBaselineText(entry.Fingerprint, 200),
 		"reason":        sanitizeBaselineReason(stored.Reason),
 		"ticket":        sanitizeBaselineTicket(stored.Ticket),
 		"expires":       stored.Expires,
@@ -465,10 +465,10 @@ func baselineRemove(d Deps, path string, args baselineArgs) (*mcp.CallToolResult
 		fmt.Fprintf(&out, "Removed from baseline %s:\n", path)
 	}
 	for _, removedID := range removedIDs {
-		fmt.Fprintf(&out, "  finding %s\n", oneLine(removedID))
+		fmt.Fprintf(&out, "  finding %s\n", sanitizeBaselineText(removedID, 200))
 	}
 	for _, removedFP := range removedFPs {
-		fmt.Fprintf(&out, "  fingerprint %s\n", oneLine(removedFP))
+		fmt.Fprintf(&out, "  fingerprint %s\n", sanitizeBaselineText(removedFP, 200))
 	}
 	fmt.Fprintf(&out, "Baseline now has %d finding(s) and %d fingerprint(s).\n", len(b.Findings), len(b.Fingerprints))
 	out.WriteString(baselinePreviewText(counts, until, warnings))
@@ -514,13 +514,13 @@ func baselinePrune(d Deps, path string, args baselineArgs) (*mcp.CallToolResult,
 
 	safeRemoved := make([]scanner.BaselineFinding, len(removed))
 	for i, entry := range removed {
-		entry.ID = oneLine(entry.ID)
-		entry.Fingerprint = oneLine(entry.Fingerprint)
+		entry.ID = sanitizeBaselineText(entry.ID, 200)
+		entry.Fingerprint = sanitizeBaselineText(entry.Fingerprint, 200)
 		entry.Reason = sanitizeBaselineReason(entry.Reason)
 		entry.Ticket = sanitizeBaselineTicket(entry.Ticket)
-		entry.Path = oneLine(entry.Path)
-		entry.RuleID = oneLine(entry.RuleID)
-		entry.Expires = oneLine(entry.Expires)
+		entry.Path = sanitizeBaselineText(entry.Path, 512)
+		entry.RuleID = sanitizeBaselineText(entry.RuleID, 200)
+		entry.Expires = sanitizeBaselineText(entry.Expires, 32)
 		safeRemoved[i] = entry
 	}
 

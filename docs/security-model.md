@@ -27,7 +27,8 @@ calls. Git operations are local. The scan store is local.
 at construction time: the model client is never built and `scan.osv` is
 forced off, including a configured `scan.osv_base_url`. Only deterministic rules
 run. `vigil_dependencies` is refused with `VGL-OFFLINE`, and `vigil_status`
-reports `network: "none"`. `vigil_fix` needs a model, so it is refused too.
+reports `network: "none"`. `vigil_fix` is refused in offline mode: propose needs
+a model, and apply is bound to a proposal created by this server process.
 Because the settings are cleared before the scan engine is constructed, an
 offline server cannot fall back to a configured endpoint.
 
@@ -75,7 +76,10 @@ files and 48 KiB, with a 12 KiB tree section and a 5000-entry walk limit.
 Secret rules pass every detected value through `rules.MaskSecret` before it
 reaches evidence, a snippet or a report. A finding never contains the raw
 credential. Generic assignment rules also avoid obvious placeholders and
-low-entropy values.
+low-entropy values. Before a scan result leaves the scanner, every value a rule
+detected in a file, and every well-known token shape, is also masked in the
+evidence and snippets of the other findings in that file, so an injection
+finding on the same or a neighbouring line does not quote it.
 
 Tool output applies the same hard redactor (`rules.RedactSecrets`) to the text
 content and to every string in `structuredContent`. Well-known credential shapes
@@ -204,6 +208,10 @@ The server does not expose an HTTP port. It speaks JSON-RPC over stdio.
 - The API key is read from `VIGIL_API_KEY` or the provider's key variable.
 - A user config may contain `api_key` and `base_url`; a project `.vigil.yaml`
   may not. Vigil rejects a project file that sets either.
+- A project file may choose `provider` and `model`. An `api_key` that the user
+  config sets next to its own `provider` is used for that provider only: when a
+  project file names a different provider, the key is not offered to it and
+  the provider's own key variable (or `VIGIL_API_KEY`) is required.
 - `vigil status` redacts the key and any userinfo or key-shaped query parameter
   in the base URL.
 - Provider error messages redact the key, bearer tokens and URL userinfo.
@@ -224,6 +232,18 @@ key and store it as a secret; do not print it in logs.
 
 Verify the release you download from the official release page and keep your
 toolchain and provider SDKs current.
+
+## The project file is repository content
+
+`.vigil.yaml` is committed by whoever owns the repository, so treat it like the
+code you are scanning. It cannot set a key, an endpoint, a command or follow
+symlinks, and an `output.path` it sets cannot replace a file that is not a
+Vigil report. It can still narrow the scan: `scan.exclude`, `scan.include`,
+`scan.disable_rules`, `scan.min_severity`, `scan.max_file_bytes` and
+`scan.max_findings` all apply, and a file that excludes everything makes
+`--fail-on` pass. On pull requests from people you do not trust, review changes
+to `.vigil.yaml` (a `CODEOWNERS` rule works well) or run the gate against the
+base branch's copy of the file.
 
 ## What Vigil does not do
 

@@ -4,7 +4,7 @@ Vigil runs as a Model Context Protocol server over stdio. A coding agent can cal
 it to scan the repository, explain a finding, propose a fix, verify the result
 and write a threat model without shelling out to a separate tool.
 
-Listed in the official MCP Registry as `io.github.LevapVeeskela/vigil` (v0.10.1); ownership proof and publishing: [mcp-registry.md](mcp-registry.md).
+Listed in the official MCP Registry as `io.github.LevapVeeskela/vigil` (v0.11.0); ownership proof and publishing: [mcp-registry.md](mcp-registry.md).
 
 ## Start the server
 
@@ -31,7 +31,7 @@ Three flags change what the server can do. Each has an environment equivalent.
 |---|---|---|
 | `--read-only` | `VIGIL_MCP_READ_ONLY=1` | Hide `vigil_fix`, hide the `fix_finding` prompt and refuse source, baseline and report writes |
 | `--offline` | `VIGIL_MCP_OFFLINE=1` | No model, no OSV; deterministic rules only |
-| `--unsafe-unbound-fix` | `VIGIL_MCP_UNSAFE_UNBOUND_FIX=1` | 0.10 compatibility: one-call apply without a reviewed proposal (unsafe) |
+| `--unsafe-unbound-fix` | — (CLI flag only) | 0.10 compatibility: one-call apply without a reviewed proposal (unsafe) |
 
 **`--read-only`.** `vigil_fix` is removed from `tools/list` (`tools/list` then
 lists 13 tools) and the `fix_finding` prompt is not registered. A direct
@@ -42,13 +42,15 @@ written locally, so findings keep stable IDs and later tools can address them.
 
 **`--offline`.** The model client is never built and OSV is forced off, including
 a configured `scan.osv_base_url`. Scans run the deterministic rules only,
-`vigil_dependencies` is refused with `VGL-OFFLINE`, and `vigil_fix` (which needs
-a model) is refused as needing network. `vigil_status.network` reports `none`.
+`vigil_dependencies` is refused with `VGL-OFFLINE`, and `vigil_fix` is refused
+too: propose needs a model, and apply is bound to a proposal created by this
+server process. `vigil_status.network` reports `none`.
 
 **`--unsafe-unbound-fix`.** Restores the 0.10 behaviour where
 `vigil_fix apply=true` proposes and applies in one call without a `fixId` and
 `diffSha256`. The tool returns a warning, and the mode is not recommended; use
-propose then apply instead.
+propose then apply instead. It is a CLI flag only: no environment variable can
+enable it, so a repository-controlled MCP config cannot turn it on.
 
 Hiding is discovery, not enforcement. A hidden tool stays registered and a direct
 `tools/call` reaches its handler, so every handler checks the mode and returns a
@@ -135,7 +137,7 @@ The server exposes 14 tools (13 in read-only mode, which hides `vigil_fix`):
 | `vigil_hardening` | Run only the `VGL-ARE` anti-RE hardening rules and group gaps by platform. `platform` narrows the review to one surface. Maps each gap to the REA reverse-engineering surface it raises the cost against in [anti-re-hardening.md](anti-re-hardening.md). | local scan history (`readOnlyHint: false`) only |
 | `vigil_mcp_audit` | Run only the `VGL-MCP` rules over MCP server configuration files. With `includeUser=true` it also reads known home-directory configs. | none |
 | `vigil_dependencies` | Read supported manifests and query OSV.dev for known public advisories. | network request to OSV; refused with `VGL-OFFLINE` in offline mode |
-| `vigil_baseline` | List, add, remove, prune, batch or clear accepted findings in the baseline. | baseline file only; `dryRun` previews without writing; refused with `VGL-READONLY` |
+| `vigil_baseline` | List, add, remove, prune, batch or clear accepted findings in the baseline. | baseline file only; `dryRun` previews without writing; writes refused with `VGL-READONLY` (`list` still works) |
 | `vigil_report` | Render a stored scan as Markdown, JSON, SARIF or HTML. | a report file only when `path` is supplied; refused with `VGL-READONLY` |
 | `vigil_verify` | Re-check whether a finding is still present after a change. | none |
 | `vigil_history` | List recent scans from the local store. | none |
@@ -227,7 +229,9 @@ return `coverage`:
 `coverage.skipReasons` counts skipped files by stable, low-cardinality reason
 key (`walk_error`, `path_error`, `tool_state`, `symlink`, `symlink_error`,
 `ignored`, `not_included`, `binary`, `too_large`, `special_file`, `hardlink`,
-`read_error`, `outside_root`, `unsafe_path`, `missing`, `duplicate`).
+`read_error`, `outside_root`, `unsafe_path`, `missing`, `duplicate`,
+`unclassified`). `unclassified` appears when a caller only carries a skipped
+count without reasons, as `vigil_mcp_audit` historically did.
 `filesSkipped` is the sum of those counts. The keys are best-effort categories
 for why coverage is incomplete, not per-file paths and not a claim that the
 skipped files are safe. Changed-only reviews count changed files dropped by
@@ -254,7 +258,7 @@ a `VGL-*` code.
 |---|---|
 | `VGL-ARGS` | Invalid argument or combination: missing `findingId`/`path`, both at once, a caller path outside the scan root, negative `offset`, conflicting fix modes, a malformed batch |
 | `VGL-BAD-PATH` | A diff target is absolute, leaves the root or cannot be parsed |
-| `VGL-NO-SCAN` | Reserved for a missing scan history; today a missing scan is a plain error that points at `vigil_history` |
+| `VGL-NO-SCAN` | Reserved for a missing scan history; today a missing scan is a plain error that points at `vigil_scan` and `vigil_history` |
 | `VGL-NOT-FOUND` | No finding or baseline entry matches; candidates may be attached |
 | `VGL-AMBIGUOUS` | Several findings match; `candidates[]` lists them |
 | `VGL-READONLY` | A write, or any `vigil_fix` call, was attempted on a read-only server |
@@ -266,6 +270,7 @@ a `VGL-*` code.
 | `VGL-FIX-CONSUMED` | The proposal was already applied, or another apply holds it |
 | `VGL-FILE-CHANGED` | A target file, or the server root, changed since the proposal |
 | `VGL-FIX-NONDETERMINISTIC` | The finding is model-only and no deterministic rule corroborates it |
+| `VGL-FIX-REDACTED` | The proposed diff adds credential-shaped text; the review would show masked bytes, so the proposal is refused |
 
 `VGL-NO-FINDINGS` is also reserved. Clients may branch on the code; existing
 codes are not renamed.
@@ -304,7 +309,10 @@ proposal expires after 15 minutes; the stored pre-image hash of every target is
 what makes a stale diff detectable. If the diff quotes a credential-shaped
 value, the returned diff is masked by the same redactor as text and the payload
 sets `diffRedacted: true`; `diffSha256` still covers the stored unmasked
-proposal, and apply uses that stored diff.
+proposal, and apply uses that stored diff. Only removed lines may be masked for
+display; a diff that would add credential-shaped text is refused with
+`VGL-FIX-REDACTED`, because the human would review masked bytes but apply would
+write the raw ones.
 
 `mode=apply` requires the `fixId` and `diffSha256` from the proposal. It loads
 the stored diff, checks the server root, scan and finding, the diff hash, the
@@ -354,7 +362,8 @@ are stripped of control characters before they are printed.
   `batch`, and to `false` for `add` and `remove`.
 - `scanId` selects the scan used to resolve findings and to preview impact. The
   preview returns `wouldSuppress` counts plus `until`, the latest expiry among
-  the affected entries.
+  the entries the operation leaves in the baseline (or `never` when none
+  expires).
 - `prune` removes expired entries; `batch` accepts at most 50 add/remove items,
   defaults to `dryRun=true`, validates every argument before writing, reports
   per-item `added`, `already_present`, `removed`, `not_found` or `error`, and
@@ -446,6 +455,11 @@ Agent: [calls vigil_fix with mode=apply, fixId and diffSha256, then vigil_verify
 - Offline mode is a construction-time guarantee: the model client is never built
   and OSV is disabled before the scan starts, so a configured endpoint cannot be
   contacted.
+- `--root` is the project root, not a read sandbox. The read tools
+  (`vigil_scan`, `vigil_review`, `vigil_hardening`, `vigil_dependencies`)
+  accept a `path` outside it, as the CLI does; only `vigil_mcp_audit`,
+  `vigil_threat_model` and the write paths are confined. Do not hand the server
+  to an agent you would not let read your files.
 - Scanned code is untrusted input. Prompts delimit it as data and model output is
   validated before it becomes a finding or a diff.
 - If code must not leave the machine, run `vigil mcp --offline` (or set
