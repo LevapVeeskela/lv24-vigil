@@ -2,6 +2,7 @@ package tools_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/levapveeskela/lv24-vigil/internal/app"
@@ -137,6 +138,51 @@ func TestReadOnlyModeHidesAndRejectsWrites(t *testing.T) {
 	}
 	if status.Network != "none" {
 		t.Errorf("network posture = %q, want none with no model and OSV off", status.Network)
+	}
+}
+
+func TestReadOnlyModeHidesFixPrompt(t *testing.T) {
+	h := newHarness(t)
+	c := newModeClient(t, h.app, true, false)
+
+	resp := c.call("prompts/list", nil)
+	if resp.Error != nil {
+		t.Fatalf("prompts/list: %v", resp.Error)
+	}
+	var prompts mcp.PromptsListResult
+	if err := json.Unmarshal(resp.Result, &prompts); err != nil {
+		t.Fatalf("decode prompts/list: %v", err)
+	}
+	got := make(map[string]bool, len(prompts.Prompts))
+	for _, p := range prompts.Prompts {
+		got[p.Name] = true
+	}
+	if got["fix_finding"] {
+		t.Error("read-only prompts/list still advertises fix_finding")
+	}
+	if !got["security_review"] {
+		t.Error("read-only prompts/list dropped a read-only prompt")
+	}
+}
+
+func TestFixPromptUsesBoundApproval(t *testing.T) {
+	h := newHarness(t)
+	resp := h.client.call("prompts/get", map[string]any{
+		"name":      "fix_finding",
+		"arguments": map[string]string{"findingId": "VGL-SEC-001"},
+	})
+	if resp.Error != nil {
+		t.Fatalf("prompts/get fix_finding: %v", resp.Error)
+	}
+	var prompt mcp.GetPromptResult
+	if err := json.Unmarshal(resp.Result, &prompt); err != nil {
+		t.Fatalf("decode fix_finding prompt: %v", err)
+	}
+	body := prompt.Messages[0].Content.Text
+	for _, want := range []string{`"mode": "propose"`, `"mode": "apply"`, "fixId", "diffSha256", "VGL-FILE-CHANGED"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fix_finding prompt missing %q:\n%s", want, body)
+		}
 	}
 }
 
