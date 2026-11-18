@@ -24,6 +24,7 @@ type mcpAuditArgs struct {
 	IncludeUser bool   `json:"includeUser"`
 	MinSeverity string `json:"minSeverity"`
 	MaxFindings int    `json:"maxFindings"`
+	Offset      int    `json:"offset"`
 }
 
 func registerMCPAudit(srv *mcp.Server, d Deps) {
@@ -35,13 +36,16 @@ func registerMCPAudit(srv *mcp.Server, d Deps) {
 			"auto-approval and prompt-injection surfaces. Reads .mcp.json, mcp.json, mcp-config.json, " +
 			"claude_desktop_config.json, opencode.json[c], *.mcp.json and YAML variants; with includeUser it also " +
 			"reads known home-directory configs. Deterministic and offline: no configured server is started, no " +
-			"endpoint is contacted and nothing is written. Returns a text summary and the full audit result as " +
-			"structuredContent.",
+			"endpoint is contacted and nothing is written. Results are windowed: maxFindings is the page size " +
+			"(default 50, capped at 500) and offset selects the page; the page object states total, hasMore and " +
+			"nextOffset, and a coverage object states what was read. Returns a text summary and the audit result " +
+			"as structuredContent.",
 		InputSchema: mcp.ObjectSchema(map[string]any{
 			"path":        mcp.Prop("string", "Directory to audit. Defaults to the server's project root; the resolved path must stay inside it."),
 			"includeUser": mcp.PropBool("Also read known user-level MCP configs under the home directory."),
 			"minSeverity": mcp.PropEnum("Minimum severity to report.", "critical", "high", "medium", "low", "info"),
-			"maxFindings": mcp.PropInt("Maximum findings to return (default 50, capped at 500)."),
+			"maxFindings": mcp.PropInt("Page size: maximum findings in this window (default 50, capped at 500)."),
+			"offset":      mcp.PropInt("Zero-based finding offset for paging. Start with 0, then pass page.nextOffset from the previous result."),
 		}),
 		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": false},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
@@ -69,6 +73,9 @@ func handleMCPAudit(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.Call
 	if minSeverity == "" {
 		minSeverity = model.SeverityInfo
 	}
+	if err := checkOffset(args.Offset); err != nil {
+		return errorResult(d, "%v", err), nil
+	}
 	root, err := resolveMCPAuditPath(d, args.Path)
 	if err != nil {
 		return mcp.TextError("invalid arguments: %v", err), nil
@@ -90,10 +97,31 @@ func handleMCPAudit(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.Call
 		return errorResult(d, "MCP audit failed: %v", err), nil
 	}
 	finished := time.Now().UTC()
-	findings := model.Filter(audit.Findings, minSeverity, clampInt(args.MaxFindings, maxFindingsDefault, maxFindingsCap))
+
+	limit := clampInt(args.MaxFindings, maxFindingsDefault, maxFindingsCap)
+	qualified := model.Filter(audit.Findings, minSeverity, 0)
+	reported := len(qualified)
+	total := reported
+	if total > maxFindingsCap {
+		total = maxFindingsCap
+	}
+	start, end, page := window(total, args.Offset, limit)
+	if start > len(qualified) {
+		start = len(qualified)
+	}
+	if end > len(qualified) {
+		end = len(qualified)
+	}
+	if start > end {
+		start = end
+	}
+	findings := append([]model.Finding{}, qualified[start:end]...)
 
 	res := mcpAuditScanResult(root, findings, audit.Scanned, audit.Skipped, ruleCount, started, finished)
-	return result(d, mcpAuditSummary(res, args.IncludeUser), res), nil
+	res.Stats.FindingsTotal = total
+	cov := coverageFor(res, false)
+	text := mcpAuditSummary(res, args.IncludeUser, page, cov) + pageCapNote(reported, total)
+	return result(d, text, &scanPayload{ScanResult: res, Page: &page, Coverage: cov}), nil
 }
 
 // resolveMCPAuditPath resolves a requested directory and keeps it inside the
@@ -148,7 +176,7 @@ func mcpAuditScanResult(root string, findings []model.Finding, scanned, skipped,
 // mcpAuditSummary renders the human-readable half of vigil_mcp_audit. It is
 // explicit about the scan boundary and never treats a clean config as proof
 // that an MCP server is trustworthy.
-func mcpAuditSummary(res *model.ScanResult, includeUser bool) string {
+func mcpAuditSummary(res *model.ScanResult, includeUser bool, page pageInfo, cov *coverageInfo) string {
 	var b strings.Builder
 	scope := "project configs only"
 	if includeUser {
@@ -160,24 +188,34 @@ func mcpAuditSummary(res *model.ScanResult, includeUser bool) string {
 		fmt.Fprintf(&b, "Config files skipped: %d (documentation, tests, examples, oversized or unreadable)\n", res.Stats.FilesSkipped)
 	}
 	fmt.Fprintf(&b, "Rules: %d MCP configuration rules (VGL-MCP), deterministic and offline\n", res.Stats.RulesRun)
-	fmt.Fprintf(&b, "Findings: %d (%s)\n", len(res.Findings), severityLine(res.Findings))
+	if page.Total == len(res.Findings) {
+		fmt.Fprintf(&b, "Findings: %d (%s)\n", len(res.Findings), severityLine(res.Findings))
+	} else {
+		fmt.Fprintf(&b, "Findings: %d shown of %d (%s)\n", len(res.Findings), page.Total, severityLine(res.Findings))
+	}
+	fmt.Fprintf(&b, "Page: %s\n", pageNote(page))
+	fmt.Fprintf(&b, "%s\n", coverageNote(cov))
 	b.WriteString("Model: not used (deterministic MCP configuration rules)\n")
 	b.WriteString("\nOnly MCP configuration text is read. No configured server is started, no endpoint is\n")
 	b.WriteString("contacted and nothing is written. A clean audit does not prove that an MCP server is\n")
 	b.WriteString("trustworthy: the rules cannot see the server's own code or runtime behaviour.\n")
 
-	if len(res.Findings) == 0 {
+	if page.Total == 0 {
 		b.WriteString("\nNo MCP configuration findings in this scope.\n")
+		return b.String()
+	}
+	if len(res.Findings) == 0 {
+		b.WriteString("\nNo MCP configuration findings in this window. Pass offset=0 to start from the first finding.\n")
 		return b.String()
 	}
 
 	b.WriteString("\nTop findings:\n")
 	for i, f := range res.Findings {
 		if i == mcpAuditTopFindings {
-			fmt.Fprintf(&b, "  … and %d more finding(s) (raise maxFindings or read structuredContent).\n", len(res.Findings)-i)
+			fmt.Fprintf(&b, "  … and %d more finding(s) in this window (raise maxFindings or read structuredContent).\n", len(res.Findings)-i)
 			break
 		}
-		fmt.Fprintf(&b, "  %d. [%s] %s %s — %s\n", i+1, f.RuleID, displaySeverity(f.Severity), oneLine(f.Title), locationString(f.Location))
+		fmt.Fprintf(&b, "  %d. [%s] %s %s — %s\n", page.Offset+i+1, f.RuleID, displaySeverity(f.Severity), oneLine(f.Title), locationString(f.Location))
 	}
 	return b.String()
 }

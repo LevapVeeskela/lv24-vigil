@@ -219,6 +219,9 @@ func (s *Scanner) scanFiles(ctx context.Context, input []*rules.File, opts Optio
 
 	model.SortFindings(kept)
 	model.SortFindings(suppressed)
+	// Record the pool size before the per-request cap: paginated callers need
+	// an honest total for findings this response does not contain.
+	res.Stats.FindingsTotal = len(kept)
 	if opts.MaxFindings > 0 && len(kept) > opts.MaxFindings {
 		kept = kept[:opts.MaxFindings]
 	}

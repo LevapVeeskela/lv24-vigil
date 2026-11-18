@@ -181,22 +181,30 @@ func categoriesFromMetas(metas []model.RuleMeta) []string {
 }
 
 type historyArgs struct {
-	Limit int `json:"limit"`
+	Offset int `json:"offset"`
+	Limit  int `json:"limit"`
 }
 
 type historyPayload struct {
-	Count int             `json:"count"`
-	Scans []store.Summary `json:"scans"`
+	Count      int             `json:"count"`
+	Total      int             `json:"total"`
+	HasMore    bool            `json:"hasMore"`
+	NextOffset *int            `json:"nextOffset,omitempty"`
+	Page       *pageInfo       `json:"page,omitempty"`
+	Scans      []store.Summary `json:"scans"`
 }
 
 func registerHistory(srv *mcp.Server, d Deps) {
 	srv.AddTool(mcp.Tool{
 		Name:  "vigil_history",
 		Title: "List stored Vigil scans",
-		Description: "List the most recent stored scans with their finding, critical and high counts. " +
-			"Scan IDs can be passed to vigil_explain, vigil_fix, vigil_report and vigil_verify.",
+		Description: "List stored scans, newest first, with their finding, critical and high counts. " +
+			"The response is windowed: limit is the page size (default 10, capped at 100) and offset " +
+			"selects the page; the page object states total, hasMore and nextOffset. Scan IDs can be " +
+			"passed to vigil_explain, vigil_fix, vigil_report and vigil_verify.",
 		InputSchema: mcp.ObjectSchema(map[string]any{
-			"limit": mcp.PropInt("Maximum number of scans to list (default 10, capped at 100)."),
+			"offset": mcp.PropInt("Zero-based scan offset for paging. Start with 0, then pass page.nextOffset from the previous result."),
+			"limit":  mcp.PropInt("Maximum number of scans in this window (default 10, capped at 100)."),
 		}),
 		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": false},
 		Handler: func(ctx context.Context, raw json.RawMessage) (*mcp.CallToolResult, error) {
@@ -213,29 +221,47 @@ func handleHistory(d Deps, raw json.RawMessage) (*mcp.CallToolResult, error) {
 	if errRes := decodeArgs(raw, &args); errRes != nil {
 		return errRes, nil
 	}
+	if err := checkOffset(args.Offset); err != nil {
+		return errorResult(d, "%v", err), nil
+	}
 
 	limit := clampInt(args.Limit, 10, 100)
-	summaries, err := d.App.Store.List(limit)
+	// List(0) is the cheapest existing way to learn the honest total: the
+	// store already prunes its history, so this is one directory read.
+	all, err := d.App.Store.List(0)
 	if err != nil {
 		return errorResult(d, "history: %v", err), nil
 	}
+	start, end, page := window(len(all), args.Offset, limit)
+	summaries := all[start:end]
 
 	var b strings.Builder
-	if len(summaries) == 0 {
+	if len(all) == 0 {
 		b.WriteString("No stored scans yet. Run vigil_scan to create one.\n")
 	} else {
-		fmt.Fprintf(&b, "Recent scans (%d, newest first):\n\n", len(summaries))
-		w := tabwriter.NewWriter(&b, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(w, "ID\tSTARTED (UTC)\tFINDINGS\tCRITICAL\tHIGH")
-		for _, s := range summaries {
-			fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%d\n",
-				s.ID, formatScanTime(s.StartedAt), s.Findings, s.Critical, s.High)
+		fmt.Fprintf(&b, "Recent scans (newest first) — %s\n\n", pageNote(page))
+		if len(summaries) == 0 {
+			b.WriteString("No scans in this window.\n")
+		} else {
+			w := tabwriter.NewWriter(&b, 0, 4, 2, ' ', 0)
+			fmt.Fprintln(w, "ID\tSTARTED (UTC)\tFINDINGS\tCRITICAL\tHIGH")
+			for _, s := range summaries {
+				fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%d\n",
+					s.ID, formatScanTime(s.StartedAt), s.Findings, s.Critical, s.High)
+			}
+			_ = w.Flush()
 		}
-		_ = w.Flush()
 		fmt.Fprintf(&b, "\nStore: %s\n", d.App.Store.Dir())
 	}
 
-	payload := historyPayload{Count: len(summaries), Scans: summaries}
+	payload := historyPayload{
+		Count:      len(summaries),
+		Total:      page.Total,
+		HasMore:    page.HasMore,
+		NextOffset: page.NextOffset,
+		Page:       &page,
+		Scans:      summaries,
+	}
 	return result(d, b.String(), payload), nil
 }
 

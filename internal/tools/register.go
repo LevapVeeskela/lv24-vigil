@@ -5,9 +5,10 @@
 // local history so later tools can address their findings; vigil_report writes
 // a report only when a path is supplied, and vigil_baseline writes the baseline
 // file. A Deps with ReadOnly set hides vigil_fix and rejects those writes.
-// Tool text is bounded to roughly 40 KiB; structured content is left intact so
-// clients can consume the full model.ScanResult. Typed failures carry a stable
-// VGL-* code in the text and in structuredContent.error.
+// Tool text is bounded to roughly 40 KiB; structured content keeps the scan
+// shape but windows list results and adds page/coverage metadata, so a client
+// can always see the bound and resume. Typed failures carry a stable VGL-*
+// code in the text and in structuredContent.error.
 package tools
 
 import (

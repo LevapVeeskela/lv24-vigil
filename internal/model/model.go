@@ -241,15 +241,19 @@ type RuleMeta struct {
 
 // Stats summarises a scan.
 type Stats struct {
-	FilesScanned int              `json:"filesScanned"`
-	FilesSkipped int              `json:"filesSkipped"`
-	BytesScanned int64            `json:"bytesScanned"`
-	DurationMS   int64            `json:"durationMs"`
-	BySeverity   map[Severity]int `json:"bySeverity"`
-	ByCategory   map[Category]int `json:"byCategory"`
-	RulesRun     int              `json:"rulesRun"`
-	LLMCalls     int              `json:"llmCalls"`
-	LLMTokens    int              `json:"llmTokens,omitempty"`
+	FilesScanned int   `json:"filesScanned"`
+	FilesSkipped int   `json:"filesSkipped"`
+	BytesScanned int64 `json:"bytesScanned"`
+	DurationMS   int64 `json:"durationMs"`
+	// FindingsTotal is the number of findings at or above the selected
+	// severity before the per-request cap was applied. Paginated callers use
+	// it as the honest total for a window.
+	FindingsTotal int              `json:"findingsTotal,omitempty"`
+	BySeverity    map[Severity]int `json:"bySeverity"`
+	ByCategory    map[Category]int `json:"byCategory"`
+	RulesRun      int              `json:"rulesRun"`
+	LLMCalls      int              `json:"llmCalls"`
+	LLMTokens     int              `json:"llmTokens,omitempty"`
 }
 
 // ModelInfo describes the model that produced LLM judgements.

@@ -42,6 +42,7 @@ type hardeningArgs struct {
 	Platform    string `json:"platform"`
 	MinSeverity string `json:"minSeverity"`
 	MaxFindings int    `json:"maxFindings"`
+	Offset      int    `json:"offset"`
 	NoBaseline  bool   `json:"noBaseline"`
 }
 
@@ -52,14 +53,17 @@ func registerHardening(srv *mcp.Server, d Deps) {
 		Description: "Run only the anti-RE hardening rules (VGL-ARE-*): release minification, debug signing, " +
 			"debuggable builds, backup and cleartext settings, plist transport exceptions, release obfuscation, " +
 			"Electron/Node isolation, inspector flags and production source maps. Reports hardening gaps, not " +
-			"vulnerabilities. Optionally narrow the review to one platform. Returns a text summary grouped by " +
-			"platform and the full scan result as structuredContent. Writes local scan history, never source " +
-			"files.",
+			"vulnerabilities. Optionally narrow the review to one platform. Results are windowed: maxFindings " +
+			"is the page size (default 50, capped at 500) and offset selects the page; the page object states " +
+			"total, hasMore and nextOffset, and a coverage object states what was scanned. Returns a text " +
+			"summary grouped by platform and the scan result as structuredContent. Writes local scan " +
+			"history, never source files.",
 		InputSchema: mcp.ObjectSchema(map[string]any{
 			"path":        mcp.Prop("string", "Mobile or desktop project to review. Defaults to the server's project root."),
 			"platform":    mcp.PropEnum("Only report findings for this platform. Defaults to all.", "all", "android", "ios", "electron", "node", "flutter", "web", "other"),
 			"minSeverity": mcp.PropEnum("Minimum severity to report.", "critical", "high", "medium", "low", "info"),
-			"maxFindings": mcp.PropInt("Maximum findings to return (default 50, capped at 500)."),
+			"maxFindings": mcp.PropInt("Page size: maximum findings in this window (default 50, capped at 500)."),
+			"offset":      mcp.PropInt("Zero-based finding offset for paging. Start with 0, then pass page.nextOffset from the previous result."),
 			"noBaseline":  mcp.PropBool("Ignore the baseline and report suppressed findings as active."),
 		}),
 		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false},
@@ -84,6 +88,9 @@ func handleHardening(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.Cal
 	platform, err := parseHardeningPlatform(args.Platform)
 	if err != nil {
 		return mcp.TextError("invalid arguments: %v", err), nil
+	}
+	if err := checkOffset(args.Offset); err != nil {
+		return errorResult(d, "%v", err), nil
 	}
 	minSeverity, err := parseSeverityArg(args.MinSeverity)
 	if err != nil {
@@ -113,12 +120,17 @@ func handleHardening(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.Cal
 	// Hardening is a deterministic posture check: never let a configured model
 	// reorder or drop the gaps.
 	disabled := false
+	limit := clampInt(args.MaxFindings, maxFindingsDefault, maxFindingsCap)
+	fetch := args.Offset + limit
+	if fetch > maxFindingsCap {
+		fetch = maxFindingsCap
+	}
 	res, err := d.App.Scan(ctx, model.ScanRequest{
 		Root:        root,
 		UseLLM:      &disabled,
 		OnlyRules:   ids,
 		MinSeverity: minSeverity,
-		MaxFindings: clampInt(args.MaxFindings, maxFindingsDefault, maxFindingsCap),
+		MaxFindings: fetch,
 		NoBaseline:  args.NoBaseline,
 		DisableOSV:  true,
 	})
@@ -131,8 +143,10 @@ func handleHardening(ctx context.Context, d Deps, raw json.RawMessage) (*mcp.Cal
 	// The filter also rebuilds every aggregate that describes the kept set.
 	index := hardeningPlatformIndex(metas)
 	applyHardeningPlatformFilter(res, platform, index)
-	detected := hardeningPlatformCounts(res.Findings, index)
-	return result(d, hardeningSummary(d, res, ids, platform, detected), res), nil
+	view, page, cov, reported := scanPage(res, args.Offset, limit, false)
+	detected := hardeningPlatformCounts(view.Findings, index)
+	text := hardeningSummary(d, view, ids, platform, detected, page, cov) + pageCapNote(reported, page.Total)
+	return result(d, text, &scanPayload{ScanResult: view, Page: &page, Coverage: cov}), nil
 }
 
 // antiREIDs returns the IDs of every registered rule in the anti-re category.
@@ -364,7 +378,7 @@ func hardeningPlural(count int, one, many string) string {
 // hardeningSummary renders the human-readable half of vigil_hardening. It
 // groups gaps by platform and never turns a missing control into a
 // vulnerability claim.
-func hardeningSummary(d Deps, res *model.ScanResult, ids []string, platform string, detected []hardeningPlatformCount) string {
+func hardeningSummary(d Deps, res *model.ScanResult, ids []string, platform string, detected []hardeningPlatformCount, page pageInfo, cov *coverageInfo) string {
 	var metas []model.RuleMeta
 	if d.App != nil && d.App.Registry != nil {
 		metas = d.App.Registry.Metas()
@@ -373,11 +387,17 @@ func hardeningSummary(d Deps, res *model.ScanResult, ids []string, platform stri
 	rules := hardeningRuleCounts(metas)
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "Vigil anti-RE hardening — %d hardening gap(s)\n", len(res.Findings))
+	fmt.Fprintf(&b, "Vigil anti-RE hardening — %d hardening gap(s)\n", page.Total)
 	fmt.Fprintf(&b, "Root: %s\n", res.Root)
 	fmt.Fprintf(&b, "Rules: %d anti-RE rules (VGL-ARE)\n", len(ids))
 	fmt.Fprintf(&b, "Platform: %s\n", hardeningPlatformLine(platform, detected, rules))
-	fmt.Fprintf(&b, "Findings: %d (%s)\n", len(res.Findings), severityLine(res.Findings))
+	if page.Total == len(res.Findings) {
+		fmt.Fprintf(&b, "Findings: %d (%s)\n", len(res.Findings), severityLine(res.Findings))
+	} else {
+		fmt.Fprintf(&b, "Findings: %d shown of %d (%s)\n", len(res.Findings), page.Total, severityLine(res.Findings))
+	}
+	fmt.Fprintf(&b, "Page: %s\n", pageNote(page))
+	fmt.Fprintf(&b, "%s\n", coverageNote(cov))
 	if len(res.Suppressed) > 0 {
 		fmt.Fprintf(&b, "Baseline: %d finding(s) suppressed (set noBaseline=true to include them)\n", len(res.Suppressed))
 	}
@@ -389,8 +409,12 @@ func hardeningSummary(d Deps, res *model.ScanResult, ids []string, platform stri
 	b.WriteString("\nThese are hardening gaps in the project's release configuration, not vulnerabilities. ")
 	b.WriteString("A missing control says what is absent, not that the app is exploitable, backdoored or bypassable.\n")
 
-	if len(res.Findings) == 0 {
+	if page.Total == 0 {
 		b.WriteString("\nNo hardening gaps found by the anti-RE rules in this scope.\n")
+		return b.String()
+	}
+	if len(res.Findings) == 0 {
+		b.WriteString("\nNo hardening gaps in this window. Pass offset=0 to start from the first finding.\n")
 		return b.String()
 	}
 
