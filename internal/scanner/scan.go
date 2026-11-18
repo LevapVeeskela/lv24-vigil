@@ -101,7 +101,14 @@ func (s *Scanner) Scan(ctx context.Context, opts Options) (*model.ScanResult, er
 		if err != nil {
 			return nil, err
 		}
-		return s.ScanPaths(ctx, root, filterChangedPaths(paths, opts), opts)
+		filtered, skipped, reasons := filterChangedPaths(paths, opts)
+		res, err := s.ScanPaths(ctx, root, filtered, opts)
+		if err != nil {
+			return nil, err
+		}
+		res.Stats.FilesSkipped += skipped
+		res.Stats.SkippedReasons = mergeReasons(res.Stats.SkippedReasons, reasons)
+		return res, nil
 	default:
 		walked, err := walkFiles(ctx, root, opts)
 		if err != nil {
@@ -263,18 +270,30 @@ func (s *Scanner) scanFiles(ctx context.Context, input []*rules.File, opts Optio
 // filterChangedPaths applies the same hard-skip directories and include/exclude
 // patterns as a normal walk. Changed mode gets its paths from git, so without
 // this a repository's own .vigil history, node_modules or generated bundles
-// would be scanned as if they were source.
-func filterChangedPaths(paths []string, opts Options) []string {
+// would be scanned as if they were source. It returns the kept paths plus the
+// skipped count and reasons, so coverage cannot silently omit changed files.
+func filterChangedPaths(paths []string, opts Options) ([]string, int, map[string]int) {
 	excludes := append(defaultExcludePatterns(), opts.Exclude...)
 	matcher := newIgnoreMatcher(excludes, opts.Include)
 	out := make([]string, 0, len(paths))
+	skipped := 0
+	var reasons map[string]int
 	for _, p := range paths {
-		if hasHardSkipSegment(p) || matcher.ignored(p, false) || !matcher.included(p) {
-			continue
+		switch {
+		case hasHardSkipSegment(p):
+			skipped++
+			reasons = countSkip(reasons, skipReasonToolState)
+		case matcher.ignored(p, false):
+			skipped++
+			reasons = countSkip(reasons, skipReasonIgnored)
+		case !matcher.included(p):
+			skipped++
+			reasons = countSkip(reasons, skipReasonNotIncluded)
+		default:
+			out = append(out, p)
 		}
-		out = append(out, p)
 	}
-	return out
+	return out, skipped, reasons
 }
 
 func (s *Scanner) selectedRules(opts Options) []rules.Rule {

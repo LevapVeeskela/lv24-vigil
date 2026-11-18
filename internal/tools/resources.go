@@ -21,7 +21,7 @@ func registerResources(srv *mcp.Server, d Deps) {
 		Description: "Version, root, model configuration (key redacted), rule count and the last scan summary.",
 		MimeType:    "application/json",
 	}, func(_ context.Context, uri string) ([]mcp.ResourceContents, error) {
-		return jsonResource(uri, statusPayloadFor(d))
+		return jsonResource(d, uri, statusPayloadFor(d))
 	})
 
 	srv.AddResource(mcp.Resource{
@@ -35,7 +35,7 @@ func registerResources(srv *mcp.Server, d Deps) {
 			return nil, fmt.Errorf("vigil is not initialised")
 		}
 		metas := d.App.Registry.Metas()
-		return jsonResource(uri, map[string]any{"count": len(metas), "rules": metas})
+		return jsonResource(d, uri, map[string]any{"count": len(metas), "rules": metas})
 	})
 
 	readScan := func(_ context.Context, uri string) ([]mcp.ResourceContents, error) {
@@ -51,13 +51,13 @@ func registerResources(srv *mcp.Server, d Deps) {
 			if err != nil {
 				return nil, fmt.Errorf("no stored scans: %v (run vigil_scan first)", err)
 			}
-			return jsonResource(uri, res)
+			return jsonResource(d, uri, res)
 		}
 		res, err := d.App.GetScan(id)
 		if err != nil {
 			return nil, fmt.Errorf("unknown scan %q: %v", id, err)
 		}
-		return jsonResource(uri, res)
+		return jsonResource(d, uri, res)
 	}
 
 	srv.AddResource(mcp.Resource{
@@ -86,8 +86,19 @@ func registerResources(srv *mcp.Server, d Deps) {
 	}
 }
 
-func jsonResource(uri string, v any) ([]mcp.ResourceContents, error) {
-	data, err := json.MarshalIndent(v, "", "  ")
+// jsonResource renders v as indented JSON with the same redaction as tool
+// output. Scan resources contain raw snippets, so skipping this would let a
+// client recover a token that the tool response masks.
+func jsonResource(d Deps, uri string, v any) ([]mcp.ResourceContents, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("encode %s: %w", uri, err)
+	}
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, fmt.Errorf("encode %s: %w", uri, err)
+	}
+	data, err := json.MarshalIndent(redactStructured(d, decoded), "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("encode %s: %w", uri, err)
 	}

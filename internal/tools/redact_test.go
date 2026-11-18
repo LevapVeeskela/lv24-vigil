@@ -255,3 +255,44 @@ func TestScanStructuredContentRedactsSnippetTokens(t *testing.T) {
 		t.Fatalf("fixture did not produce a VGL-CRY-001 finding: %+v", scan.Findings)
 	}
 }
+
+// TestScanResourceRedactsSnippetTokens: resources/read must not be a way around
+// the structuredContent redaction. The stored scan still contains the raw
+// snippet, so jsonResource has to redact on the way out.
+func TestScanResourceRedactsSnippetTokens(t *testing.T) {
+	a, dir := redactTestApp(t)
+	src := "signature = hashlib.md5(" + redactTestJWT + ".encode()).hexdigest()\n"
+	if err := os.WriteFile(filepath.Join(dir, "weak_hash.py"), []byte(src), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	if res, err := handleScan(context.Background(), Deps{App: a}, json.RawMessage(`{"mode":"quick","noBaseline":true}`)); err != nil || res.IsError {
+		t.Fatalf("handleScan: %v / %+v", err, res)
+	}
+	scan, err := a.LastScan()
+	if err != nil {
+		t.Fatalf("LastScan: %v", err)
+	}
+
+	contents, err := jsonResource(Deps{App: a}, "vigil://scan/last", scan)
+	if err != nil {
+		t.Fatalf("jsonResource: %v", err)
+	}
+	if len(contents) != 1 {
+		t.Fatalf("contents = %d, want 1", len(contents))
+	}
+	text := contents[0].Text
+	if strings.Contains(text, redactTestJWT) {
+		t.Fatalf("scan resource leaked the raw JWT:\n%s", text)
+	}
+	if !strings.Contains(text, rules.MaskSecret(redactTestJWT)) {
+		t.Errorf("scan resource does not contain the masked JWT")
+	}
+
+	var decoded model.ScanResult
+	if err := json.Unmarshal([]byte(text), &decoded); err != nil {
+		t.Fatalf("resource JSON shape changed: %v", err)
+	}
+	if decoded.ID != scan.ID || len(decoded.Findings) != len(scan.Findings) {
+		t.Errorf("resource lost scan identity or findings: id=%q findings=%d", decoded.ID, len(decoded.Findings))
+	}
+}

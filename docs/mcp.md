@@ -230,7 +230,9 @@ key (`walk_error`, `path_error`, `tool_state`, `symlink`, `symlink_error`,
 `read_error`, `outside_root`, `unsafe_path`, `missing`, `duplicate`).
 `filesSkipped` is the sum of those counts. The keys are best-effort categories
 for why coverage is incomplete, not per-file paths and not a claim that the
-skipped files are safe. `coverage.networkUsed` is true when the scan consulted
+skipped files are safe. Changed-only reviews count changed files dropped by
+hard-skip directories or include/exclude patterns in the same block, so they
+cannot report zero skipped while ignoring part of the diff. `coverage.networkUsed` is true when the scan consulted
 a model or attempted an OSV lookup (an attempted lookup counts even if it
 failed); `coverage.llmUsed` remains for compatibility and covers only the model.
 A scan with no skips omits `skipReasons`. The block exists so incomplete

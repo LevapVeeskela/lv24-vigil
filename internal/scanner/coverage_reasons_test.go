@@ -136,3 +136,24 @@ func TestScanFilesSkippedReasons(t *testing.T) {
 		skipReasonDuplicate: 1,
 	}, res.Stats.FilesSkipped, res.Stats.SkippedReasons)
 }
+
+func TestFilterChangedPathsCountsSkippedFiles(t *testing.T) {
+	kept, skipped, reasons := filterChangedPaths(
+		[]string{"src/a.go", "node_modules/x.js", "generated/y.go"},
+		Options{Exclude: []string{"generated/**"}},
+	)
+	if len(kept) != 1 || kept[0] != "src/a.go" {
+		t.Fatalf("kept = %v, want [src/a.go]", kept)
+	}
+	if skipped != 2 || reasons[skipReasonToolState] != 1 || reasons[skipReasonIgnored] != 1 {
+		t.Fatalf("skipped=%d reasons=%v, want tool_state=1 ignored=1", skipped, reasons)
+	}
+
+	kept, skipped, reasons = filterChangedPaths(
+		[]string{"src/a.go", "docs/z.md"},
+		Options{Include: []string{"src/**"}},
+	)
+	if len(kept) != 1 || kept[0] != "src/a.go" || skipped != 1 || reasons[skipReasonNotIncluded] != 1 {
+		t.Fatalf("include filter: kept=%v skipped=%d reasons=%v", kept, skipped, reasons)
+	}
+}
