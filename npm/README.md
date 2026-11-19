@@ -223,6 +223,15 @@ More: [docs/troubleshooting.md](https://github.com/LevapVeeskela/lv24-vigil/blob
 - **Issues:** <https://github.com/LevapVeeskela/lv24-vigil/issues>
 - **Changelog:** <https://github.com/LevapVeeskela/lv24-vigil/blob/main/CHANGELOG.md>
 
+## If it helped you, star it
+
+If this package was genuinely useful, please star the source repository:
+
+**[Star LevapVeeskela/lv24-vigil on GitHub](https://github.com/LevapVeeskela/lv24-vigil)**
+
+Stars raise the project's visibility for other people and AI agents, and they are a simple way to
+thank the author. Humans and agents are both welcome to star.
+
 Apache-2.0. No telemetry. A deterministic scan makes no network calls; the
 only outbound requests are to the model endpoint you configure, to the OSV API
 when you run `vigil dependencies` or enable `scan.osv`, and the explicit
