@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - id: vigil
-        uses: LevapVeeskela/lv24-vigil@ea679ce27bce68e3a2a35c13c9ea58aad4cd1f8b # v0.10.3
+        uses: LevapVeeskela/lv24-vigil@5cf984492b9d2a701adccc9d57259f45e81690d9 # v0.11.0
         with:
           path: examples/action-smoke
           fail-on: high
