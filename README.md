@@ -16,13 +16,19 @@
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com)
 [![Go Reference](https://pkg.go.dev/badge/github.com/levapveeskela/lv24-vigil.svg)](https://pkg.go.dev/github.com/levapveeskela/lv24-vigil)
 
-**Docs:** English · [Русский](README.ru.md) · [Documentation](docs/) · [llms.txt](llms.txt)
+**Docs:** English · [Русский](README.ru.md) · [Architecture](docs/ARCHITECTURE.md) · [Docs index](docs/README.md) · [Agent entry](AGENTS.md) · [llms.txt](llms.txt)
 
 > **Your code. Your model. Your findings.** Vigil runs 263 deterministic
 > security rules over a repository, then — only if you ask — sends the minimum
 > context to the model you already pay for to triage findings, review risky
 > code, propose fixes and write a threat model. One static Go binary, one MCP
 > server, no account, no telemetry, no Docker for a normal scan.
+
+## At a glance
+
+| Stack | Entry points | Ports | Data | Distribution |
+|---|---|---|---|---|
+| Go 1.27 · one module · one dependency (`yaml.v3`) · no CGO | `cmd/vigil` (CLI), `vigil mcp` (stdio), `internal/app` (composition root) | **None** — stdio only, no daemon | `.vigil/scans` (last 50), baseline, YAML config; no database | GoReleaser → GitHub Releases, npm, PyPI, Homebrew, Scoop, GHCR, MCP Registry, GitHub Action |
 
 | 🚀 Start | 🧠 Use | 🛠 Operate |
 | --- | --- | --- |
@@ -33,7 +39,10 @@
 > baseline parity and diff-bound fix approval. Deterministic scanning still
 > needs no model; LLM output is advisory and Vigil is not a replacement for a
 > pentest. Treat every finding as a lead to verify, not a verdict
-> ([changelog](CHANGELOG.md)).
+> ([changelog](CHANGELOG.md)). Version has one source:
+> [`internal/version/version.go`](internal/version/version.go), stamped by the
+> Makefile or GoReleaser with `-ldflags`; live channel state is in
+> [docs/distribution.md](docs/distribution.md).
 
 ## See it work
 
@@ -130,7 +139,7 @@ vigil fix VGL-XXXXXXXXXX --apply  # write it to the working tree, never commit
 - **Output is stable.** The same tree produces the same findings and the same
   IDs, so a baseline, a CI gate and an agent can all rely on them.
 
-Design and limits: [docs/architecture.md](docs/architecture.md).
+Design and limits: [docs/architecture-deep-dive.md](docs/architecture-deep-dive.md).
 
 ## Install
 
@@ -936,7 +945,9 @@ More cases, with the exact messages: [docs/troubleshooting.md](docs/troubleshoot
 | [docs/rules.md](docs/rules.md) | Rule families, representative IDs, baseline |
 | [docs/security-model.md](docs/security-model.md) | Egress, masking, prompt safety, limits |
 | [docs/ci.md](docs/ci.md) | GitHub Actions, SARIF, fork PRs, prechecks |
-| [docs/architecture.md](docs/architecture.md) | Packages, pipeline, design decisions |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System context, scan pipeline, trust boundary, distribution, invariants |
+| [docs/README.md](docs/README.md) | Full documentation index (history marked historical) |
+| [docs/architecture-deep-dive.md](docs/architecture-deep-dive.md) | Packages, pipeline, design decisions |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Common failures and fixes |
 | [docs/comparison.md](docs/comparison.md) | Vigil vs Strix vs hosted scanners |
 | [docs/release.md](docs/release.md) | Release pipeline, npm Trusted Publishing, re-runs |

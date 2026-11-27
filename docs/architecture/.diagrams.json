@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "diagrams": {
+    "scan-pipeline": {
+      "index": "01",
+      "title": "Scan pipeline",
+      "slug": "scan-pipeline",
+      "hash": "e7bea610fd43d2c3",
+      "updatedAt": "2026-11-27",
+      "png": true,
+      "svg": true
+    },
+    "trust-and-egress-boundary": {
+      "index": "02",
+      "title": "Trust and egress boundary",
+      "slug": "trust-and-egress-boundary",
+      "hash": "e6b2e8a403453f10",
+      "updatedAt": "2026-11-27",
+      "png": true,
+      "svg": true
+    },
+    "distribution-pipeline": {
+      "index": "03",
+      "title": "Distribution pipeline",
+      "slug": "distribution-pipeline",
+      "hash": "e86d4f67f1322698",
+      "updatedAt": "2026-11-27",
+      "png": true,
+      "svg": true
+    }
+  }
+}

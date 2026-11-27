@@ -362,7 +362,9 @@ offline, runs no package manager and does not resolve version ranges.
 - Anti-RE hardening mapping: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/anti-re-hardening.md
 - Security model: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/security-model.md
 - CI: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/ci.md
-- Architecture: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/architecture.md
+- Architecture: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/ARCHITECTURE.md
+- Architecture deep dive: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/architecture-deep-dive.md
+- Docs index: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/README.md
 - Troubleshooting: https://github.com/LevapVeeskela/lv24-vigil/blob/main/docs/troubleshooting.md
 - Changelog: https://github.com/LevapVeeskela/lv24-vigil/blob/main/CHANGELOG.md
 - Agent onboarding: https://github.com/LevapVeeskela/lv24-vigil/blob/main/AGENTS.md

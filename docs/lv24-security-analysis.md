@@ -212,4 +212,4 @@ Paths below are in the LV24 monorepo.
 - `main/docs/plans/2026-11-04-lv24-security-scans-strix-fork-design.md` - design
   source of truth.
 - [comparison.md](comparison.md) - Vigil vs Strix vs hosted scanners.
-- [architecture.md](architecture.md) - Vigil's own design.
+- [architecture-deep-dive.md](architecture-deep-dive.md) - Vigil's own design.

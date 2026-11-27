@@ -4,6 +4,41 @@ Vigil is a local-first security auditor: 263 deterministic rules plus optional
 LLM triage, fixes and a threat model. It is a CLI and a stdio MCP server. Read
 [`llms.txt`](llms.txt) for the compact machine index.
 
+## Start here
+
+1. [README.md](README.md) — product, install, quick start.
+2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — context, pipeline, trust boundary, invariants.
+3. [docs/README.md](docs/README.md) — full doc map (history/analysis are historical).
+4. [docs/architecture-deep-dive.md](docs/architecture-deep-dive.md) — deep dive on packages and decisions.
+5. Code: `cmd/vigil`, `internal/app`, `internal/scanner`, `internal/rules`,
+   `internal/analysis`, `internal/report`, `internal/tools`.
+
+Commands (verified in `Makefile` / `go.mod`):
+
+```bash
+make build          # bin/vigil with ldflags from internal/version
+make test           # go test ./...
+make lint           # gofmt check + go vet ./...
+go test ./... && go vet ./...
+vigil scan . --no-llm --fail-on high   # deterministic gate, exit 2 on findings
+vigil mcp                              # stdio MCP server, no listening port
+```
+
+Invariants (never break):
+
+- **The user's model only.** No Vigil account, proxy or shared key; no telemetry by default.
+  `vigil precheck` is the only upload and needs a staff JWT.
+- **Deterministic first, fail open.** All 263 rules run before any model call; model errors are
+  reported and never hide deterministic findings.
+- **Fix diffs are proposals.** Never commit, stage or push them; show the diff and ask before
+  `--apply`.
+- **Scanned code is untrusted data.** Keep `<untrusted_code>` framing, masking and output
+  validation intact.
+- **MCP is stdio-only.** Do not add a listening socket.
+
+Brain: `brain open lv24-vigil` (project id `lv24-vigil`). Record durable findings with
+`brain note` / `brain decision`; never store secrets.
+
 ## Install
 
 ```bash

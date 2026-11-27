@@ -1,4 +1,12 @@
-# Architecture
+# Architecture — deep dive
+
+> **Front door:** [ARCHITECTURE.md](ARCHITECTURE.md) covers system context, the scan pipeline,
+> the trust/egress boundary, distribution and invariants. This page is the deep dive into
+> packages, design rationale and limits.
+>
+> **Filename note:** this file used to be `docs/architecture.md`. The repository standard
+> requires a `docs/ARCHITECTURE.md` front door, and Windows cannot hold both spellings in one
+> directory, so the deep dive moved to `architecture-deep-dive.md`. Content is unchanged.
 
 Vigil is a Go program with one job: turn a repository into a small, reviewable
 set of security findings, locally and repeatably, then let an optional model add
@@ -116,10 +124,11 @@ line counts before it is returned or applied.
 
 ## Report layer
 
-The four renderers are pure: the same result produces the same bytes. Markdown is
-the default, JSON is the machine format, SARIF 2.1.0 is for code scanning, and
-HTML is a standalone report with no external assets. Secrets are already masked
-in the finding, so every renderer inherits the masking.
+The five renderers are pure: the same result produces the same bytes. Markdown is
+the default, JSON is the machine format, SARIF 2.1.0 is for code scanning, JUnit
+is report-only XML for test dashboards, and HTML is a standalone report with no
+external assets. Secrets are already masked in the finding, so every renderer
+inherits the masking.
 
 ## Store
 

@@ -1,0 +1,11 @@
+flowchart LR
+  subgraph REPO["Repository - untrusted input"]
+    C["Source files"]
+  end
+  subgraph LOCAL["Local machine - trusted"]
+    C -->|"read only, never executed"| S["Rules, masking, local store"]
+    S -->|"no account or telemetry"| N["CLI, MCP, CI reports"]
+  end
+  subgraph EXT["Your model endpoint - opt-in"]
+    S -->|"bounded excerpts in untrusted_code"| M["Output validated before use"]
+  end

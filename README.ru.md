@@ -133,7 +133,7 @@ vigil fix VGL-XXXXXXXXXX --apply  # записать в рабочее дере�
 - **Вывод стабилен.** Одно и то же дерево даёт те же находки и те же ID, поэтому
   на них могут опираться baseline, CI-гейт и агент.
 
-Архитектура и ограничения: [docs/architecture.md](docs/architecture.md).
+Архитектура и ограничения: [docs/architecture-deep-dive.md](docs/architecture-deep-dive.md).
 
 ## Установка
 
@@ -944,7 +944,7 @@ Precheck не запускает скан. Полное руководство: 
 | [docs/rules.md](docs/rules.md) | Семейства правил, примеры ID, baseline |
 | [docs/security-model.md](docs/security-model.md) | Сеть, маскирование, безопасность промптов, границы |
 | [docs/ci.md](docs/ci.md) | GitHub Actions, SARIF, форки, precheck |
-| [docs/architecture.md](docs/architecture.md) | Пакеты, конвейер, решения |
+| [docs/architecture-deep-dive.md](docs/architecture-deep-dive.md) | Пакеты, конвейер, решения |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Типовые ошибки и решения |
 | [docs/comparison.md](docs/comparison.md) | Vigil, Strix и облачные сканеры |
 | [docs/release.md](docs/release.md) | Релизный конвейер, npm Trusted Publishing, повторные запуски |

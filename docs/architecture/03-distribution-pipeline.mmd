@@ -1,0 +1,9 @@
+flowchart LR
+  A["GoReleaser: binaries + deb/rpm/apk"] -->|upload| R["GitHub Releases"]
+  S["GoReleaser: SBOM + signatures"] -->|upload| R
+  R -->|"npm + PyPI"| N["Launchers"]
+  R -->|"brew + scoop"| B["Package managers"]
+  R -->|image| C["GHCR container"]
+  R -->|server.json| M["MCP Registry"]
+  R -->|tag| X["Action + GitLab mirror"]
+  R -->|PKGBUILD| U["AUR - blocked"]

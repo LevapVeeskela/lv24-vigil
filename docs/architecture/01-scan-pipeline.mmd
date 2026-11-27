@@ -1,0 +1,5 @@
+flowchart LR
+  E["CLI vigil scan or MCP<br/>app.App wiring"] -->|"walk + guards"| S["Scanner<br/>263 rules + baseline"]
+  E -->|"opt-in only"| L["Analysis<br/>opt-in, fail-open"]
+  S -->|"masked findings"| O["5 renderers<br/>+ .vigil/scans"]
+  L -->|"validated, advisory"| O
